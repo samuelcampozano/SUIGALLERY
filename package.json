@@ -1,0 +1,24 @@
+{
+  "name": "walrus-console-project",
+  "version": "0.1.0",
+  "description": "Integration and automation project for Walrus Console decentralized storage",
+  "type": "module",
+  "main": "test-connection.js",
+  "scripts": {
+    "test-connection": "node test-connection.js",
+    "mcp:install": "npx -y @mysten-incubation/walrus-console-mcp@beta install",
+    "mcp:ping": "node -e \"import('./test-connection.js').then(m => m.testConnection())\""
+  },
+  "keywords": [
+    "walrus",
+    "walrus-console",
+    "decentralized-storage",
+    "sui",
+    "seal",
+    "mcp"
+  ],
+  "dependencies": {
+    "@mysten-incubation/walrus-console-mcp": "^0.1.0-beta.0",
+    "dotenv": "^16.4.7"
+  }
+}
