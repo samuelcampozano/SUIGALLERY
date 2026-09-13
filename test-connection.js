@@ -40,7 +40,12 @@ export async function testConnection() {
   let serviceKey = process.env.CONSOLE_SERVICE_PRIVATE_KEY;
   let ownerAddress = process.env.CONSOLE_WEB_ACCOUNT_ADDRESS;
   let keyAdminAddress = process.env.CONSOLE_KEY_ADMIN_ADDRESS;
-  const baseUrl = process.env.CONSOLE_API_BASE_URL || "https://console.walrus.xyz";
+  let baseUrl = process.env.CONSOLE_API_BASE_URL || "https://api.console.walrus.xyz";
+  if (baseUrl === "https://console.walrus.xyz") {
+    baseUrl = "https://api.console.walrus.xyz";
+  } else if (baseUrl === "https://testnet.console.walrus.xyz") {
+    baseUrl = "https://api.testnet.console.walrus.xyz";
+  }
 
   // Check if a CONSOLE_CREDENTIAL_BUNDLE was supplied
   if (process.env.CONSOLE_CREDENTIAL_BUNDLE) {
@@ -85,13 +90,68 @@ export async function testConnection() {
     });
 
     if (response.status === 200) {
-      const data = await response.json();
+      const result = await response.json();
+      const spaces = Array.isArray(result) ? result : (result.data || []);
       console.log("🎉 Connection Successful! Authentication verified.");
-      console.log(`Spaces retrieved: ${Array.isArray(data) ? data.length : JSON.stringify(data)}`);
-      if (Array.isArray(data)) {
-        data.forEach((space, idx) => {
-          console.log(`  [${idx + 1}] Space: ${space.name || space.id || "Unnamed"} (Type: ${space.type || "personal"})`);
-        });
+      console.log(`\n📂 Found ${spaces.length} space(s):`);
+
+      for (const [idx, space] of spaces.entries()) {
+        const usedMb = (space.storage_used / (1024 * 1024)).toFixed(2);
+        const capGb = (space.storage_cap / (1024 * 1024 * 1024)).toFixed(1);
+        console.log(`\n  [${idx + 1}] Space: "${space.name || "Personal Space"}" (${space.type})`);
+        console.log(`      ID: ${space.id}`);
+        console.log(`      Storage: ${usedMb} MB / ${capGb} GB`);
+        console.log(`      Plan: ${space.plan} | Role: ${space.role} | Buckets: ${space.bucket_count}`);
+
+        // Fetch buckets for this space
+        try {
+          const bucketsRes = await fetch(`${baseUrl}/api/v1/spaces/${space.id}/buckets`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              Accept: "application/json"
+            }
+          });
+          if (bucketsRes.status === 200) {
+            const bucketData = await bucketsRes.json();
+            const buckets = bucketData.buckets || bucketData.data || [];
+            if (buckets.length > 0) {
+              console.log(`      Buckets (${buckets.length}):`);
+              for (const b of buckets) {
+                console.log(`        • ${b.name || b.id} (ID: ${b.id}, Visibility: ${b.visibility || "private"})`);
+
+                // Query files in bucket
+                try {
+                  const filesRes = await fetch(`${baseUrl}/api/v1/buckets/${b.id}/files`, {
+                    method: "GET",
+                    headers: {
+                      Authorization: `Bearer ${apiKey}`,
+                      Accept: "application/json"
+                    }
+                  });
+                  if (filesRes.status === 200) {
+                    const fileData = await filesRes.json();
+                    const files = fileData.files || fileData.data || [];
+                    if (files.length > 0) {
+                      console.log(`          Files (${files.length}):`);
+                      for (const f of files) {
+                        console.log(`            - ${f.name} (${f.size || 0} bytes, Blob: ${f.blob_id || "n/a"})`);
+                      }
+                    } else {
+                      console.log(`          Files: None (Bucket is empty)`);
+                    }
+                  }
+                } catch (err) {
+                  // non-fatal
+                }
+              }
+            } else {
+              console.log(`      Buckets: None yet`);
+            }
+          }
+        } catch (e) {
+          // non-fatal
+        }
       }
     } else if (response.status === 401 || response.status === 403) {
       console.error(`❌ Authentication failed (HTTP ${response.status}). Key may be invalid or expired.`);
