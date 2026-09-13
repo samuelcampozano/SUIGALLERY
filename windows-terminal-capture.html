@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Windows PowerShell</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background: #000000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+      font-family: 'Cascadia Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
+    }
+    .window {
+      width: 100%;
+      max-width: 980px;
+      background: #0c0c0c;
+      border: 1px solid #333333;
+      border-radius: 8px;
+      box-shadow: 0 16px 36px rgba(0,0,0,0.8);
+      overflow: hidden;
+    }
+    .titlebar {
+      height: 36px;
+      background: #1f1f1f;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+      border-bottom: 1px solid #2d2d2d;
+    }
+    .tabs {
+      display: flex;
+      align-items: center;
+      height: 100%;
+      padding-left: 8px;
+    }
+    .tab {
+      background: #0c0c0c;
+      color: #cccccc;
+      font-size: 12px;
+      padding: 6px 14px;
+      border-top-left-radius: 6px;
+      border-top-right-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-top: 1px solid #3c3c3c;
+      border-left: 1px solid #3c3c3c;
+      border-right: 1px solid #3c3c3c;
+    }
+    .tab svg {
+      width: 14px;
+      height: 14px;
+      fill: #0078d4;
+    }
+    .tab-close {
+      color: #888;
+      font-size: 12px;
+      margin-left: 6px;
+      cursor: pointer;
+    }
+    .tab-close:hover {
+      color: #fff;
+    }
+    .window-controls {
+      display: flex;
+      height: 100%;
+    }
+    .control-btn {
+      width: 44px;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #cccccc;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .control-btn:hover {
+      background: #333333;
+    }
+    .control-btn.close:hover {
+      background: #e81123;
+      color: #ffffff;
+    }
+    .terminal-body {
+      padding: 16px 20px;
+      color: #cccccc;
+      font-size: 13.5px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .prompt {
+      color: #ffffff;
+    }
+    .cmd {
+      color: #e5e5e5;
+    }
+    .status-500 {
+      color: #ff6b6b;
+      font-weight: 600;
+    }
+    .status-404 {
+      color: #ffd93d;
+      font-weight: 600;
+    }
+    .header-text {
+      color: #9cdcfe;
+    }
+    .cursor {
+      display: inline-block;
+      width: 8px;
+      height: 15px;
+      background: #cccccc;
+      vertical-align: middle;
+      animation: blink 1s step-end infinite;
+    }
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="window">
+  <!-- Windows Titlebar -->
+  <div class="titlebar">
+    <div class="tabs">
+      <div class="tab">
+        <svg viewBox="0 0 24 24"><path d="M4 4h16v16H4V4m2 4v2h12V8H6m0 4v2h8v-2H6z"/></svg>
+        <span>PowerShell</span>
+        <span class="tab-close">✕</span>
+      </div>
+    </div>
+    <div class="window-controls">
+      <div class="control-btn">&#xE921; ─</div>
+      <div class="control-btn">&#xE922; ▢</div>
+      <div class="control-btn close">&#xE8BB; ✕</div>
+    </div>
+  </div>
+
+  <!-- Terminal Body -->
+  <div class="terminal-body">Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+<span class="prompt">PS D:\Personal Portfolio\WALRUS Console&gt;</span> <span class="cmd">curl.exe -i -s -H "Authorization: Bearer [REDACTED]" https://api.console.walrus.xyz/api/v1/buckets/not-a-uuid</span>
+<span class="status-500">HTTP/1.1 500 Internal Server Error</span>
+access-control-allow-credentials: true
+content-type: application/json
+date: Sun, 13 Sep 2026 03:11:36 GMT
+Content-Length: 63
+via: 1.1 google
+
+{"error":"An unexpected error occurred.","code":"UnknownError"}
+
+<span class="prompt">PS D:\Personal Portfolio\WALRUS Console&gt;</span> <span class="cmd">curl.exe -i -s -H "Authorization: Bearer [REDACTED]" https://api.console.walrus.xyz/api/v1/buckets/00000000-0000-0000-0000-000000000000</span>
+<span class="status-404">HTTP/1.1 404 Not Found</span>
+access-control-allow-credentials: true
+content-type: application/json
+date: Sun, 13 Sep 2026 03:11:36 GMT
+Content-Length: 66
+via: 1.1 google
+
+{"error":"Bucket 00000000-0000-0000-0000-000000000000 not found."}
+
+<span class="prompt">PS D:\Personal Portfolio\WALRUS Console&gt;</span> <span class="cmd">curl.exe -i -s -H "Authorization: Bearer [REDACTED]" "https://api.console.walrus.xyz/api/v1/buckets/ec7acd16-05b1-4fa2-b368-94700eb29f5e/files?q=%00"</span>
+<span class="status-500">HTTP/1.1 500 Internal Server Error</span>
+access-control-allow-credentials: true
+content-type: application/json
+date: Sun, 13 Sep 2026 03:11:37 GMT
+Content-Length: 41
+via: 1.1 google
+
+{"error":"An unexpected error occurred."}
+
+<span class="prompt">PS D:\Personal Portfolio\WALRUS Console&gt;</span> <span class="cursor"></span></div>
+</div>
+
+</body>
+</html>
