@@ -10,7 +10,7 @@ if (process.env.CONSOLE_CREDENTIAL_BUNDLE) {
 const defaultBucketId = 'ec7acd16-05b1-4fa2-b368-94700eb29f5e';
 
 function run(cmdDisplay, actualCmd) {
-  console.log(`PS D:\\Personal Portfolio\\WALRUS Console> ${cmdDisplay}`);
+  console.log(`PS C:\\Users\\User\\Desktop> ${cmdDisplay}`);
   try {
     const out = execSync(actualCmd, { encoding: 'utf8' });
     process.stdout.write(out);
@@ -39,4 +39,4 @@ run(
   `curl.exe -i -s -H "Authorization: Bearer ${apiKey}" "https://api.console.walrus.xyz/api/v1/buckets/${defaultBucketId}/files?q=%00"`
 );
 
-console.log('PS D:\\Personal Portfolio\\WALRUS Console> _');
+console.log('PS C:\\Users\\User\\Desktop> _');
