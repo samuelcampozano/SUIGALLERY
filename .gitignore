@@ -31,3 +31,12 @@ Thumbs.db
 .cache/
 tmp/
 scratch/
+
+# Private Documentation, Blueprints & Captures (Local only, not for public repo)
+docs/
+WALRUS_PHOTOS_MASTER_BLUEPRINT.md
+WALRUS_CONSOLE_BUG_CAPTURE.html
+WALRUS_BETA_BUG_REPORT.md
+windows-terminal-capture.html
+*.html
+
