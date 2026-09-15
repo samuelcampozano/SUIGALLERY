@@ -34,8 +34,8 @@ scratch/
 
 # Private Documentation, Blueprints & Captures (Local only, not for public repo)
 docs/
-WALRUS_PHOTOS_MASTER_BLUEPRINT.md
-WALRUS_PHOTOS_HACKATHON_AI_PLAYBOOK.md
+SUIGALLERY_*.md
+WALRUS_PHOTOS_*.md
 WALRUS_CONSOLE_BUG_CAPTURE.html
 WALRUS_BETA_BUG_REPORT.md
 windows-terminal-capture.html
