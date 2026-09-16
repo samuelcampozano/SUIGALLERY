@@ -247,6 +247,66 @@ app.delete("/api/photos/:fileId", async (req, res) => {
   }
 });
 
+// 6. Update Photo Metadata (Rename, Tags, Description)
+app.patch("/api/photos/:fileId", async (req, res) => {
+  const { fileId } = req.params;
+  const { name, description, tags } = req.body;
+
+  try {
+    const result = await walrus.updatePhoto({ fileId, name, description, tags });
+    res.json({
+      success: true,
+      message: "Photo metadata updated successfully",
+      result
+    });
+  } catch (err) {
+    console.error(`❌ [API] Update failed for fileId ${fileId}:`, err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 7. Batch Delete Photos
+app.post("/api/photos/batch-delete", async (req, res) => {
+  const { fileIds } = req.body;
+  if (!Array.isArray(fileIds) || fileIds.length === 0) {
+    return res.status(400).json({ success: false, error: "fileIds array required" });
+  }
+
+  const results = [];
+  for (const fileId of fileIds) {
+    try {
+      await walrus.deletePhoto(fileId);
+      const cached = decryptedCache.get(fileId);
+      if (cached && fs.existsSync(cached)) {
+        try { fs.unlinkSync(cached); } catch {}
+        decryptedCache.delete(fileId);
+      }
+      results.push({ fileId, success: true });
+    } catch (err) {
+      results.push({ fileId, success: false, error: err.message });
+    }
+  }
+
+  res.json({
+    success: true,
+    deleted_count: results.filter((r) => r.success).length,
+    results
+  });
+});
+
+// 8. Generate Ephemeral Test Vault / Sui Wallet
+app.post("/api/wallet/generate", (req, res) => {
+  try {
+    const wallet = walrus.generateEphemeralWallet();
+    res.json({
+      success: true,
+      wallet
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Fallback to index.html for client routing
 app.use((req, res) => {
   res.sendFile(path.join(publicDir, "index.html"));

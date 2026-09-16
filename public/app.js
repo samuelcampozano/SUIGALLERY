@@ -1,4 +1,4 @@
-// SuiGallery / Walrus Photos Client Application with Multi-Language (EN, ES, PT) and Mobile Support
+// SuiGallery / Walrus Photos Advanced Client Application
 document.addEventListener("DOMContentLoaded", () => {
   // Initialize Lucide icons
   if (window.lucide) {
@@ -45,7 +45,32 @@ document.addEventListener("DOMContentLoaded", () => {
       deleting: "Deleting...",
       sync_failed: "Sync failed",
       conn_error: "Connection error",
-      anchored_walrus: "Anchored in Walrus"
+      anchored_walrus: "Anchored in Walrus",
+      active_vault: "Active Vault",
+      select_btn: "Select",
+      cancel_select: "Done",
+      deselect_all: "Deselect",
+      download_selected: "Download",
+      delete_selected: "Delete Selected",
+      batch_confirm: "Are you sure you want to permanently delete {count} selected photos from Walrus?",
+      batch_deleting: "Deleting {count} photos...",
+      edit_photo_title: "Edit Memory Details",
+      edit_filename: "File Name",
+      edit_description: "Description / Caption",
+      edit_tags: "Tags (comma separated)",
+      cancel: "Cancel",
+      save_changes: "Save Changes",
+      saving: "Saving...",
+      vault_manager_title: "Sui Vault & Identity Manager",
+      vault_manager_subtitle: "Switch between verified Master Custodian and Ephemeral Beta Tester Vaults.",
+      generate_new_vault: "Generate Ephemeral Test Vault",
+      generate_hint: "Creates a cryptographic Ed25519 keypair and derived Sui address instantly for isolated beta testing.",
+      toast_uploaded: "Photo encrypted and anchored in Walrus!",
+      toast_deleted: "Photo deleted from Walrus",
+      toast_updated: "Metadata updated successfully",
+      toast_vault_switched: "Switched to vault: {addr}",
+      toast_wallet_generated: "New ephemeral test vault generated!",
+      toast_copied: "Copied to clipboard!"
     },
     es: {
       brand_tag: "PROTOCOLO WALRUS",
@@ -83,7 +108,32 @@ document.addEventListener("DOMContentLoaded", () => {
       deleting: "Eliminando...",
       sync_failed: "Error al sincronizar",
       conn_error: "Error de conexión",
-      anchored_walrus: "Asegurado en Walrus"
+      anchored_walrus: "Asegurado en Walrus",
+      active_vault: "Bóveda Activa",
+      select_btn: "Seleccionar",
+      cancel_select: "Listo",
+      deselect_all: "Deseleccionar",
+      download_selected: "Descargar",
+      delete_selected: "Eliminar Seleccionados",
+      batch_confirm: "¿Estás seguro de que deseas eliminar permanentemente {count} fotos seleccionadas de Walrus?",
+      batch_deleting: "Eliminando {count} fotos...",
+      edit_photo_title: "Editar Detalles del Recuerdo",
+      edit_filename: "Nombre de Archivo",
+      edit_description: "Descripción",
+      edit_tags: "Etiquetas (separadas por comas)",
+      cancel: "Cancelar",
+      save_changes: "Guardar Cambios",
+      saving: "Guardando...",
+      vault_manager_title: "Gestor de Bóvedas e Identidades Sui",
+      vault_manager_subtitle: "Cambia entre la Bóveda Maestra Custodia y Bóvedas Efímeras de Prueba.",
+      generate_new_vault: "Generar Bóveda Efímera de Prueba",
+      generate_hint: "Crea un par de claves criptográficas Ed25519 y dirección Sui al instante para pruebas aisladas.",
+      toast_uploaded: "¡Foto encriptada y asegurada en Walrus!",
+      toast_deleted: "Foto eliminada de Walrus",
+      toast_updated: "Metadatos actualizados con éxito",
+      toast_vault_switched: "Cambiado a bóveda: {addr}",
+      toast_wallet_generated: "¡Nueva bóveda efímera generada con éxito!",
+      toast_copied: "¡Copiado al portapapeles!"
     },
     pt: {
       brand_tag: "PROTOCOLO WALRUS",
@@ -121,11 +171,35 @@ document.addEventListener("DOMContentLoaded", () => {
       deleting: "Excluindo...",
       sync_failed: "Falha na sincronização",
       conn_error: "Erro de conexão",
-      anchored_walrus: "Ancorado no Walrus"
+      anchored_walrus: "Ancorado no Walrus",
+      active_vault: "Cofre Ativo",
+      select_btn: "Selecionar",
+      cancel_select: "Concluído",
+      deselect_all: "Desmarcar",
+      download_selected: "Baixar",
+      delete_selected: "Excluir Selecionados",
+      batch_confirm: "Tem certeza de que deseja excluir permanentemente {count} fotos selecionadas do Walrus?",
+      batch_deleting: "Excluindo {count} fotos...",
+      edit_photo_title: "Editar Detalhes da Memória",
+      edit_filename: "Nome do Ficheiro",
+      edit_description: "Descrição",
+      edit_tags: "Tags (separadas por vírgulas)",
+      cancel: "Cancelar",
+      save_changes: "Salvar Alterações",
+      saving: "Salvando...",
+      vault_manager_title: "Gestor de Cofres e Identidades Sui",
+      vault_manager_subtitle: "Alterne entre o Cofre Mestre Custódio e Cofres Efêmeros de Teste.",
+      generate_new_vault: "Gerar Cofre Efêmero de Teste",
+      generate_hint: "Cria um par de chaves Ed25519 e endereço Sui instantaneamente para testes isolados.",
+      toast_uploaded: "Foto encriptada e ancorada no Walrus!",
+      toast_deleted: "Foto excluída do Walrus",
+      toast_updated: "Metadados atualizados com sucesso",
+      toast_vault_switched: "Alternado para o cofre: {addr}",
+      toast_wallet_generated: "Novo cofre efêmero gerado com sucesso!",
+      toast_copied: "Copiado para a área de transferência!"
     }
   };
 
-  // Current Language (default EN, or loaded from localStorage)
   let currentLang = localStorage.getItem("suigallery_lang") || "en";
   if (!translations[currentLang]) currentLang = "en";
 
@@ -134,10 +208,40 @@ document.addEventListener("DOMContentLoaded", () => {
     photos: [],
     selectedPhoto: null,
     searchQuery: "",
-    status: null
+    selectedTag: "all",
+    sortBy: "newest",
+    selectMode: false,
+    selectedIds: new Set(),
+    status: null,
+    vaults: [
+      {
+        id: "master",
+        name: "Master Custodian Vault (Samuel)",
+        address: "0x7cd0be5706a92f24e7be0fa25666ace9de0b5441a286efab982dcfaa74793033",
+        role: "Primary Production Custodian",
+        balance: "10.0 SUI",
+        isMaster: true
+      }
+    ],
+    activeVaultIndex: 0
   };
 
+  // Load saved vaults from localStorage
+  try {
+    const savedVaults = localStorage.getItem("suigallery_vaults");
+    if (savedVaults) {
+      state.vaults = JSON.parse(savedVaults);
+    }
+    const savedActive = localStorage.getItem("suigallery_active_vault");
+    if (savedActive !== null) {
+      state.activeVaultIndex = Math.min(parseInt(savedActive, 10) || 0, state.vaults.length - 1);
+    }
+  } catch {
+    // fallback
+  }
+
   // DOM Elements
+  const toastContainer = document.getElementById("toastContainer");
   const connectionBadge = document.getElementById("connectionBadge");
   const statusText = document.getElementById("statusText");
   const quotaValue = document.getElementById("quotaValue");
@@ -152,6 +256,34 @@ document.addEventListener("DOMContentLoaded", () => {
   const refreshBtn = document.getElementById("refreshBtn");
   const searchInput = document.getElementById("searchInput");
   const clearSearchBtn = document.getElementById("clearSearchBtn");
+  const tagChips = document.getElementById("tagChips");
+  const sortSelect = document.getElementById("sortSelect");
+  const toggleSelectModeBtn = document.getElementById("toggleSelectModeBtn");
+  const batchBar = document.getElementById("batchBar");
+  const batchCount = document.getElementById("batchCount");
+  const batchDeselectBtn = document.getElementById("batchDeselectBtn");
+  const batchDownloadBtn = document.getElementById("batchDownloadBtn");
+  const batchDeleteBtn = document.getElementById("batchDeleteBtn");
+
+  // Vault Elements
+  const vaultPill = document.getElementById("vaultPill");
+  const activeVaultAddr = document.getElementById("activeVaultAddr");
+  const vaultModal = document.getElementById("vaultModal");
+  const vaultModalClose = document.getElementById("vaultModalClose");
+  const vaultModalBackdrop = document.getElementById("vaultModalBackdrop");
+  const vaultList = document.getElementById("vaultList");
+  const generateWalletBtn = document.getElementById("generateWalletBtn");
+
+  // Edit Modal Elements
+  const editMetaBtn = document.getElementById("editMetaBtn");
+  const editModal = document.getElementById("editModal");
+  const editModalClose = document.getElementById("editModalClose");
+  const editModalBackdrop = document.getElementById("editModalBackdrop");
+  const editFileNameInput = document.getElementById("editFileNameInput");
+  const editDescriptionInput = document.getElementById("editDescriptionInput");
+  const editTagsInput = document.getElementById("editTagsInput");
+  const editCancelBtn = document.getElementById("editCancelBtn");
+  const editSaveBtn = document.getElementById("editSaveBtn");
 
   // Language Elements
   const langDropdown = document.getElementById("langDropdown");
@@ -159,7 +291,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const langMenu = document.getElementById("langMenu");
   const currentLangCode = document.getElementById("currentLangCode");
 
-  // Lightbox DOM Elements
+  // Lightbox Elements
   const lightboxModal = document.getElementById("lightboxModal");
   const lightboxBackdrop = document.getElementById("lightboxBackdrop");
   const lightboxCloseBtn = document.getElementById("lightboxCloseBtn");
@@ -182,6 +314,32 @@ document.addEventListener("DOMContentLoaded", () => {
   const step2 = document.getElementById("step2");
   const step3 = document.getElementById("step3");
 
+  // ==========================================
+  // TOAST NOTIFICATION SYSTEM
+  // ==========================================
+  function showToast(message, type = "info") {
+    const toast = document.createElement("div");
+    toast.className = `toast toast-${type}`;
+
+    let icon = "info";
+    if (type === "success") icon = "check-circle-2";
+    if (type === "danger") icon = "alert-circle";
+
+    toast.innerHTML = `
+      <i data-lucide="${icon}" style="width: 18px; height: 18px;"></i>
+      <span>${message}</span>
+    `;
+
+    toastContainer.appendChild(toast);
+    if (window.lucide) window.lucide.createIcons();
+
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(20px)";
+      setTimeout(() => toast.remove(), 300);
+    }, 3200);
+  }
+
   // Translation helper
   function t(key, vars = {}) {
     const dict = translations[currentLang] || translations.en;
@@ -192,13 +350,12 @@ document.addEventListener("DOMContentLoaded", () => {
     return text;
   }
 
-  // Apply Translations to DOM elements with data-i18n
+  // Apply Language
   function applyLanguage(lang) {
     currentLang = lang;
     localStorage.setItem("suigallery_lang", lang);
     currentLangCode.textContent = lang.toUpperCase();
 
-    // Update active class on options
     document.querySelectorAll(".lang-option").forEach((opt) => {
       if (opt.getAttribute("data-lang") === lang) {
         opt.classList.add("active");
@@ -207,7 +364,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    // Translate all static data-i18n elements
     document.querySelectorAll("[data-i18n]").forEach((el) => {
       const key = el.getAttribute("data-i18n");
       const translation = t(key);
@@ -220,21 +376,20 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    // Update search placeholder
     searchInput.placeholder = t("search_placeholder");
 
-    // Refresh dynamic status & counters
     if (state.status) {
       statusText.textContent = t("status_connected", { name: state.status.bucket?.name || "Default" });
     } else {
       statusText.textContent = t("status_connecting");
     }
 
+    renderVaultList();
     renderPhotos();
     if (window.lucide) window.lucide.createIcons();
   }
 
-  // Language Dropdown Event Handlers
+  // Language Dropdown handlers
   langBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     langDropdown.classList.toggle("open");
@@ -283,11 +438,109 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // ==========================================
-  // API INTERACTIONS
-  // ==========================================
+  function shortenAddress(addr) {
+    if (!addr) return "0x...";
+    return addr.slice(0, 6) + "..." + addr.slice(-4);
+  }
 
-  // Fetch Status
+  // ==========================================
+  // VAULT & IDENTITY MANAGER
+  // ==========================================
+  function updateActiveVaultUI() {
+    const activeVault = state.vaults[state.activeVaultIndex] || state.vaults[0];
+    activeVaultAddr.textContent = shortenAddress(activeVault.address);
+    renderVaultList();
+  }
+
+  function renderVaultList() {
+    vaultList.innerHTML = state.vaults
+      .map((v, idx) => {
+        const isActive = idx === state.activeVaultIndex;
+        return `
+        <div class="vault-item ${isActive ? "active" : ""}" data-index="${idx}">
+          <div class="vault-item-left">
+            <div class="vault-avatar">
+              <i data-lucide="${v.isMaster ? "shield-check" : "user-check"}"></i>
+            </div>
+            <div>
+              <div class="vault-item-title">${v.name}</div>
+              <div class="vault-item-addr">${shortenAddress(v.address)} • ${v.balance || "5.0 SUI"}</div>
+            </div>
+          </div>
+          <div>
+            ${isActive ? '<span class="vault-item-badge">Active</span>' : '<button class="btn btn-ghost btn-sm select-vault-btn">Switch</button>'}
+          </div>
+        </div>
+      `;
+      })
+      .join("");
+
+    if (window.lucide) window.lucide.createIcons();
+
+    // Attach switch click handlers
+    vaultList.querySelectorAll(".vault-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        const idx = parseInt(item.getAttribute("data-index"), 10);
+        state.activeVaultIndex = idx;
+        localStorage.setItem("suigallery_active_vault", idx);
+        updateActiveVaultUI();
+        showToast(t("toast_vault_switched", { addr: shortenAddress(state.vaults[idx].address) }), "info");
+      });
+    });
+  }
+
+  vaultPill.addEventListener("click", () => {
+    vaultModal.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+  });
+
+  function closeVaultModal() {
+    vaultModal.classList.add("hidden");
+    document.body.style.overflow = "";
+  }
+  vaultModalClose.addEventListener("click", closeVaultModal);
+  vaultModalBackdrop.addEventListener("click", closeVaultModal);
+
+  // Generate Ephemeral Wallet Action
+  generateWalletBtn.addEventListener("click", async () => {
+    generateWalletBtn.disabled = true;
+    generateWalletBtn.innerHTML = `<div class="spinner-sm"></div> Generating...`;
+
+    try {
+      const res = await fetch("/api/wallet/generate", { method: "POST" });
+      const data = await res.json();
+
+      if (data.success && data.wallet) {
+        const newVault = {
+          id: `ephemeral_${Date.now()}`,
+          name: `Beta Tester Vault #${state.vaults.length}`,
+          address: data.wallet.address,
+          publicKey: data.wallet.publicKey,
+          role: "Ephemeral Beta Tester",
+          balance: "5.0 SUI (Testnet)",
+          isMaster: false
+        };
+
+        state.vaults.push(newVault);
+        state.activeVaultIndex = state.vaults.length - 1;
+        localStorage.setItem("suigallery_vaults", JSON.stringify(state.vaults));
+        localStorage.setItem("suigallery_active_vault", state.activeVaultIndex);
+
+        updateActiveVaultUI();
+        showToast(t("toast_wallet_generated"), "success");
+      }
+    } catch (err) {
+      showToast("Wallet generation failed: " + err.message, "danger");
+    } finally {
+      generateWalletBtn.disabled = false;
+      generateWalletBtn.innerHTML = `<i data-lucide="sparkles"></i> <span>${t("generate_new_vault")}</span>`;
+      if (window.lucide) window.lucide.createIcons();
+    }
+  });
+
+  // ==========================================
+  // API INTERACTIONS & STATUS
+  // ==========================================
   async function fetchStatus() {
     try {
       const res = await fetch("/api/status");
@@ -297,7 +550,6 @@ document.addEventListener("DOMContentLoaded", () => {
         connectionBadge.classList.add("connected");
         statusText.textContent = t("status_connected", { name: data.bucket.name });
 
-        // Update Quota Bar
         const used = data.space.storage_used_bytes || 0;
         const cap = data.space.storage_cap_bytes || 5000000000;
         const percent = Math.min(100, Math.max(0, (used / cap) * 100));
@@ -305,13 +557,11 @@ document.addEventListener("DOMContentLoaded", () => {
         quotaFill.style.width = `${percent}%`;
       }
     } catch (err) {
-      console.warn("Could not fetch status:", err);
       connectionBadge.classList.remove("connected");
       statusText.textContent = t("status_offline");
     }
   }
 
-  // Fetch Photos
   async function fetchPhotos() {
     photoCounter.textContent = t("loading_vault");
     try {
@@ -319,27 +569,73 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
       if (data.success) {
         state.photos = data.photos || [];
+        updateTagChips();
         renderPhotos();
       } else {
         photoCounter.textContent = t("sync_failed");
       }
     } catch (err) {
-      console.error("Failed to load photos:", err);
       photoCounter.textContent = t("conn_error");
     }
+  }
+
+  // Dynamic Tag Chips
+  function updateTagChips() {
+    const allTags = new Set(["all", "photo", "suigallery"]);
+    state.photos.forEach((p) => {
+      const ext = p.name.split(".").pop().toLowerCase();
+      if (ext) allTags.add(ext);
+    });
+
+    tagChips.innerHTML = Array.from(allTags)
+      .map((tag) => {
+        const isActive = state.selectedTag === tag;
+        const label = tag === "all" ? "All" : tag.charAt(0).toUpperCase() + tag.slice(1);
+        return `<button class="tag-chip ${isActive ? "active" : ""}" data-tag="${tag}">${label}</button>`;
+      })
+      .join("");
+
+    tagChips.querySelectorAll(".tag-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        state.selectedTag = chip.getAttribute("data-tag");
+        tagChips.querySelectorAll(".tag-chip").forEach((c) => c.classList.remove("active"));
+        chip.classList.add("active");
+        renderPhotos();
+      });
+    });
   }
 
   // Render Photo Grid
   function renderPhotos() {
     const query = state.searchQuery.toLowerCase().trim();
-    const filtered = state.photos.filter((p) => {
-      if (!query) return true;
-      return (
+
+    let filtered = state.photos.filter((p) => {
+      // Query filter
+      const matchesQuery =
+        !query ||
         p.name.toLowerCase().includes(query) ||
         (p.blob_id && p.blob_id.toLowerCase().includes(query)) ||
-        (p.id && p.id.toLowerCase().includes(query))
-      );
+        (p.id && p.id.toLowerCase().includes(query));
+
+      // Tag filter
+      const matchesTag =
+        state.selectedTag === "all" ||
+        p.name.toLowerCase().endsWith(state.selectedTag.toLowerCase()) ||
+        state.selectedTag === "photo";
+
+      return matchesQuery && matchesTag;
     });
+
+    // Sort
+    if (state.sortBy === "newest") {
+      filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    } else if (state.sortBy === "oldest") {
+      filtered.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    } else if (state.sortBy === "name") {
+      filtered.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (state.sortBy === "size") {
+      filtered.sort((a, b) => (b.size || 0) - (a.size || 0));
+    }
 
     const count = state.photos.length;
     const word = count === 1 ? t("word_single") : t("word_plural");
@@ -354,8 +650,12 @@ document.addEventListener("DOMContentLoaded", () => {
     emptyState.classList.add("hidden");
     photoGrid.innerHTML = filtered
       .map((p) => {
+        const isSelected = state.selectedIds.has(p.id);
         return `
-        <div class="photo-card" data-id="${p.id}">
+        <div class="photo-card ${isSelected ? "selected" : ""}" data-id="${p.id}">
+          <div class="photo-select-checkbox" data-select-id="${p.id}">
+            <i data-lucide="${isSelected ? "check" : ""}" style="width: 14px; height: 14px;"></i>
+          </div>
           <img class="photo-thumbnail" src="${p.stream_url}" alt="${p.name}" loading="lazy" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\' fill=\\'%231a2332\\'><rect width=\\'100\\' height=\\'100\\'/><text x=\\'50%\\' y=\\'50%\\' fill=\\'%238b949e\\' font-size=\\'12\\' text-anchor=\\'middle\\' dy=\\'.3em\\'>Encrypted Media</text></svg>'">
           <div class="photo-overlay">
             <div class="overlay-top">
@@ -371,23 +671,115 @@ document.addEventListener("DOMContentLoaded", () => {
       })
       .join("");
 
-    if (window.lucide) {
-      window.lucide.createIcons();
-    }
+    if (window.lucide) window.lucide.createIcons();
 
-    // Attach click handlers to open Lightbox
+    // Attach click handlers
     photoGrid.querySelectorAll(".photo-card").forEach((card) => {
+      const id = card.getAttribute("data-id");
+
+      // Checkbox click
+      const checkbox = card.querySelector(".photo-select-checkbox");
+      checkbox.addEventListener("click", (e) => {
+        e.stopPropagation();
+        togglePhotoSelection(id);
+      });
+
+      // Card click
       card.addEventListener("click", () => {
-        const id = card.getAttribute("data-id");
-        const photo = state.photos.find((p) => p.id === id);
-        if (photo) {
-          openLightbox(photo);
+        if (state.selectMode) {
+          togglePhotoSelection(id);
+        } else {
+          const photo = state.photos.find((p) => p.id === id);
+          if (photo) openLightbox(photo);
         }
       });
     });
+
+    updateBatchBar();
   }
 
-  // Open Lightbox
+  // Selection Logic
+  function togglePhotoSelection(id) {
+    if (state.selectedIds.has(id)) {
+      state.selectedIds.delete(id);
+    } else {
+      state.selectedIds.add(id);
+    }
+    updateBatchBar();
+    renderPhotos();
+  }
+
+  function updateBatchBar() {
+    const count = state.selectedIds.size;
+    if (count > 0) {
+      batchBar.classList.remove("hidden");
+      batchCount.textContent = `${count} ${count === 1 ? "photo" : "photos"} selected`;
+    } else {
+      batchBar.classList.add("hidden");
+      if (state.selectMode) {
+        // stay in select mode
+      }
+    }
+  }
+
+  toggleSelectModeBtn.addEventListener("click", () => {
+    state.selectMode = !state.selectMode;
+    document.body.classList.toggle("select-mode", state.selectMode);
+    toggleSelectModeBtn.querySelector("span").textContent = state.selectMode ? t("cancel_select") : t("select_btn");
+    if (!state.selectMode) {
+      state.selectedIds.clear();
+      updateBatchBar();
+      renderPhotos();
+    }
+  });
+
+  batchDeselectBtn.addEventListener("click", () => {
+    state.selectedIds.clear();
+    updateBatchBar();
+    renderPhotos();
+  });
+
+  batchDeleteBtn.addEventListener("click", async () => {
+    const count = state.selectedIds.size;
+    if (count === 0) return;
+    const confirmDelete = confirm(t("batch_confirm", { count }));
+    if (!confirmDelete) return;
+
+    batchDeleteBtn.disabled = true;
+    batchDeleteBtn.innerHTML = `<div class="spinner-sm"></div> ${t("batch_deleting", { count })}`;
+
+    try {
+      const res = await fetch("/api/photos/batch-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileIds: Array.from(state.selectedIds) })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Deleted ${data.deleted_count} photos from Walrus`, "success");
+        state.selectedIds.clear();
+        await fetchPhotos();
+        await fetchStatus();
+      } else {
+        showToast("Batch delete failed: " + data.error, "danger");
+      }
+    } catch (err) {
+      showToast("Error: " + err.message, "danger");
+    } finally {
+      batchDeleteBtn.disabled = false;
+      batchDeleteBtn.innerHTML = `<i data-lucide="trash-2"></i> <span>${t("delete_selected")}</span>`;
+      if (window.lucide) window.lucide.createIcons();
+    }
+  });
+
+  sortSelect.addEventListener("change", (e) => {
+    state.sortBy = e.target.value;
+    renderPhotos();
+  });
+
+  // ==========================================
+  // LIGHTBOX & METADATA EDITING
+  // ==========================================
   function openLightbox(photo) {
     state.selectedPhoto = photo;
     sidebarFileName.textContent = photo.name;
@@ -405,7 +797,6 @@ document.addEventListener("DOMContentLoaded", () => {
     document.body.style.overflow = "hidden";
   }
 
-  // Close Lightbox
   function closeLightbox() {
     lightboxModal.classList.add("hidden");
     document.body.style.overflow = "";
@@ -415,12 +806,67 @@ document.addEventListener("DOMContentLoaded", () => {
   lightboxCloseBtn.addEventListener("click", closeLightbox);
   lightboxBackdrop.addEventListener("click", closeLightbox);
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !lightboxModal.classList.contains("hidden")) {
-      closeLightbox();
+    if (e.key === "Escape") {
+      if (!editModal.classList.contains("hidden")) closeEditModal();
+      else if (!vaultModal.classList.contains("hidden")) closeVaultModal();
+      else if (!lightboxModal.classList.contains("hidden")) closeLightbox();
     }
   });
 
-  // Delete Photo Action
+  // Edit Metadata Modal Handlers
+  editMetaBtn.addEventListener("click", () => {
+    if (!state.selectedPhoto) return;
+    editFileNameInput.value = state.selectedPhoto.name;
+    editDescriptionInput.value = "";
+    editTagsInput.value = "photo, suigallery";
+    editModal.classList.remove("hidden");
+  });
+
+  function closeEditModal() {
+    editModal.classList.add("hidden");
+  }
+  editModalClose.addEventListener("click", closeEditModal);
+  editModalBackdrop.addEventListener("click", closeEditModal);
+  editCancelBtn.addEventListener("click", closeEditModal);
+
+  editSaveBtn.addEventListener("click", async () => {
+    if (!state.selectedPhoto) return;
+    const fileId = state.selectedPhoto.id;
+    const newName = editFileNameInput.value.trim();
+    const newDesc = editDescriptionInput.value.trim();
+    const newTags = editTagsInput.value.split(",").map((s) => s.trim()).filter(Boolean);
+
+    if (!newName) return;
+
+    editSaveBtn.disabled = true;
+    editSaveBtn.innerHTML = `<div class="spinner-sm"></div> ${t("saving")}`;
+
+    try {
+      const res = await fetch(`/api/photos/${fileId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName, description: newDesc, tags: newTags })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        state.selectedPhoto.name = newName;
+        sidebarFileName.textContent = newName;
+        closeEditModal();
+        showToast(t("toast_updated"), "success");
+        await fetchPhotos();
+      } else {
+        showToast("Update failed: " + data.error, "danger");
+      }
+    } catch (err) {
+      showToast("Error updating: " + err.message, "danger");
+    } finally {
+      editSaveBtn.disabled = false;
+      editSaveBtn.innerHTML = t("save_changes");
+    }
+  });
+
+  // Single Delete
   deleteBtn.addEventListener("click", async () => {
     if (!state.selectedPhoto) return;
     const confirmDelete = confirm(t("delete_confirm", { name: state.selectedPhoto.name }));
@@ -435,13 +881,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
       if (data.success) {
         closeLightbox();
+        showToast(t("toast_deleted"), "success");
         await fetchPhotos();
         await fetchStatus();
       } else {
-        alert("Failed to delete: " + data.error);
+        showToast("Delete failed: " + data.error, "danger");
       }
     } catch (err) {
-      alert("Delete failed: " + err.message);
+      showToast("Delete failed: " + err.message, "danger");
     } finally {
       deleteBtn.disabled = false;
       deleteBtn.innerHTML = `<i data-lucide="trash-2"></i> ${t("delete_btn")}`;
@@ -449,7 +896,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Copy to clipboard helper
+  // Copy helper
   document.querySelectorAll(".copy-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -457,13 +904,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const targetEl = document.getElementById(targetId);
       if (targetEl) {
         navigator.clipboard.writeText(targetEl.textContent.trim());
-        const originalHtml = btn.innerHTML;
-        btn.innerHTML = `<i data-lucide="check" style="color: var(--accent-success)"></i>`;
-        if (window.lucide) window.lucide.createIcons();
-        setTimeout(() => {
-          btn.innerHTML = originalHtml;
-          if (window.lucide) window.lucide.createIcons();
-        }, 1500);
+        showToast(t("toast_copied"), "info");
       }
     });
   });
@@ -471,7 +912,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
   // UPLOAD PIPELINE
   // ==========================================
-
   async function handleFilesUpload(files) {
     if (!files || files.length === 0) return;
 
@@ -482,14 +922,12 @@ document.addEventListener("DOMContentLoaded", () => {
       progressTitle.textContent = `${t("progress_title")} (${i + 1}/${files.length})`;
       progressFileInfo.textContent = `${file.name} (${formatBytes(file.size)})`;
 
-      // Step 1: Encrypting
       step1.className = "step active";
       step2.className = "step";
       step3.className = "step";
 
       await new Promise((r) => setTimeout(r, 400));
 
-      // Step 2: Uploading to Walrus
       step1.className = "step completed";
       step2.className = "step active";
 
@@ -507,12 +945,13 @@ document.addEventListener("DOMContentLoaded", () => {
         if (data.success) {
           step2.className = "step completed";
           step3.className = "step completed";
+          showToast(t("toast_uploaded"), "success");
           await new Promise((r) => setTimeout(r, 400));
         } else {
-          alert(`Upload failed for ${file.name}: ${data.error}`);
+          showToast(`Upload failed for ${file.name}: ${data.error}`, "danger");
         }
       } catch (err) {
-        alert(`Error uploading ${file.name}: ${err.message}`);
+        showToast(`Error uploading ${file.name}: ${err.message}`, "danger");
       }
     }
 
@@ -522,7 +961,6 @@ document.addEventListener("DOMContentLoaded", () => {
     await fetchStatus();
   }
 
-  // Trigger file inputs
   uploadTriggerBtn.addEventListener("click", () => fileInput.click());
   browseBtn.addEventListener("click", () => fileInput.click());
   dropZone.addEventListener("click", () => fileInput.click());
@@ -531,7 +969,6 @@ document.addEventListener("DOMContentLoaded", () => {
     handleFilesUpload(e.target.files);
   });
 
-  // Drag and Drop
   ["dragenter", "dragover"].forEach((eventName) => {
     dropZone.addEventListener(eventName, (e) => {
       e.preventDefault();
@@ -581,6 +1018,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Initial Boot
+  updateActiveVaultUI();
   applyLanguage(currentLang);
   fetchStatus();
   fetchPhotos();

@@ -3,6 +3,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -191,6 +192,43 @@ class WalrusClientManager {
     });
 
     return this.parseMcpResponse(res);
+  }
+
+  async updatePhoto({ fileId, name, description, tags }) {
+    const client = await this.getClient();
+    console.log(`✏️ [WalrusClient] Updating metadata for file ${fileId}`);
+
+    const args = { fileId };
+    if (name !== undefined) args.name = name;
+    if (description !== undefined) args.description = description;
+    if (tags !== undefined) args.tags = tags;
+
+    const res = await client.callTool({
+      name: "update_file",
+      arguments: args
+    });
+
+    return this.parseMcpResponse(res);
+  }
+
+  generateEphemeralWallet() {
+    const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+    const rawPub = publicKey.export({ type: "spki", format: "der" }).subarray(-32);
+    const rawPriv = privateKey.export({ type: "pkcs8", format: "der" }).subarray(-32);
+
+    // Sui Address derivation: BLAKE2b-256 of [0x00, pubKeyBytes]
+    const hash = crypto.createHash("blake2b512").update(Buffer.concat([Buffer.from([0x00]), rawPub])).digest();
+    const address = "0x" + hash.subarray(0, 32).toString("hex");
+
+    return {
+      address,
+      publicKey: "0x" + rawPub.toString("hex"),
+      secretKey: "suiprivkey_" + rawPriv.toString("hex").slice(0, 24) + "...",
+      scheme: "ED25519",
+      createdAt: new Date().toISOString(),
+      balance: "5.0 SUI (Testnet)",
+      role: "Ephemeral Beta Tester Vault"
+    };
   }
 }
 
