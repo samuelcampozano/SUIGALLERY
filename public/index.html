@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SuiGallery — Sovereign Cloud Photos on Walrus & Sui</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="dark-theme">
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-top-row">
+      <div class="nav-left">
+        <div class="logo">
+          <div class="logo-icon">
+            <i data-lucide="shield-check"></i>
+          </div>
+          <div class="logo-text">
+            <span class="brand-name">SuiGallery</span>
+            <span class="brand-tag" data-i18n="brand_tag">WALRUS PROTOCOL</span>
+          </div>
+        </div>
+
+        <div class="status-badge" id="connectionBadge">
+          <span class="status-dot"></span>
+          <span id="statusText" data-i18n="status_connecting">Connecting to Walrus...</span>
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <!-- Wallet / Vault Identity Pill -->
+        <button class="vault-pill" id="vaultPill" title="Manage Connected Vault & Identity">
+          <div class="vault-avatar">
+            <i data-lucide="wallet"></i>
+          </div>
+          <div class="vault-meta">
+            <span class="vault-label" data-i18n="active_vault">Active Vault</span>
+            <span class="vault-addr" id="activeVaultAddr">0x7cd0...3033</span>
+          </div>
+          <i data-lucide="chevron-down" class="chevron-icon"></i>
+        </button>
+
+        <!-- Language Selector Dropdown -->
+        <div class="lang-dropdown" id="langDropdown">
+          <button class="btn btn-ghost lang-btn" id="langBtn" title="Select Language">
+            <i data-lucide="globe"></i>
+            <span class="current-lang-code" id="currentLangCode">EN</span>
+            <i data-lucide="chevron-down" class="chevron-icon"></i>
+          </button>
+          <div class="lang-menu hidden" id="langMenu">
+            <button class="lang-option active" data-lang="en">
+              <span class="flag">🇺🇸</span> English
+            </button>
+            <button class="lang-option" data-lang="es">
+              <span class="flag">🇪🇸</span> Español
+            </button>
+            <button class="lang-option" data-lang="pt">
+              <span class="flag">🇧🇷</span> Português
+            </button>
+          </div>
+        </div>
+
+        <div class="quota-pill" id="quotaPill" title="Decentralized Walrus Storage Quota">
+          <div class="quota-info">
+            <span class="quota-label" data-i18n="quota_label">Walrus Storage</span>
+            <span class="quota-val" id="quotaValue">0.0 MB / 5.0 GB</span>
+          </div>
+          <div class="quota-bar-bg">
+            <div class="quota-bar-fill" id="quotaFill" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary upload-header-btn" id="uploadTriggerBtn">
+          <i data-lucide="upload-cloud"></i>
+          <span data-i18n="upload_btn">Upload Photos</span>
+        </button>
+
+        <input type="file" id="fileInput" multiple accept="image/*,video/*" class="hidden">
+      </div>
+    </div>
+
+    <!-- Search Bar & Filter Row -->
+    <div class="nav-search-row">
+      <div class="search-bar">
+        <i data-lucide="search" class="search-icon"></i>
+        <input type="text" id="searchInput" placeholder="Search memories, tags, or file names..." autocomplete="off">
+        <button class="clear-search hidden" id="clearSearchBtn"><i data-lucide="x"></i></button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-content">
+    <!-- Cryptographic Architecture Banner -->
+    <section class="crypto-banner">
+      <div class="banner-pill">
+        <i data-lucide="lock" class="pill-icon"></i>
+        <span data-i18n="banner_seal"><strong>Seal Client-Side Encrypted</strong> (Private by Default)</span>
+      </div>
+      <div class="banner-pill">
+        <i data-lucide="layers" class="pill-icon"></i>
+        <span data-i18n="banner_walrus"><strong>Walrus 2D Red Stuff</strong> (Fountain Erasure Coded)</span>
+      </div>
+      <div class="banner-pill">
+        <i data-lucide="boxes" class="pill-icon"></i>
+        <span data-i18n="banner_sui"><strong>Sui Object-Native</strong> (Zero-Knowledge zkLogin Ready)</span>
+      </div>
+    </section>
+
+    <!-- Upload Drop Zone -->
+    <section class="drop-zone" id="dropZone">
+      <div class="drop-zone-content">
+        <div class="drop-icon-wrapper">
+          <i data-lucide="image-plus" class="drop-icon"></i>
+        </div>
+        <h3 class="drop-title" data-i18n="drop_title">Drop your photos & videos here</h3>
+        <p class="drop-subtitle" data-i18n="drop_subtitle">Encrypted on your device before touching Walrus. Full-resolution, uncompressed preservation.</p>
+        <button class="btn btn-secondary btn-sm" id="browseBtn">
+          <i data-lucide="folder-open"></i> <span data-i18n="browse_btn">Browse Files</span>
+        </button>
+      </div>
+    </section>
+
+
+
+    <!-- Timeline Controls & Filter Bar -->
+    <section class="controls-bar">
+      <div class="tag-chips-wrapper" id="tagChips">
+        <button class="tag-chip active" data-tag="all">All</button>
+        <button class="tag-chip" data-tag="photo">Photos</button>
+        <button class="tag-chip" data-tag="suigallery">SuiGallery</button>
+      </div>
+
+      <div class="sort-select-wrapper">
+        <div class="select-wrapper">
+          <i data-lucide="arrow-up-down" class="sort-icon"></i>
+          <select id="sortSelect" class="sort-select">
+            <option value="newest" selected>Newest First</option>
+            <option value="oldest">Oldest First</option>
+            <option value="name">Name (A-Z)</option>
+            <option value="size">Size (Largest)</option>
+          </select>
+        </div>
+
+        <button class="btn btn-secondary btn-sm" id="toggleSelectModeBtn">
+          <i data-lucide="check-square"></i>
+          <span data-i18n="select_btn">Select</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Timeline & Gallery Section -->
+    <section class="gallery-section">
+      <div class="section-header">
+        <div class="header-titles">
+          <h2 class="section-title" data-i18n="timeline_title">Timeline & Memories</h2>
+          <span class="photo-counter" id="photoCounter">Loading vault...</span>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-ghost btn-icon" id="refreshBtn" title="Sync with Walrus Bucket">
+            <i data-lucide="refresh-cw"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Gallery Grid -->
+      <div class="photo-grid" id="photoGrid">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <!-- Empty State -->
+      <div class="empty-state hidden" id="emptyState">
+        <div class="empty-icon-wrap">
+          <i data-lucide="images" class="empty-icon"></i>
+        </div>
+        <h3 data-i18n="empty_title">Your Sovereign Vault is Empty</h3>
+        <p data-i18n="empty_desc">No photos or media stored yet in your Walrus bucket. Drag and drop any picture above to start building your decentralized Google Photos alternative.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Floating Batch Actions Bar -->
+  <div class="batch-action-bar hidden" id="batchBar">
+    <div class="batch-content">
+      <span class="batch-count" id="batchCount">0 photos selected</span>
+      <div class="batch-buttons">
+        <button class="btn btn-ghost btn-sm" id="batchDeselectBtn" data-i18n="deselect_all">Deselect</button>
+        <button class="btn btn-secondary btn-sm" id="batchDownloadBtn">
+          <i data-lucide="download"></i> <span data-i18n="download_selected">Download</span>
+        </button>
+        <button class="btn btn-danger btn-sm" id="batchDeleteBtn">
+          <i data-lucide="trash-2"></i> <span data-i18n="delete_selected">Delete Selected</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Photo Lightbox Modal -->
+  <div class="lightbox-modal hidden" id="lightboxModal">
+    <div class="lightbox-backdrop" id="lightboxBackdrop"></div>
+    <div class="lightbox-container">
+      <button class="lightbox-close" id="lightboxCloseBtn"><i data-lucide="x"></i></button>
+
+      <div class="lightbox-viewport">
+        <img id="lightboxImg" src="" alt="Encrypted preview" class="lightbox-image">
+      </div>
+
+      <aside class="lightbox-sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-title-row">
+            <h3 id="sidebarFileName" class="sidebar-title">photo.jpg</h3>
+            <button class="btn-icon-sm" id="editMetaBtn" title="Edit Name & Tags"><i data-lucide="edit-3"></i></button>
+          </div>
+          <span class="sidebar-badge" id="sidebarMimeBadge">image/jpeg</span>
+        </div>
+
+        <div class="sidebar-meta-list">
+          <div class="meta-item">
+            <span class="meta-label" data-i18n="meta_blob_id">Walrus Blob ID</span>
+            <div class="meta-value-copy">
+              <code id="metaBlobId" class="mono-code">Pending registration...</code>
+              <button class="copy-btn" data-copy="metaBlobId" title="Copy Blob ID"><i data-lucide="copy"></i></button>
+            </div>
+          </div>
+
+          <div class="meta-item">
+            <span class="meta-label" data-i18n="meta_file_id">Console File ID</span>
+            <div class="meta-value-copy">
+              <code id="metaFileId" class="mono-code">--</code>
+              <button class="copy-btn" data-copy="metaFileId" title="Copy File ID"><i data-lucide="copy"></i></button>
+            </div>
+          </div>
+
+          <div class="meta-item">
+            <span class="meta-label" data-i18n="meta_seal_policy">Seal Encryption Policy</span>
+            <code id="metaSealPolicy" class="mono-code">--</code>
+          </div>
+
+          <div class="meta-grid">
+            <div class="meta-item">
+              <span class="meta-label" data-i18n="meta_file_size">File Size</span>
+              <span id="metaFileSize" class="meta-val">--</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label" data-i18n="meta_upload_date">Captured / Uploaded</span>
+              <span id="metaUploadDate" class="meta-val">--</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-actions">
+          <a id="downloadBtn" href="#" class="btn btn-secondary btn-block">
+            <i data-lucide="download"></i> <span data-i18n="download_btn">Download Original</span>
+          </a>
+          <button id="deleteBtn" class="btn btn-danger btn-block">
+            <i data-lucide="trash-2"></i> <span data-i18n="delete_btn">Delete from Walrus</span>
+          </button>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Edit Photo Metadata Modal -->
+  <div class="modal-dialog hidden" id="editModal">
+    <div class="modal-backdrop" id="editModalBackdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 data-i18n="edit_photo_title">Edit Memory Details</h3>
+        <button class="btn-close" id="editModalClose"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label data-i18n="edit_filename">File Name</label>
+          <input type="text" id="editFileNameInput" class="form-input">
+        </div>
+        <div class="form-group">
+          <label data-i18n="edit_description">Description / Caption</label>
+          <input type="text" id="editDescriptionInput" class="form-input" placeholder="Add a memory caption...">
+        </div>
+        <div class="form-group">
+          <label data-i18n="edit_tags">Tags (comma separated)</label>
+          <input type="text" id="editTagsInput" class="form-input" placeholder="photo, suigallery, family, travel">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="editCancelBtn" data-i18n="cancel">Cancel</button>
+        <button class="btn btn-primary" id="editSaveBtn" data-i18n="save_changes">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wallet & Vault Manager Modal -->
+  <div class="modal-dialog hidden" id="vaultModal">
+    <div class="modal-backdrop" id="vaultModalBackdrop"></div>
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <div class="header-icon-title">
+          <div class="vault-modal-icon"><i data-lucide="key-round"></i></div>
+          <div>
+            <h3 data-i18n="vault_manager_title">Sui Vault & Identity Manager</h3>
+            <p class="modal-subtitle" data-i18n="vault_manager_subtitle">Switch between verified Master Custodian and Ephemeral Beta Tester Vaults.</p>
+          </div>
+        </div>
+        <button class="btn-close" id="vaultModalClose"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Vault List -->
+        <div class="vault-list" id="vaultList">
+          <!-- Populated dynamically -->
+        </div>
+
+        <div class="vault-generate-section">
+          <button class="btn btn-primary btn-block" id="generateWalletBtn">
+            <i data-lucide="sparkles"></i>
+            <span data-i18n="generate_new_vault">Generate Ephemeral Test Vault</span>
+          </button>
+          <p class="generate-hint" data-i18n="generate_hint">Creates a cryptographic Ed25519 keypair and derived Sui address instantly for isolated beta testing.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Non-Blocking Upload Manager Dock -->
+  <aside class="upload-dock hidden" id="uploadDock" aria-live="polite">
+    <div class="upload-dock-card">
+      <div class="upload-dock-header" id="dockHeader">
+        <div class="dock-header-left">
+          <div class="spinner-sm" id="dockSpinner"></div>
+          <div class="dock-header-titles">
+            <h4 id="dockTitle" data-i18n="upload_dock_title">Encrypting & Uploading to Walrus...</h4>
+            <span class="dock-subtitle" id="dockSubtitle">0 of 0 processed</span>
+          </div>
+        </div>
+        <div class="dock-header-actions">
+          <button class="dock-action-btn" id="dockMinimizeBtn" title="Minimize / Expand">
+            <i data-lucide="chevron-down" id="dockMinimizeIcon"></i>
+          </button>
+          <button class="dock-action-btn hidden" id="dockCloseBtn" title="Close">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Overall Progress Bar -->
+      <div class="dock-overall-progress">
+        <div class="dock-progress-fill" id="dockProgressFill" style="width: 0%;"></div>
+      </div>
+
+      <!-- Collapsible Body -->
+      <div class="dock-body" id="dockBody">
+        <div class="dock-file-item">
+          <img id="dockFileThumb" class="dock-file-thumb" src="" alt="preview">
+          <div class="dock-file-details">
+            <div class="dock-file-name" id="dockFileName">file.png</div>
+            <div class="dock-file-meta" id="dockFileMeta">0 KB • Initializing</div>
+            <div class="dock-stepper">
+              <div class="dock-step active" id="dockStep1">
+                <i data-lucide="lock"></i>
+                <span data-i18n="step1_short">1. Seal Encryption</span>
+              </div>
+              <div class="dock-step" id="dockStep2">
+                <i data-lucide="cloud"></i>
+                <span data-i18n="step2_short">2. Walrus Blob Store</span>
+              </div>
+              <div class="dock-step" id="dockStep3">
+                <i data-lucide="check-circle-2"></i>
+                <span data-i18n="step3_short">3. Anchored in Bucket</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <script src="/app.js"></script>
+</body>
+</html>

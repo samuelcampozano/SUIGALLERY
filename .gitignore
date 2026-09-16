@@ -39,7 +39,7 @@ SUIGALLERY_*.md
 WALRUS_PHOTOS_*.md
 WALRUS_CONSOLE_BUG_CAPTURE.html
 WALRUS_BETA_BUG_REPORT.md
-windows-terminal-capture.html
 *.html
+!public/index.html
 *.pdf
 

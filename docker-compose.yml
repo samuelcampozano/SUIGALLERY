@@ -14,3 +14,4 @@ services:
       - CONSOLE_MCP_ALLOWED_DIRS=/app
     volumes:
       - ./temp_storage:/app/temp_storage
+      - ./public:/app/public

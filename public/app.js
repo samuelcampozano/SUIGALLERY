@@ -70,7 +70,17 @@ document.addEventListener("DOMContentLoaded", () => {
       toast_updated: "Metadata updated successfully",
       toast_vault_switched: "Switched to vault: {addr}",
       toast_wallet_generated: "New ephemeral test vault generated!",
-      toast_copied: "Copied to clipboard!"
+      toast_copied: "Copied to clipboard!",
+      upload_dock_title: "Encrypting & Uploading to Walrus...",
+      upload_dock_complete: "All Photos Anchored in Walrus!",
+      upload_dock_count: "{current} of {total} processed",
+      step1_short: "1. Seal Encryption",
+      step2_short: "2. Walrus Blob Store",
+      step3_short: "3. Anchored in Bucket",
+      optimistic_encrypting: "Seal Encrypting...",
+      optimistic_uploading: "Storing on Walrus...",
+      optimistic_anchored: "Anchored!",
+      optimistic_failed: "Upload Failed"
     },
     es: {
       brand_tag: "PROTOCOLO WALRUS",
@@ -133,7 +143,17 @@ document.addEventListener("DOMContentLoaded", () => {
       toast_updated: "Metadatos actualizados con éxito",
       toast_vault_switched: "Cambiado a bóveda: {addr}",
       toast_wallet_generated: "¡Nueva bóveda efímera generada con éxito!",
-      toast_copied: "¡Copiado al portapapeles!"
+      toast_copied: "¡Copiado al portapapeles!",
+      upload_dock_title: "Encriptando y Subiendo a Walrus...",
+      upload_dock_complete: "¡Todas las fotos aseguradas en Walrus!",
+      upload_dock_count: "{current} de {total} procesados",
+      step1_short: "1. Encriptación Seal",
+      step2_short: "2. Guardado en Walrus",
+      step3_short: "3. Asegurado en Bucket",
+      optimistic_encrypting: "Encriptando con Seal...",
+      optimistic_uploading: "Guardando en Walrus...",
+      optimistic_anchored: "¡Asegurado!",
+      optimistic_failed: "Error al subir"
     },
     pt: {
       brand_tag: "PROTOCOLO WALRUS",
@@ -196,7 +216,17 @@ document.addEventListener("DOMContentLoaded", () => {
       toast_updated: "Metadados atualizados com sucesso",
       toast_vault_switched: "Alternado para o cofre: {addr}",
       toast_wallet_generated: "Novo cofre efêmero gerado com sucesso!",
-      toast_copied: "Copiado para a área de transferência!"
+      toast_copied: "Copiado para a área de transferência!",
+      upload_dock_title: "Enviando para o Cofre Walrus...",
+      upload_dock_complete: "Todas as fotos ancoradas no Walrus!",
+      upload_dock_count: "{current} de {total} processados",
+      step1_short: "1. Encriptação Seal",
+      step2_short: "2. Armazenamento Walrus",
+      step3_short: "3. Ancorado no Bucket",
+      optimistic_encrypting: "Encriptando com Seal...",
+      optimistic_uploading: "Armazenando no Walrus...",
+      optimistic_anchored: "Ancorado!",
+      optimistic_failed: "Falha no envio"
     }
   };
 
@@ -206,6 +236,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // App State
   const state = {
     photos: [],
+    activeUploads: [],
     selectedPhoto: null,
     searchQuery: "",
     selectedTag: "all",
@@ -306,13 +337,54 @@ document.addEventListener("DOMContentLoaded", () => {
   const downloadBtn = document.getElementById("downloadBtn");
   const deleteBtn = document.getElementById("deleteBtn");
 
-  // Upload Progress Elements
-  const uploadOverlay = document.getElementById("uploadOverlay");
-  const progressTitle = document.getElementById("progressTitle");
-  const progressFileInfo = document.getElementById("progressFileInfo");
-  const step1 = document.getElementById("step1");
-  const step2 = document.getElementById("step2");
-  const step3 = document.getElementById("step3");
+  // Upload Dock Elements
+  const uploadDock = document.getElementById("uploadDock");
+  const dockHeader = document.getElementById("dockHeader");
+  const dockSpinner = document.getElementById("dockSpinner");
+  const dockTitle = document.getElementById("dockTitle");
+  const dockSubtitle = document.getElementById("dockSubtitle");
+  const dockMinimizeBtn = document.getElementById("dockMinimizeBtn");
+  const dockMinimizeIcon = document.getElementById("dockMinimizeIcon");
+  const dockCloseBtn = document.getElementById("dockCloseBtn");
+  const dockProgressFill = document.getElementById("dockProgressFill");
+  const dockBody = document.getElementById("dockBody");
+  const dockFileThumb = document.getElementById("dockFileThumb");
+  const dockFileName = document.getElementById("dockFileName");
+  const dockFileMeta = document.getElementById("dockFileMeta");
+  const dockStep1 = document.getElementById("dockStep1");
+  const dockStep2 = document.getElementById("dockStep2");
+  const dockStep3 = document.getElementById("dockStep3");
+
+  function toggleDockMinimize() {
+    uploadDock.classList.toggle("minimized");
+    const isMin = uploadDock.classList.contains("minimized");
+    dockMinimizeIcon.setAttribute("data-lucide", isMin ? "chevron-up" : "chevron-down");
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  if (dockMinimizeBtn) {
+    dockMinimizeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleDockMinimize();
+    });
+  }
+
+  if (dockHeader) {
+    dockHeader.addEventListener("click", () => {
+      toggleDockMinimize();
+    });
+  }
+
+  if (dockCloseBtn) {
+    dockCloseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      uploadDock.classList.add("fade-out");
+      setTimeout(() => {
+        uploadDock.classList.add("hidden");
+        uploadDock.classList.remove("fade-out");
+      }, 300);
+    });
+  }
 
   // ==========================================
   // TOAST NOTIFICATION SYSTEM
@@ -641,14 +713,58 @@ document.addEventListener("DOMContentLoaded", () => {
     const word = count === 1 ? t("word_single") : t("word_plural");
     photoCounter.textContent = t("photo_counter", { count, word });
 
-    if (filtered.length === 0) {
+    const hasUploads = state.activeUploads && state.activeUploads.length > 0;
+
+    if (filtered.length === 0 && !hasUploads) {
       photoGrid.innerHTML = "";
       emptyState.classList.remove("hidden");
       return;
     }
 
     emptyState.classList.add("hidden");
-    photoGrid.innerHTML = filtered
+
+    const uploadCardsHtml = (state.activeUploads || [])
+      .map((task) => {
+        let stageText = t("optimistic_encrypting");
+        let stageIcon = "lock";
+        if (task.stage === 2) {
+          stageText = t("optimistic_uploading");
+          stageIcon = "cloud-upload";
+        } else if (task.stage === 3) {
+          stageText = t("optimistic_anchored");
+          stageIcon = "check-circle-2";
+        } else if (task.failed) {
+          stageText = t("optimistic_failed");
+          stageIcon = "alert-circle";
+        }
+
+        return `
+        <div class="photo-card uploading" id="card-${task.id}">
+          <img class="photo-thumbnail" src="${task.previewUrl}" alt="${task.name}">
+          <div class="uploading-overlay">
+            <div class="uploading-top-badge">
+              <i data-lucide="${stageIcon}" style="width: 12px; height: 12px;"></i>
+              <span id="badge-text-${task.id}">${stageText}</span>
+            </div>
+            <div class="uploading-center">
+              <div class="uploading-spinner-ring">
+                <i data-lucide="shield" style="width: 16px; height: 16px;"></i>
+              </div>
+              <span class="uploading-status-label" id="status-text-${task.id}">Walrus Cryptographic Vault</span>
+            </div>
+            <div class="uploading-bottom">
+              <span class="uploading-filename">${task.name}</span>
+              <div class="uploading-progress-track">
+                <div class="uploading-progress-bar" id="bar-${task.id}" style="width: ${task.progress || 25}%;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      })
+      .join("");
+
+    const photoCardsHtml = filtered
       .map((p) => {
         const isSelected = state.selectedIds.has(p.id);
         return `
@@ -671,10 +787,12 @@ document.addEventListener("DOMContentLoaded", () => {
       })
       .join("");
 
+    photoGrid.innerHTML = uploadCardsHtml + photoCardsHtml;
+
     if (window.lucide) window.lucide.createIcons();
 
-    // Attach click handlers
-    photoGrid.querySelectorAll(".photo-card").forEach((card) => {
+    // Attach click handlers only to non-uploading photo cards
+    photoGrid.querySelectorAll(".photo-card:not(.uploading)").forEach((card) => {
       const id = card.getAttribute("data-id");
 
       // Checkbox click
@@ -910,29 +1028,100 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // ==========================================
-  // UPLOAD PIPELINE
+  // NON-BLOCKING BACKGROUND UPLOAD PIPELINE
   // ==========================================
+  let isUploadingQueue = false;
+  const uploadQueue = [];
+
+  function updateOptimisticCard(taskId, stage, progress, labelText) {
+    const badgeText = document.getElementById(`badge-text-${taskId}`);
+    const bar = document.getElementById(`bar-${taskId}`);
+    if (badgeText && labelText) badgeText.textContent = labelText;
+    if (bar && progress !== undefined) bar.style.width = `${progress}%`;
+  }
+
   async function handleFilesUpload(files) {
     if (!files || files.length === 0) return;
 
-    uploadOverlay.classList.remove("hidden");
+    const fileList = Array.from(files);
+    fileInput.value = "";
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      progressTitle.textContent = `${t("progress_title")} (${i + 1}/${files.length})`;
-      progressFileInfo.textContent = `${file.name} (${formatBytes(file.size)})`;
+    // Create tasks for each file
+    for (const file of fileList) {
+      const previewUrl = URL.createObjectURL(file);
+      const task = {
+        id: "task_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7),
+        file,
+        name: file.name,
+        size: file.size,
+        previewUrl,
+        stage: 1, // 1: Seal encryption, 2: Walrus blob registration, 3: Anchored
+        progress: 25,
+        failed: false
+      };
+      state.activeUploads.push(task);
+      uploadQueue.push(task);
+    }
 
-      step1.className = "step active";
-      step2.className = "step";
-      step3.className = "step";
+    // Show floating upload dock non-blockingly
+    uploadDock.classList.remove("hidden", "fade-out");
+    if (dockCloseBtn) dockCloseBtn.classList.add("hidden");
+    if (dockSpinner) dockSpinner.style.display = "block";
+    renderPhotos();
 
-      await new Promise((r) => setTimeout(r, 400));
+    // Trigger queue processing
+    if (!isUploadingQueue) {
+      processUploadQueue();
+    }
+  }
 
-      step1.className = "step completed";
-      step2.className = "step active";
+  async function processUploadQueue() {
+    if (uploadQueue.length === 0) {
+      isUploadingQueue = false;
+      return;
+    }
+
+    isUploadingQueue = true;
+    let completedInBatch = 0;
+
+    while (uploadQueue.length > 0) {
+      const task = uploadQueue.shift();
+      const currentNum = completedInBatch + 1;
+      const totalNum = completedInBatch + uploadQueue.length + 1;
+
+      // Update Dock UI with active task
+      dockTitle.textContent = t("upload_dock_title");
+      dockSubtitle.textContent = t("upload_dock_count", { current: currentNum, total: totalNum });
+      dockFileThumb.src = task.previewUrl;
+      dockFileName.textContent = task.name;
+      dockFileMeta.textContent = `${formatBytes(task.size)} • Seal Encrypting`;
+
+      // Stepper to Step 1
+      dockStep1.className = "dock-step active";
+      dockStep2.className = "dock-step";
+      dockStep3.className = "dock-step";
+
+      // Overall progress
+      const baseProgress = (completedInBatch / totalNum) * 100;
+      dockProgressFill.style.width = `${baseProgress + (1 / totalNum) * 30}%`;
+
+      // Optimistic card update
+      updateOptimisticCard(task.id, 1, 30, t("optimistic_encrypting"));
+
+      // Micro delay for client-side cryptographic preparation
+      await new Promise((r) => setTimeout(r, 450));
+
+      // Advance to Step 2: Walrus Blob Registration
+      task.stage = 2;
+      task.progress = 70;
+      dockFileMeta.textContent = `${formatBytes(task.size)} • Walrus Storage`;
+      dockStep1.className = "dock-step completed";
+      dockStep2.className = "dock-step active";
+      dockProgressFill.style.width = `${baseProgress + (1 / totalNum) * 70}%`;
+      updateOptimisticCard(task.id, 2, 70, t("optimistic_uploading"));
 
       const formData = new FormData();
-      formData.append("photo", file);
+      formData.append("photo", task.file);
       formData.append("description", `Uploaded to Walrus Vault at ${new Date().toISOString()}`);
 
       try {
@@ -943,22 +1132,60 @@ document.addEventListener("DOMContentLoaded", () => {
         const data = await res.json();
 
         if (data.success) {
-          step2.className = "step completed";
-          step3.className = "step completed";
+          // Advance to Step 3: Anchored in Bucket
+          task.stage = 3;
+          task.progress = 100;
+          dockStep2.className = "dock-step completed";
+          dockStep3.className = "dock-step completed";
+          dockProgressFill.style.width = `${((completedInBatch + 1) / totalNum) * 100}%`;
+          updateOptimisticCard(task.id, 3, 100, t("optimistic_anchored"));
+
           showToast(t("toast_uploaded"), "success");
+          completedInBatch++;
+
+          // Give a brief moment to celebrate the green checkmark
           await new Promise((r) => setTimeout(r, 400));
+
+          // Clean up task from activeUploads and revoke blob URL
+          URL.revokeObjectURL(task.previewUrl);
+          state.activeUploads = state.activeUploads.filter((t) => t.id !== task.id);
+
+          // Refresh photos & status non-blockingly
+          await fetchPhotos();
+          await fetchStatus();
         } else {
-          showToast(`Upload failed for ${file.name}: ${data.error}`, "danger");
+          task.failed = true;
+          updateOptimisticCard(task.id, 1, 100, t("optimistic_failed"));
+          showToast(`Upload failed for ${task.name}: ${data.error}`, "danger");
+          state.activeUploads = state.activeUploads.filter((t) => t.id !== task.id);
+          renderPhotos();
         }
       } catch (err) {
-        showToast(`Error uploading ${file.name}: ${err.message}`, "danger");
+        task.failed = true;
+        showToast(`Error uploading ${task.name}: ${err.message}`, "danger");
+        state.activeUploads = state.activeUploads.filter((t) => t.id !== task.id);
+        renderPhotos();
       }
     }
 
-    uploadOverlay.classList.add("hidden");
-    fileInput.value = "";
-    await fetchPhotos();
-    await fetchStatus();
+    // All uploads finished
+    isUploadingQueue = false;
+    dockTitle.textContent = t("upload_dock_complete");
+    dockSubtitle.textContent = `${completedInBatch} ${completedInBatch === 1 ? "memory" : "memories"} anchored`;
+    if (dockSpinner) dockSpinner.style.display = "none";
+    if (dockCloseBtn) dockCloseBtn.classList.remove("hidden");
+    dockProgressFill.style.width = "100%";
+
+    // Auto-dismiss the dock after 6 seconds
+    setTimeout(() => {
+      if (!isUploadingQueue && state.activeUploads.length === 0) {
+        uploadDock.classList.add("fade-out");
+        setTimeout(() => {
+          uploadDock.classList.add("hidden");
+          uploadDock.classList.remove("fade-out");
+        }, 300);
+      }
+    }, 6000);
   }
 
   uploadTriggerBtn.addEventListener("click", () => fileInput.click());

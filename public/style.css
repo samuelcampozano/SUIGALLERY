@@ -781,37 +781,222 @@ body {
 }
 
 /* ==========================================
-   UPLOAD PROGRESS OVERLAY
+   FLOATING NON-BLOCKING UPLOAD DOCK
 ========================================== */
-.upload-progress-overlay {
+.upload-dock {
   position: fixed;
-  inset: 0;
-  z-index: 200;
-  background: rgba(5, 8, 14, 0.88);
-  backdrop-filter: blur(12px);
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 180;
+  width: 380px;
+  max-width: calc(100vw - 2rem);
+  pointer-events: auto;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+  animation: dockSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes dockSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.upload-dock.minimized .dock-body,
+.upload-dock.minimized .dock-overall-progress {
+  display: none !important;
+}
+
+.upload-dock.fade-out {
+  opacity: 0;
+  transform: translateY(16px) scale(0.96);
+  pointer-events: none;
+}
+
+.upload-dock-card {
+  background: rgba(13, 19, 33, 0.92);
+  border: 1px solid rgba(77, 162, 255, 0.3);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.75), 0 0 25px rgba(77, 162, 255, 0.15);
+  backdrop-filter: blur(20px);
+  overflow: hidden;
+}
+
+.upload-dock-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 1.25rem;
+  justify-content: space-between;
+  padding: 0.85rem 1.1rem;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  user-select: none;
 }
 
-.upload-progress-card {
-  width: 100%;
-  max-width: 440px;
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-active);
-  border-radius: var(--radius-lg);
-  padding: 1.75rem;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
+.upload-dock.minimized .upload-dock-header {
+  border-bottom: none;
 }
 
-.progress-header {
+.dock-header-left {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  min-width: 0;
+}
+
+.dock-header-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dock-header-titles h4 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dock-subtitle {
+  font-size: 0.72rem;
+  color: var(--brand-sui);
+  font-weight: 500;
+}
+
+.dock-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.dock-action-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-fast);
+}
+
+.dock-action-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dock-action-btn i {
+  width: 16px;
+  height: 16px;
+}
+
+.dock-overall-progress {
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.dock-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--brand-sui), var(--brand-walrus));
+  transition: width 0.35s ease;
+}
+
+.dock-body {
+  padding: 0.95rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.dock-file-item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.dock-file-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  border: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  background: var(--bg-surface);
+}
+
+.dock-file-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dock-file-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dock-file-meta {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.dock-stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.dock-step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid transparent;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  transition: var(--transition-fast);
+}
+
+.dock-step i {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.dock-step.active {
+  background: rgba(77, 162, 255, 0.12);
+  border-color: rgba(77, 162, 255, 0.3);
+  color: var(--brand-sui);
+  font-weight: 600;
+}
+
+.dock-step.completed {
+  background: rgba(63, 185, 80, 0.1);
+  border-color: rgba(63, 185, 80, 0.25);
+  color: var(--accent-success);
 }
 
 .spinner-sm {
@@ -826,45 +1011,128 @@ body {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.progress-file-info {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.78rem;
-  color: var(--text-secondary);
-  word-break: break-all;
+/* ==========================================
+   OPTIMISTIC UPLOADING PHOTO CARD
+========================================== */
+.photo-card.uploading {
+  border-color: rgba(77, 162, 255, 0.55);
+  box-shadow: 0 0 25px rgba(77, 162, 255, 0.25);
+  cursor: default;
+  animation: uploadCardPulse 2s infinite ease-in-out;
 }
 
-.crypto-stepper {
+@keyframes uploadCardPulse {
+  0%, 100% {
+    border-color: rgba(77, 162, 255, 0.4);
+    box-shadow: 0 0 16px rgba(77, 162, 255, 0.2);
+  }
+  50% {
+    border-color: rgba(77, 162, 255, 0.9);
+    box-shadow: 0 0 32px rgba(77, 162, 255, 0.45);
+  }
+}
+
+.photo-card.uploading .photo-select-checkbox {
+  display: none !important;
+}
+
+.uploading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 8, 14, 0.65);
+  backdrop-filter: blur(5px);
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  justify-content: space-between;
+  padding: 0.9rem;
+  z-index: 5;
 }
 
-.crypto-stepper .step {
+.uploading-top-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: flex-start;
+  padding: 0.25rem 0.6rem;
+  background: rgba(77, 162, 255, 0.22);
+  border: 1px solid rgba(77, 162, 255, 0.45);
+  border-radius: var(--radius-full);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #cce4ff;
+  letter-spacing: 0.02em;
+}
+
+.uploading-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  text-align: center;
+}
+
+.uploading-spinner-ring {
+  width: 42px;
+  height: 42px;
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.6rem 0.85rem;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: var(--radius-sm);
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  border: 1px solid transparent;
-  transition: var(--transition-normal);
+  justify-content: center;
 }
 
-.crypto-stepper .step i { width: 16px; height: 16px; flex-shrink: 0; }
+.uploading-spinner-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  border-top-color: var(--brand-sui);
+  animation: spin 0.9s linear infinite;
+}
 
-.crypto-stepper .step.active {
-  background: rgba(77, 162, 255, 0.1);
-  border-color: rgba(77, 162, 255, 0.3);
+.uploading-center i {
   color: var(--brand-sui);
-  font-weight: 600;
+  width: 18px;
+  height: 18px;
 }
 
-.crypto-stepper .step.completed {
-  background: rgba(63, 185, 80, 0.1);
-  border-color: rgba(63, 185, 80, 0.3);
-  color: var(--accent-success);
+.uploading-status-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #ffffff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+}
+
+.uploading-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.uploading-filename {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.uploading-progress-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.uploading-progress-bar {
+  height: 100%;
+  width: 25%;
+  background: linear-gradient(90deg, var(--brand-sui), var(--brand-walrus));
+  border-radius: var(--radius-full);
+  transition: width 0.35s ease;
 }
 
 /* ==========================================
@@ -1530,6 +1798,15 @@ body.select-mode .photo-select-checkbox {
     width: 90vw;
     justify-content: space-between;
     padding: 0.6rem 1rem;
+  }
+
+  /* Mobile Floating Upload Dock */
+  .upload-dock {
+    right: 0.75rem;
+    left: 0.75rem;
+    bottom: 0.75rem;
+    width: auto;
+    max-width: none;
   }
 }
 
