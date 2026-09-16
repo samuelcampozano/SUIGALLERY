@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "description": "Integration and automation project for Walrus Console decentralized storage",
   "type": "module",
-  "main": "test-connection.js",
   "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
     "test-connection": "node test-connection.js",
     "mcp:install": "npx -y @mysten-incubation/walrus-console-mcp@beta install",
     "mcp:ping": "node -e \"import('./test-connection.js').then(m => m.testConnection())\""
@@ -18,7 +19,11 @@
     "mcp"
   ],
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@mysten-incubation/walrus-console-mcp": "^0.1.0-beta.0",
-    "dotenv": "^16.4.7"
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "multer": "^2.4.0"
   }
 }
