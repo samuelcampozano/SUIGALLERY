@@ -1,9 +1,133 @@
-// SuiGallery / Walrus Photos Client Application
+// SuiGallery / Walrus Photos Client Application with Multi-Language (EN, ES, PT) and Mobile Support
 document.addEventListener("DOMContentLoaded", () => {
   // Initialize Lucide icons
   if (window.lucide) {
     window.lucide.createIcons();
   }
+
+  // ==========================================
+  // INTERNATIONALIZATION (i18n) DICTIONARY
+  // ==========================================
+  const translations = {
+    en: {
+      brand_tag: "WALRUS PROTOCOL",
+      status_connecting: "Connecting to Walrus...",
+      status_connected: "Walrus Connected • {name} Bucket",
+      status_offline: "Offline / Reconnecting",
+      search_placeholder: "Search memories, tags, or file names...",
+      quota_label: "Walrus Storage",
+      upload_btn: "Upload Photos",
+      banner_seal: "<strong>Seal Client-Side Encrypted</strong> (Private by Default)",
+      banner_walrus: "<strong>Walrus 2D Red Stuff</strong> (Fountain Erasure Coded)",
+      banner_sui: "<strong>Sui Object-Native</strong> (Zero-Knowledge zkLogin Ready)",
+      drop_title: "Drop your photos & videos here",
+      drop_subtitle: "Encrypted on your device before touching Walrus. Full-resolution, uncompressed preservation.",
+      browse_btn: "Browse Files",
+      progress_title: "Encrypting & Uploading to Walrus...",
+      step1_text: "1. Seal Envelope Encryption",
+      step2_text: "2. Walrus Blob Registration",
+      step3_text: "3. Anchored in Bucket",
+      timeline_title: "Timeline & Memories",
+      loading_vault: "Syncing memories...",
+      photo_counter: "{count} {word} securely preserved",
+      word_single: "memory",
+      word_plural: "memories",
+      empty_title: "Your Sovereign Vault is Empty",
+      empty_desc: "No photos or media stored yet in your Walrus bucket. Drag and drop any picture above to start building your decentralized Google Photos alternative.",
+      meta_blob_id: "Walrus Blob ID",
+      meta_file_id: "Console File ID",
+      meta_seal_policy: "Seal Encryption Policy",
+      meta_file_size: "File Size",
+      meta_upload_date: "Captured / Uploaded",
+      download_btn: "Download Original",
+      delete_btn: "Delete from Walrus",
+      delete_confirm: "Are you sure you want to permanently delete \"{name}\" from Walrus?",
+      deleting: "Deleting...",
+      sync_failed: "Sync failed",
+      conn_error: "Connection error",
+      anchored_walrus: "Anchored in Walrus"
+    },
+    es: {
+      brand_tag: "PROTOCOLO WALRUS",
+      status_connecting: "Conectando a Walrus...",
+      status_connected: "Walrus Conectado • Bucket {name}",
+      status_offline: "Desconectado / Reconectando",
+      search_placeholder: "Buscar recuerdos, etiquetas o nombres...",
+      quota_label: "Almacenamiento Walrus",
+      upload_btn: "Subir Fotos",
+      banner_seal: "<strong>Encriptado en Cliente con Seal</strong> (Privado por Defecto)",
+      banner_walrus: "<strong>Walrus 2D Red Stuff</strong> (Código de Fuente Borrado)",
+      banner_sui: "<strong>Objetos Nativos en Sui</strong> (Listo para zkLogin)",
+      drop_title: "Arrastra tus fotos y videos aquí",
+      drop_subtitle: "Encriptados en tu dispositivo antes de tocar Walrus. Preservación en resolución original sin compresión.",
+      browse_btn: "Explorar Archivos",
+      progress_title: "Encriptando y Subiendo a Walrus...",
+      step1_text: "1. Encriptación de Sobre con Seal",
+      step2_text: "2. Registro de Blob en Walrus",
+      step3_text: "3. Asegurado en el Bucket",
+      timeline_title: "Línea de Tiempo y Recuerdos",
+      loading_vault: "Sincronizando recuerdos...",
+      photo_counter: "{count} {word} preservados con seguridad",
+      word_single: "recuerdo",
+      word_plural: "recuerdos",
+      empty_title: "Tu Bóveda Soberana está Vacía",
+      empty_desc: "Aún no hay fotos ni medios guardados en tu bucket de Walrus. Arrastra y suelta cualquier imagen arriba para comenzar a construir tu alternativa descentralizada a Google Photos.",
+      meta_blob_id: "ID de Blob en Walrus",
+      meta_file_id: "ID de Archivo en Consola",
+      meta_seal_policy: "Política de Encriptación Seal",
+      meta_file_size: "Tamaño de Archivo",
+      meta_upload_date: "Capturado / Subido",
+      download_btn: "Descargar Original",
+      delete_btn: "Eliminar de Walrus",
+      delete_confirm: "¿Estás seguro de que deseas eliminar permanentemente \"{name}\" de Walrus?",
+      deleting: "Eliminando...",
+      sync_failed: "Error al sincronizar",
+      conn_error: "Error de conexión",
+      anchored_walrus: "Asegurado en Walrus"
+    },
+    pt: {
+      brand_tag: "PROTOCOLO WALRUS",
+      status_connecting: "Conectando ao Walrus...",
+      status_connected: "Walrus Conectado • Bucket {name}",
+      status_offline: "Offline / Reconectando",
+      search_placeholder: "Pesquisar memórias, tags ou nomes...",
+      quota_label: "Armazenamento Walrus",
+      upload_btn: "Enviar Fotos",
+      banner_seal: "<strong>Encriptado no Cliente com Seal</strong> (Privado por Padrão)",
+      banner_walrus: "<strong>Walrus 2D Red Stuff</strong> (Código de Eliminação 2D)",
+      banner_sui: "<strong>Objetos Nativos em Sui</strong> (Pronto para zkLogin)",
+      drop_title: "Arraste as suas fotos e vídeos aqui",
+      drop_subtitle: "Encriptados no seu dispositivo antes de tocar a rede Walrus. Preservação em resolução total sem compressão.",
+      browse_btn: "Procurar Ficheiros",
+      progress_title: "Encriptando e Enviando ao Walrus...",
+      step1_text: "1. Encriptação de Envelope com Seal",
+      step2_text: "2. Registro do Blob no Walrus",
+      step3_text: "3. Ancorado no Bucket",
+      timeline_title: "Linha do Tempo & Memórias",
+      loading_vault: "Sincronizando memórias...",
+      photo_counter: "{count} {word} preservadas com segurança",
+      word_single: "memória",
+      word_plural: "memórias",
+      empty_title: "O seu Cofre Soberano está Vazio",
+      empty_desc: "Ainda não há fotos ou vídeos armazenados no seu bucket do Walrus. Arraste e solte qualquer imagem acima para começar a usar a sua alternativa ao Google Photos.",
+      meta_blob_id: "ID do Blob no Walrus",
+      meta_file_id: "ID do Ficheiro na Consola",
+      meta_seal_policy: "Política de Encriptação Seal",
+      meta_file_size: "Tamanho do Ficheiro",
+      meta_upload_date: "Capturado / Enviado",
+      download_btn: "Baixar Original",
+      delete_btn: "Excluir do Walrus",
+      delete_confirm: "Tem certeza de que deseja excluir permanentemente \"{name}\" do Walrus?",
+      deleting: "Excluindo...",
+      sync_failed: "Falha na sincronização",
+      conn_error: "Erro de conexão",
+      anchored_walrus: "Ancorado no Walrus"
+    }
+  };
+
+  // Current Language (default EN, or loaded from localStorage)
+  let currentLang = localStorage.getItem("suigallery_lang") || "en";
+  if (!translations[currentLang]) currentLang = "en";
 
   // App State
   const state = {
@@ -29,6 +153,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const searchInput = document.getElementById("searchInput");
   const clearSearchBtn = document.getElementById("clearSearchBtn");
 
+  // Language Elements
+  const langDropdown = document.getElementById("langDropdown");
+  const langBtn = document.getElementById("langBtn");
+  const langMenu = document.getElementById("langMenu");
+  const currentLangCode = document.getElementById("currentLangCode");
+
   // Lightbox DOM Elements
   const lightboxModal = document.getElementById("lightboxModal");
   const lightboxBackdrop = document.getElementById("lightboxBackdrop");
@@ -52,6 +182,81 @@ document.addEventListener("DOMContentLoaded", () => {
   const step2 = document.getElementById("step2");
   const step3 = document.getElementById("step3");
 
+  // Translation helper
+  function t(key, vars = {}) {
+    const dict = translations[currentLang] || translations.en;
+    let text = dict[key] || translations.en[key] || key;
+    for (const [vKey, vVal] of Object.entries(vars)) {
+      text = text.replace(new RegExp(`\\{${vKey}\\}`, "g"), vVal);
+    }
+    return text;
+  }
+
+  // Apply Translations to DOM elements with data-i18n
+  function applyLanguage(lang) {
+    currentLang = lang;
+    localStorage.setItem("suigallery_lang", lang);
+    currentLangCode.textContent = lang.toUpperCase();
+
+    // Update active class on options
+    document.querySelectorAll(".lang-option").forEach((opt) => {
+      if (opt.getAttribute("data-lang") === lang) {
+        opt.classList.add("active");
+      } else {
+        opt.classList.remove("active");
+      }
+    });
+
+    // Translate all static data-i18n elements
+    document.querySelectorAll("[data-i18n]").forEach((el) => {
+      const key = el.getAttribute("data-i18n");
+      const translation = t(key);
+      if (translation) {
+        if (translation.includes("<") && translation.includes(">")) {
+          el.innerHTML = translation;
+        } else {
+          el.textContent = translation;
+        }
+      }
+    });
+
+    // Update search placeholder
+    searchInput.placeholder = t("search_placeholder");
+
+    // Refresh dynamic status & counters
+    if (state.status) {
+      statusText.textContent = t("status_connected", { name: state.status.bucket?.name || "Default" });
+    } else {
+      statusText.textContent = t("status_connecting");
+    }
+
+    renderPhotos();
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  // Language Dropdown Event Handlers
+  langBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    langDropdown.classList.toggle("open");
+    langMenu.classList.toggle("hidden");
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!langDropdown.contains(e.target)) {
+      langDropdown.classList.remove("open");
+      langMenu.classList.add("hidden");
+    }
+  });
+
+  document.querySelectorAll(".lang-option").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const selected = btn.getAttribute("data-lang");
+      applyLanguage(selected);
+      langDropdown.classList.remove("open");
+      langMenu.classList.add("hidden");
+    });
+  });
+
   // Utilities
   function formatBytes(bytes, decimals = 2) {
     if (!bytes || bytes === 0) return "0 Bytes";
@@ -66,7 +271,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!isoString) return "Recently";
     try {
       const date = new Date(isoString);
-      return date.toLocaleDateString("en-US", {
+      return date.toLocaleDateString(currentLang === "pt" ? "pt-BR" : currentLang === "es" ? "es-ES" : "en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
@@ -90,7 +295,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (data.success) {
         state.status = data;
         connectionBadge.classList.add("connected");
-        statusText.textContent = `Walrus Connected • ${data.bucket.name} Bucket`;
+        statusText.textContent = t("status_connected", { name: data.bucket.name });
 
         // Update Quota Bar
         const used = data.space.storage_used_bytes || 0;
@@ -102,13 +307,13 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       console.warn("Could not fetch status:", err);
       connectionBadge.classList.remove("connected");
-      statusText.textContent = "Offline / Reconnecting";
+      statusText.textContent = t("status_offline");
     }
   }
 
   // Fetch Photos
   async function fetchPhotos() {
-    photoCounter.textContent = "Syncing memories...";
+    photoCounter.textContent = t("loading_vault");
     try {
       const res = await fetch("/api/photos");
       const data = await res.json();
@@ -116,11 +321,11 @@ document.addEventListener("DOMContentLoaded", () => {
         state.photos = data.photos || [];
         renderPhotos();
       } else {
-        photoCounter.textContent = "Sync failed";
+        photoCounter.textContent = t("sync_failed");
       }
     } catch (err) {
       console.error("Failed to load photos:", err);
-      photoCounter.textContent = "Connection error";
+      photoCounter.textContent = t("conn_error");
     }
   }
 
@@ -136,7 +341,9 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     });
 
-    photoCounter.textContent = `${state.photos.length} ${state.photos.length === 1 ? "memory" : "memories"} securely preserved`;
+    const count = state.photos.length;
+    const word = count === 1 ? t("word_single") : t("word_plural");
+    photoCounter.textContent = t("photo_counter", { count, word });
 
     if (filtered.length === 0) {
       photoGrid.innerHTML = "";
@@ -185,7 +392,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.selectedPhoto = photo;
     sidebarFileName.textContent = photo.name;
     sidebarMimeBadge.textContent = photo.content_type || "image/jpeg";
-    metaBlobId.textContent = photo.blob_id || "Anchored in Walrus";
+    metaBlobId.textContent = photo.blob_id || t("anchored_walrus");
     metaFileId.textContent = photo.id;
     metaSealPolicy.textContent = state.status?.bucket?.seal_policy_id || "0x9c1baccb244e45342ac150a0123a4802e8e834f25c00210e50c81081354eee44";
     metaFileSize.textContent = formatBytes(photo.size);
@@ -216,12 +423,12 @@ document.addEventListener("DOMContentLoaded", () => {
   // Delete Photo Action
   deleteBtn.addEventListener("click", async () => {
     if (!state.selectedPhoto) return;
-    const confirmDelete = confirm(`Are you sure you want to permanently delete "${state.selectedPhoto.name}" from Walrus?`);
+    const confirmDelete = confirm(t("delete_confirm", { name: state.selectedPhoto.name }));
     if (!confirmDelete) return;
 
     const fileId = state.selectedPhoto.id;
     deleteBtn.disabled = true;
-    deleteBtn.innerHTML = `<div class="spinner-sm"></div> Deleting...`;
+    deleteBtn.innerHTML = `<div class="spinner-sm"></div> ${t("deleting")}`;
 
     try {
       const res = await fetch(`/api/photos/${fileId}`, { method: "DELETE" });
@@ -237,7 +444,7 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("Delete failed: " + err.message);
     } finally {
       deleteBtn.disabled = false;
-      deleteBtn.innerHTML = `<i data-lucide="trash-2"></i> Delete from Walrus`;
+      deleteBtn.innerHTML = `<i data-lucide="trash-2"></i> ${t("delete_btn")}`;
       if (window.lucide) window.lucide.createIcons();
     }
   });
@@ -272,7 +479,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      progressTitle.textContent = `Processing ${i + 1} of ${files.length}...`;
+      progressTitle.textContent = `${t("progress_title")} (${i + 1}/${files.length})`;
       progressFileInfo.textContent = `${file.name} (${formatBytes(file.size)})`;
 
       // Step 1: Encrypting
@@ -374,6 +581,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Initial Boot
+  applyLanguage(currentLang);
   fetchStatus();
   fetchPhotos();
 });
