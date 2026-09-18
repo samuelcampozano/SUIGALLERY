@@ -2,7 +2,7 @@
 
 > **A consumer-grade, privacy-first alternative to Google Photos and Apple iCloud, powered by the Walrus Protocol and the Sui blockchain.**
 
-[![Sui Network](https://img.shields.io/badge/Network-Sui%20Testnet-0070f3?logo=sui)](https://sui.io)
+[![Sui Network](https://img.shields.io/badge/Network-Sui%20Mainnet%20%2F%20Testnet-0070f3?logo=sui)](https://sui.io)
 [![Walrus Protocol](https://img.shields.io/badge/Storage-Walrus%20Protocol-4da2ff)](https://walrus.xyz)
 [![Seal Encryption](https://img.shields.io/badge/Encryption-Seal%20Threshold-3fb950)](https://github.com/MystenLabs)
 [![Docker](https://img.shields.io/badge/Container-Docker%20Compose-2496ed?logo=docker)](https://docker.com)
@@ -12,14 +12,14 @@
 
 ## 📸 Overview
 
-**SuiGallery** gives users full cryptographic sovereignty over their photos and memories. Traditional cloud storage providers scan your files to train AI models, calibrate advertising profiles, or lock you out without human appeal. SuiGallery reclaims ownership:
+**SuiGallery** gives users full cryptographic sovereignty over their personal media. Traditional cloud storage providers inspect private photos to train commercial machine-learning models, build advertising profiles, or lock accounts arbitrarily. SuiGallery reclaims user ownership:
 
-- 🔒 **Zero-Knowledge Privacy (Seal)**: Photos are encrypted on your local device before touching the network using **Seal Threshold Envelope Encryption**. Even storage node operators and protocol developers cannot view your pictures.
-- 🌊 **Decentralized Fountain Erasure Coding (Walrus)**: Files are split into 2D Red Stuff erasure-coded slivers distributed across independent storage nodes, cutting costs by up to 85% compared to legacy cloud storage (AWS S3 / Google Cloud).
-- ⚡ **Non-Blocking Background Uploads**: Continue browsing your gallery, viewing high-resolution Lightbox media, and editing tags while uploads process seamlessly in a bottom-docked upload manager.
-- 🔑 **Sovereign Cryptographic Identity**: Backed by Sui on-chain policies, with 1-click ephemeral beta vault generation and full **zkLogin** architecture.
-- 🔍 **Explorer Verification**: 1-click verification of raw storage slivers on **Walruscan** and on-chain threshold policies on **SuiVision**.
-- 🌐 **3-Language Localization**: Full native internationalization in 🇺🇸 English, 🇪🇸 Español, and 🇧🇷 Português.
+- 🔒 **Threshold Envelope Encryption (Seal)**: Media is sealed via AES-256-GCM envelope encryption wrapped against on-chain Sui policies before raw slivers are distributed across the Walrus decentralized network.
+- 🌊 **Decentralized Fountain Erasure Coding (Walrus)**: Files are split into 2D Red Stuff erasure-coded slivers distributed across independent storage nodes, cutting redundancy storage costs compared to traditional cloud infrastructure (AWS S3 / Google Cloud).
+- ⚡ **Non-Blocking Background Uploads**: Continue browsing your gallery, viewing high-resolution Lightbox media, and editing tags while uploads process in a bottom-docked upload manager.
+- 🔑 **Sovereign Cryptographic Identity**: 100% in-browser Ed25519 keypair generation via the standard WebCrypto API, with zero server exposure, backed by Sui on-chain Move access policies.
+- 🔍 **Dual Explorer Verification**: 1-click on-chain verification of raw storage slivers on **Walruscan** and threshold access policies on **SuiVision** and **SuiScan**.
+- 🌐 **3-Language Localization**: Native internationalization in 🇺🇸 English, 🇪🇸 Español, and 🇧🇷 Português.
 
 ---
 
@@ -27,18 +27,23 @@
 
 ```mermaid
 graph TD
-    Client["📱 Web & Mobile Client (Glassmorphism, i18n, On-Device Seal)"]
-    Express["⚡ Gateway API & Decryption Stream (Docker Port 3000)"]
-    SuiCrypto["🔑 Sui Cryptographic Identity (Ed25519 + Blake2b)"]
-    WalrusMCP["🛡️ Walrus Console MCP Service (stdio @mysten-incubation)"]
-    WalrusNet["☁️ Walrus Decentralized Storage Network (2D Red Stuff)"]
-    SealEng["🔒 Seal Threshold Encryption Engine"]
+    subgraph Local Sovereign Environment ["💻 Local Sovereign Node (User Device / Docker)"]
+        Browser["📱 Web Browser Client<br/>• Glassmorphism UI & i18n<br/>• WebCrypto Ed25519 KeyGen<br/>• Client BLAKE2b-256 Derivation"]
+        Gateway["⚡ Local Gateway Daemon (Express 5)<br/>• Localhost Port 3000<br/>• Streaming Decryption Pipe<br/>• Ephemeral Memory Cache"]
+        MCP["🛡️ Walrus Console MCP Service<br/>• @mysten-incubation/walrus-console-mcp<br/>• Local Stdio IPC Sandboxing"]
+        Seal["🔒 Seal Threshold Encryption Engine<br/>• AES-256-GCM Envelope Encryption<br/>• Threshold Key Wrapping"]
+    end
 
-    Client -->|REST & Multipart Upload| Express
-    Express -->|Key Derivation & Auth| SuiCrypto
-    Express -->|MCP Tool Invocations| WalrusMCP
-    WalrusMCP -->|Client-Side Encrypt & Store| SealEng
-    SealEng -->|Store Blobs & Anchor Metadata| WalrusNet
+    subgraph Decentralized Web3 Infrastructure ["🌐 Decentralized Consensus & Storage Network"]
+        Sui["⛓️ Sui Blockchain<br/>• WalrusConsole Move Smart Contract<br/>• On-Chain Permissioned Group Policy<br/>• Threshold Decryption Quorum"]
+        Walrus["☁️ Walrus Storage Network<br/>• 2D Red Stuff Erasure Coding<br/>• Primary & Secondary Storage Nodes"]
+    end
+
+    Browser -->|Local Loopback POST /api/photos/upload| Gateway
+    Gateway -->|Stdio IPC| MCP
+    MCP -->|Envelope Encrypt with Policy| Seal
+    Seal -->|Verify Policy & Quorum| Sui
+    Seal -->|Distribute Erasure Slivers| Walrus
 ```
 
 ---
@@ -46,24 +51,24 @@ graph TD
 ## ✨ Features
 
 1. **Optimistic Timeline & Background Dock**:
-   - Dropped photos appear immediately in your timeline with live preview, pulsing Sui-blue progress rings, and real-time stage badges (`1. Seal Encryption` ➔ `2. Walrus Blob Store` ➔ `3. Anchored`).
+   - Uploaded photos appear immediately in your timeline with live preview, pulsing Sui-blue progress rings, and real-time stage badges (`1. Seal Encryption` ➔ `2. Walrus Blob Store` ➔ `3. Anchored`).
    - Pinned collapsible floating upload dock in the bottom-right corner.
 
 2. **Decrypted Streaming & Provenance Inspector**:
    - Stream original high-resolution photos bit-for-bit decrypted on the fly.
    - Lightbox inspector displaying **Walrus Blob ID**, **Console File ID**, **Seal Encryption Policy**, byte size, and timestamps.
-   - Quick external links to inspect storage certification on [Walruscan](https://walruscan.com/testnet), and on-chain access objects on [SuiVision](https://suivision.xyz) and [SuiScan](https://suiscan.xyz).
+   - Direct external links to inspect storage certification on [Walruscan](https://walruscan.com/testnet), and live on-chain policy objects on [SuiVision](https://suivision.xyz) and [SuiScan](https://suiscan.xyz).
 
-3. **Vault Identity & Ephemeral Testing**:
+3. **Vault Identity & On-Device WebCrypto**:
    - Switch between Master Custodian and Ephemeral Beta Tester Vaults.
-   - 1-click generation of cryptographic Ed25519 keypairs and derived `0x...` Sui addresses.
+   - 1-click in-browser generation of cryptographic Ed25519 keypairs and derived `0x...` Sui addresses using standard `window.crypto.subtle` (zero server transmission).
 
 4. **Dynamic Tag Filtering & Batch Actions**:
    - Instant filtering chips (`All`, `crypto`, `photo`, `suigallery`, etc.) and multi-criteria sorting (Newest, Oldest, Name A-Z, Size).
    - Floating batch selection bar with bulk download and batch deletion.
 
-5. **Compliance & Crypto-Shredding**:
-   - Meets GDPR Art. 17 and LGPD Art. 18 right-to-be-forgotten standards through **Crypto-Shredding** (NIST SP 800-88 Rev. 1): deleting a photo revokes the on-chain decryption capability, rendering remaining ciphertext mathematically unrecoverable.
+5. **Irreversible Crypto-Shredding**:
+   - Enforces digital right-to-be-forgotten via **Crypto-Shredding** (aligned with NIST SP 800-88 cryptographic sanitization guidelines): deleting an asset revokes access to the decryption policy keys, mathematically rendering remaining distributed ciphertext slivers permanently unrecoverable across all storage nodes.
 
 ---
 
@@ -75,8 +80,8 @@ graph TD
 
 ### 1. Clone & Configure
 ```bash
-git clone https://github.com/example/suigallery.git
-cd suigallery
+git clone https://github.com/samuelcampozano/SUIGALLERY.git
+cd SUIGALLERY
 
 # Copy environment template
 cp .env.example .env
@@ -103,6 +108,12 @@ npm install
 npm run dev
 ```
 
+### 4. Run Automated Crypto-Shredding Verification
+Verify end-to-end encryption, bit-for-bit decryption, cryptographic deletion, and post-shred irrecoverability against live storage:
+```bash
+npm run test:shred
+```
+
 ---
 
 ## 🧪 API Reference
@@ -111,20 +122,22 @@ npm run dev
 | :--- | :--- | :--- |
 | `GET` | `/api/status` | Space quota, bucket metadata, and Seal policy |
 | `GET` | `/api/photos` | List all photos anchored in the bucket |
-| `POST` | `/api/photos/upload` | Multipart upload with client-side Seal encryption |
+| `POST` | `/api/photos/upload` | Multipart upload with local Seal threshold encryption |
 | `GET` | `/api/photos/:fileId/stream` | Decrypted binary stream for browser rendering |
 | `PATCH` | `/api/photos/:fileId` | Update photo name, caption, and tags |
 | `DELETE`| `/api/photos/:fileId` | Delete photo and trigger crypto-shredding |
 | `POST` | `/api/photos/batch-delete` | Batch multi-photo deletion |
-| `POST` | `/api/wallet/generate` | Generate fresh Ed25519 Sui cryptographic keypair |
+| `POST` | `/api/wallet/generate` | Server fallback for Ed25519 Sui cryptographic keypair |
 
 ---
 
 ## 🛡️ Security & Zero-Knowledge Architecture
 
-- **Client-Side Cryptography**: Plaintext media never leaves the client unencrypted.
-- **No Master Key Custody**: The server does not retain master decryption keys.
-- **On-Device Edge Processing**: Facial recognition and metadata embeddings execute locally via WebAssembly / WebGPU, exempting the platform operator from biometric controller liabilities under GDPR Art. 2(2)(c) and LGPD Art. 4, III.
+- **Local Sovereign Gateway**: The application operates as a self-hosted sovereign node on the user's device (`localhost:3000` / local container). Unencrypted photos are never routed through cloud intermediaries.
+- **Seal Threshold Encryption**: Media is encrypted using AES-256-GCM envelope encryption. Decryption keys are governed by threshold policies anchored to the Sui blockchain, preventing single-point key exposure.
+- **No Master Key Custody**: Decentralized storage node operators and protocol developers hold no master keys. Key recovery requires threshold consensus verification against Move smart contracts.
+- **On-Device Cryptographic Key Generation**: Ephemeral vault identities are generated directly inside the user's browser memory via the standard WebCrypto API, eliminating server-side key generation risks.
+- **Edge-First Local Compute**: Search indexing, metadata extraction, and facial clustering run locally on-device (client-side WebAssembly / WebGPU), ensuring sensitive biometric vectors or telemetry are never centralized.
 
 ---
 

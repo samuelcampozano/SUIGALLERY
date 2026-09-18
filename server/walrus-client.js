@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import crypto from "node:crypto";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -216,9 +217,10 @@ class WalrusClientManager {
     const rawPub = publicKey.export({ type: "spki", format: "der" }).subarray(-32);
     const rawPriv = privateKey.export({ type: "pkcs8", format: "der" }).subarray(-32);
 
-    // Sui Address derivation: BLAKE2b-256 of [0x00, pubKeyBytes]
-    const hash = crypto.createHash("blake2b512").update(Buffer.concat([Buffer.from([0x00]), rawPub])).digest();
-    const address = "0x" + hash.subarray(0, 32).toString("hex");
+    // Official Sui Address derivation: BLAKE2b-256 of [0x00, pubKeyBytes]
+    const msg = Buffer.concat([Buffer.from([0x00]), rawPub]);
+    const hash = blake2b(msg, { dkLen: 32 });
+    const address = "0x" + Buffer.from(hash).toString("hex");
 
     return {
       address,

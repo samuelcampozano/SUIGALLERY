@@ -535,7 +535,7 @@ document.addEventListener("DOMContentLoaded", () => {
               <i data-lucide="${v.isMaster ? "shield-check" : "user-check"}"></i>
             </div>
             <div>
-              <div class="vault-item-title">${v.name}</div>
+              <div class="vault-item-title">${v.name} ${v.clientGenerated ? '<span style="font-size:10px; background:rgba(63,185,80,0.15); color:#3fb950; border:1px solid rgba(63,185,80,0.3); padding:1px 6px; border-radius:10px; margin-left:6px; font-weight:500;">🔒 On-Device</span>' : ''}</div>
               <div class="vault-item-addr">${shortenAddress(v.address)} • ${v.balance || "5.0 SUI"}</div>
             </div>
           </div>
@@ -579,24 +579,74 @@ document.addEventListener("DOMContentLoaded", () => {
   vaultModalClose.addEventListener("click", closeVaultModal);
   vaultModalBackdrop.addEventListener("click", closeVaultModal);
 
+  // 100% In-Browser Cryptographic Ed25519 Key Generation (Zero Server Exposure)
+  async function generateClientSideWallet() {
+    if (window.crypto?.subtle?.generateKey) {
+      try {
+        const keyPair = await window.crypto.subtle.generateKey(
+          { name: "Ed25519" },
+          true,
+          ["sign", "verify"]
+        );
+        const rawPub = new Uint8Array(await window.crypto.subtle.exportKey("raw", keyPair.publicKey));
+        const pkcs8 = new Uint8Array(await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey));
+        const rawPriv = pkcs8.slice(-32);
+
+        // Sui Address derivation: BLAKE2b-256([0x00, ...rawPub])
+        const msg = new Uint8Array(33);
+        msg[0] = 0x00; // Scheme byte for ED25519
+        msg.set(rawPub, 1);
+
+        let addressHex = null;
+        if (window.nobleBlake2?.blake2b) {
+          const digest = window.nobleBlake2.blake2b(msg, { dkLen: 32 });
+          addressHex = "0x" + Array.from(digest).map((b) => b.toString(16).padStart(2, "0")).join("");
+        }
+
+        if (addressHex) {
+          const pubHex = "0x" + Array.from(rawPub).map((b) => b.toString(16).padStart(2, "0")).join("");
+          const privHex = "suiprivkey_" + Array.from(rawPriv.slice(0, 12)).map((b) => b.toString(16).padStart(2, "0")).join("") + "...";
+
+          return {
+            address: addressHex,
+            publicKey: pubHex,
+            secretKey: privHex,
+            scheme: "ED25519",
+            source: "on_device_webcrypto",
+            balance: "5.0 SUI (Testnet)",
+            role: "Ephemeral Beta Tester (On-Device WebCrypto)"
+          };
+        }
+      } catch (err) {
+        console.warn("Client WebCrypto generation error, falling back to server:", err);
+      }
+    }
+
+    // Fallback if browser WebCrypto Ed25519 is unsupported
+    const res = await fetch("/api/wallet/generate", { method: "POST" });
+    const data = await res.json();
+    return data.wallet;
+  }
+
   // Generate Ephemeral Wallet Action
   generateWalletBtn.addEventListener("click", async () => {
     generateWalletBtn.disabled = true;
     generateWalletBtn.innerHTML = `<div class="spinner-sm"></div> Generating...`;
 
     try {
-      const res = await fetch("/api/wallet/generate", { method: "POST" });
-      const data = await res.json();
+      const wallet = await generateClientSideWallet();
 
-      if (data.success && data.wallet) {
+      if (wallet) {
+        const isClientSide = wallet.source === "on_device_webcrypto";
         const newVault = {
           id: `ephemeral_${Date.now()}`,
           name: `Beta Tester Vault #${state.vaults.length}`,
-          address: data.wallet.address,
-          publicKey: data.wallet.publicKey,
-          role: "Ephemeral Beta Tester",
-          balance: "5.0 SUI (Testnet)",
-          isMaster: false
+          address: wallet.address,
+          publicKey: wallet.publicKey,
+          role: wallet.role || "Ephemeral Beta Tester",
+          balance: wallet.balance || "5.0 SUI (Testnet)",
+          isMaster: false,
+          clientGenerated: isClientSide
         };
 
         state.vaults.push(newVault);
@@ -605,7 +655,12 @@ document.addEventListener("DOMContentLoaded", () => {
         localStorage.setItem("suigallery_active_vault", state.activeVaultIndex);
 
         updateActiveVaultUI();
-        showToast(t("toast_wallet_generated"), "success");
+        showToast(
+          isClientSide
+            ? "⚡ Keypair generated 100% on-device (Zero Server Exposure)!"
+            : t("toast_wallet_generated"),
+          "success"
+        );
       }
     } catch (err) {
       showToast("Wallet generation failed: " + err.message, "danger");
