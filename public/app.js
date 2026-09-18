@@ -247,7 +247,7 @@ document.addEventListener("DOMContentLoaded", () => {
     vaults: [
       {
         id: "master",
-        name: "Master Custodian Vault (Samuel)",
+        name: "Master Custodian Vault",
         address: "0x7cd0be5706a92f24e7be0fa25666ace9de0b5441a286efab982dcfaa74793033",
         role: "Primary Production Custodian",
         balance: "10.0 SUI",
@@ -906,6 +906,7 @@ document.addEventListener("DOMContentLoaded", () => {
     sidebarFileName.textContent = photo.name;
     sidebarMimeBadge.textContent = photo.content_type || "image/jpeg";
     metaBlobId.textContent = photo.blob_id || t("anchored_walrus");
+    metaFileId.textContent = photo.id || "--";
     const policyId = state.status?.bucket?.seal_policy_id || "0x9c1baccb244e45342ac150a0123a4802e8e834f25c00210e50c81081354eee44";
     metaSealPolicy.textContent = policyId;
 

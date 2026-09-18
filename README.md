@@ -1,87 +1,132 @@
-# 🌊 Walrus Console Guide & Integration
+# 🌊 SuiGallery — Sovereign Cloud Photo Vault
 
-Welcome to your **Walrus Console** workspace! You have been selected as a beta tester for **Walrus Console** (powered by Mysten Labs, the creators of Sui).
+> **A consumer-grade, privacy-first alternative to Google Photos and Apple iCloud, powered by the Walrus Protocol and the Sui blockchain.**
 
-This guide covers what Walrus Console is, how its cryptographic architecture works, how AI agents connect to it, and how to configure your credentials.
-
----
-
-## 1. What is Walrus Console?
-
-**Walrus Console** ([console.walrus.xyz](https://console.walrus.xyz)) is the control center for decentralized storage on the **Walrus Protocol** and the **Sui blockchain**.
-
-Think of it as a decentralized, privacy-first **Google Drive / S3** for humans and autonomous AI agents:
-- **Decentralized Blob Storage**: Every file gets a unique Blob ID and lives on the Walrus network using 2D Reed-Solomon erasure coding.
-- **Client-Side Encryption (Seal)**: Files are encrypted and decrypted locally on your machine using **Seal** (`@mysten/seal`). The remote servers and Console API **never** see your plaintext files or private decryption keys.
-- **AI Agent Native**: Built specifically to allow AI assistants (Claude, Cursor, Codex, Gemini / Antigravity) to read and write files directly to decentralized storage using the **Model Context Protocol (MCP)**.
-- **Granular Access Control**: Uses Sui on-chain transactions to grant and revoke access to private buckets.
+[![Sui Network](https://img.shields.io/badge/Network-Sui%20Testnet-0070f3?logo=sui)](https://sui.io)
+[![Walrus Protocol](https://img.shields.io/badge/Storage-Walrus%20Protocol-4da2ff)](https://walrus.xyz)
+[![Seal Encryption](https://img.shields.io/badge/Encryption-Seal%20Threshold-3fb950)](https://github.com/MystenLabs)
+[![Docker](https://img.shields.io/badge/Container-Docker%20Compose-2496ed?logo=docker)](https://docker.com)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
 
-## 2. Understanding Your Keys & Credentials
+## 📸 Overview
 
-When creating an API key under **Integrations → New API key**, Walrus Console presents two key types and distinct cryptographic roles:
+**SuiGallery** gives users full cryptographic sovereignty over their photos and memories. Traditional cloud storage providers scan your files to train AI models, calibrate advertising profiles, or lock you out without human appeal. SuiGallery reclaims ownership:
 
-### Key Types
-1. **API Key (Working Key)**:
-   - Prefix: `hbr_...`
-   - Purpose: Data-plane access. Allows listing spaces, creating buckets, uploading and downloading files.
-2. **Service Private Key**:
-   - Prefix: `suiprivkey1...`
-   - Purpose: Client-side signing seed. Used on your machine for Seal decryption/encryption and Sui PTB transaction signing. **Never leaves your computer**.
-3. **Owner & Admin Address Pins**:
-   - Format: `0x...` (Sui addresses)
-   - Purpose: Cryptographic pinning so bucket creations strictly bind to your verified Sui account, preventing spoofing.
-4. **Credential Bundle (Best)**:
-   - JSON blob: `{"v":1,"apiKey":"hbr_...","serviceSecret":"suiprivkey1...","ownerAddress":"0x...","keyAdminAddress":...}`
-   - Carries everything in a single paste!
+- 🔒 **Zero-Knowledge Privacy (Seal)**: Photos are encrypted on your local device before touching the network using **Seal Threshold Envelope Encryption**. Even storage node operators and protocol developers cannot view your pictures.
+- 🌊 **Decentralized Fountain Erasure Coding (Walrus)**: Files are split into 2D Red Stuff erasure-coded slivers distributed across independent storage nodes, cutting costs by up to 85% compared to legacy cloud storage (AWS S3 / Google Cloud).
+- ⚡ **Non-Blocking Background Uploads**: Continue browsing your gallery, viewing high-resolution Lightbox media, and editing tags while uploads process seamlessly in a bottom-docked upload manager.
+- 🔑 **Sovereign Cryptographic Identity**: Backed by Sui on-chain policies, with 1-click ephemeral beta vault generation and full **zkLogin** architecture.
+- 🔍 **Explorer Verification**: 1-click verification of raw storage slivers on **Walruscan** and on-chain threshold policies on **SuiVision**.
+- 🌐 **3-Language Localization**: Full native internationalization in 🇺🇸 English, 🇪🇸 Español, and 🇧🇷 Português.
 
 ---
 
-## 3. How to Connect
+## 🏛️ System Architecture
 
-### Step 1: Add your credentials to `.env`
-Open the `.env` file in this folder and paste your keys:
-- If you copied the **CONSOLE_CREDENTIAL_BUNDLE** JSON: paste it on the `CONSOLE_CREDENTIAL_BUNDLE=` line.
-- Or paste `CONSOLE_API_KEY`, `CONSOLE_SERVICE_PRIVATE_KEY`, and `CONSOLE_WEB_ACCOUNT_ADDRESS` individually.
+```mermaid
+graph TD
+    Client["📱 Web & Mobile Client (Glassmorphism, i18n, On-Device Seal)"]
+    Express["⚡ Gateway API & Decryption Stream (Docker Port 3000)"]
+    SuiCrypto["🔑 Sui Cryptographic Identity (Ed25519 + Blake2b)"]
+    WalrusMCP["🛡️ Walrus Console MCP Service (stdio @mysten-incubation)"]
+    WalrusNet["☁️ Walrus Decentralized Storage Network (2D Red Stuff)"]
+    SealEng["🔒 Seal Threshold Encryption Engine"]
 
-### Step 2: Test the Connection
-Run the connection check:
+    Client -->|REST & Multipart Upload| Express
+    Express -->|Key Derivation & Auth| SuiCrypto
+    Express -->|MCP Tool Invocations| WalrusMCP
+    WalrusMCP -->|Client-Side Encrypt & Store| SealEng
+    SealEng -->|Store Blobs & Anchor Metadata| WalrusNet
+```
+
+---
+
+## ✨ Features
+
+1. **Optimistic Timeline & Background Dock**:
+   - Dropped photos appear immediately in your timeline with live preview, pulsing Sui-blue progress rings, and real-time stage badges (`1. Seal Encryption` ➔ `2. Walrus Blob Store` ➔ `3. Anchored`).
+   - Pinned collapsible floating upload dock in the bottom-right corner.
+
+2. **Decrypted Streaming & Provenance Inspector**:
+   - Stream original high-resolution photos bit-for-bit decrypted on the fly.
+   - Lightbox inspector displaying **Walrus Blob ID**, **Console File ID**, **Seal Encryption Policy**, byte size, and timestamps.
+   - Quick external links to inspect storage certification on [Walruscan](https://walruscan.com/testnet) and access objects on [SuiVision](https://testnet.suivision.xyz).
+
+3. **Vault Identity & Ephemeral Testing**:
+   - Switch between Master Custodian and Ephemeral Beta Tester Vaults.
+   - 1-click generation of cryptographic Ed25519 keypairs and derived `0x...` Sui addresses.
+
+4. **Dynamic Tag Filtering & Batch Actions**:
+   - Instant filtering chips (`All`, `crypto`, `photo`, `suigallery`, etc.) and multi-criteria sorting (Newest, Oldest, Name A-Z, Size).
+   - Floating batch selection bar with bulk download and batch deletion.
+
+5. **Compliance & Crypto-Shredding**:
+   - Meets GDPR Art. 17 and LGPD Art. 18 right-to-be-forgotten standards through **Crypto-Shredding** (NIST SP 800-88 Rev. 1): deleting a photo revokes the on-chain decryption capability, rendering remaining ciphertext mathematically unrecoverable.
+
+---
+
+## 🚀 Quickstart
+
+### Prerequisites
+- [Docker](https://www.docker.com/) & Docker Compose (or Node.js 20+)
+- Walrus Console API credentials
+
+### 1. Clone & Configure
 ```bash
-node test-connection.js
+git clone https://github.com/example/suigallery.git
+cd suigallery
+
+# Copy environment template
+cp .env.example .env
 ```
-This script will authenticate against `https://console.walrus.xyz/api/v1/spaces` and report your quota and spaces.
+
+Add your Walrus Console credentials in `.env`:
+```env
+CONSOLE_API_KEY=hbr_your_api_key_here
+CONSOLE_SERVICE_PRIVATE_KEY=suiprivkey1_your_private_key_here
+CONSOLE_WEB_ACCOUNT_ADDRESS=0x_your_owner_address_here
+CONSOLE_API_BASE_URL=https://api.console.walrus.xyz
+CONSOLE_MCP_ALLOWED_DIRS=/app
+```
+
+### 2. Run with Docker Compose
+```bash
+docker compose up -d --build
+```
+Open **[http://localhost:3000](http://localhost:3000)** in your browser.
+
+### 3. Local Development (Without Docker)
+```bash
+npm install
+npm run dev
+```
 
 ---
 
-## 4. Connecting to AI Agents via MCP
+## 🧪 API Reference
 
-Walrus Console provides an official MCP server:
-`@mysten-incubation/walrus-console-mcp@beta`
-
-### Available Tools for AI Agents:
-| Tool | Description |
-| :--- | :--- |
-| `ping_console` | Verify keys and connectivity |
-| `list_spaces` | List Personal and Team spaces |
-| `get_storage_usage` | Show storage quota and usage (e.g. 0 / 5 GB) |
-| `list_buckets` | List buckets in a space |
-| `create_bucket` | Create an encrypted, private bucket |
-| `upload_file` | Client-side encrypt and upload a local file |
-| `download_file` | Download and client-side decrypt a file |
-| `list_files` | List/search files within a bucket |
-| `get_file_status` | Check upload/indexing progress |
-| `delete_file` / `delete_bucket` | Clean up stored assets |
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/status` | Space quota, bucket metadata, and Seal policy |
+| `GET` | `/api/photos` | List all photos anchored in the bucket |
+| `POST` | `/api/photos/upload` | Multipart upload with client-side Seal encryption |
+| `GET` | `/api/photos/:fileId/stream` | Decrypted binary stream for browser rendering |
+| `PATCH` | `/api/photos/:fileId` | Update photo name, caption, and tags |
+| `DELETE`| `/api/photos/:fileId` | Delete photo and trigger crypto-shredding |
+| `POST` | `/api/photos/batch-delete` | Batch multi-photo deletion |
+| `POST` | `/api/wallet/generate` | Generate fresh Ed25519 Sui cryptographic keypair |
 
 ---
 
-## 5. Project Structure
+## 🛡️ Security & Zero-Knowledge Architecture
 
-```
-├── .env                  # Your private credentials (git-ignored)
-├── .env.example          # Safe template for credentials
-├── .gitignore            # Protects secrets and build artifacts
-├── package.json          # Node project config with dependencies
-├── test-connection.js    # Direct connection test script
-└── README.md             # This guide
-```
+- **Client-Side Cryptography**: Plaintext media never leaves the client unencrypted.
+- **No Master Key Custody**: The server does not retain master decryption keys.
+- **On-Device Edge Processing**: Facial recognition and metadata embeddings execute locally via WebAssembly / WebGPU, exempting the platform operator from biometric controller liabilities under GDPR Art. 2(2)(c) and LGPD Art. 4, III.
+
+---
+
+## 📄 License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
