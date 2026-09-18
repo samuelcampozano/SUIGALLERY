@@ -549,6 +549,28 @@ body {
   background: rgba(77, 162, 255, 0.1);
 }
 
+.explorer-link-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: rgba(77, 162, 255, 0.1);
+  border: 1px solid rgba(77, 162, 255, 0.25);
+  color: var(--brand-sui);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  text-decoration: none;
+}
+
+.explorer-link-btn:hover {
+  background: rgba(77, 162, 255, 0.22);
+  border-color: var(--brand-sui);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
 .btn-sm {
   padding: 0.45rem 0.9rem;
   font-size: 0.8rem;
@@ -1506,6 +1528,12 @@ body.select-mode .photo-select-checkbox {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.72rem;
   color: var(--text-secondary);
+}
+
+.vault-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .vault-item-badge {

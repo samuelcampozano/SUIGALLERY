@@ -539,7 +539,10 @@ document.addEventListener("DOMContentLoaded", () => {
               <div class="vault-item-addr">${shortenAddress(v.address)} • ${v.balance || "5.0 SUI"}</div>
             </div>
           </div>
-          <div>
+          <div class="vault-item-actions">
+            <a href="https://testnet.suivision.xyz/account/${v.address}" target="_blank" class="explorer-link-btn" title="Inspect on SuiVision" onclick="event.stopPropagation()">
+              <i data-lucide="external-link"></i>
+            </a>
             ${isActive ? '<span class="vault-item-badge">Active</span>' : '<button class="btn btn-ghost btn-sm select-vault-btn">Switch</button>'}
           </div>
         </div>
@@ -903,8 +906,24 @@ document.addEventListener("DOMContentLoaded", () => {
     sidebarFileName.textContent = photo.name;
     sidebarMimeBadge.textContent = photo.content_type || "image/jpeg";
     metaBlobId.textContent = photo.blob_id || t("anchored_walrus");
-    metaFileId.textContent = photo.id;
-    metaSealPolicy.textContent = state.status?.bucket?.seal_policy_id || "0x9c1baccb244e45342ac150a0123a4802e8e834f25c00210e50c81081354eee44";
+    const policyId = state.status?.bucket?.seal_policy_id || "0x9c1baccb244e45342ac150a0123a4802e8e834f25c00210e50c81081354eee44";
+    metaSealPolicy.textContent = policyId;
+
+    const walruscanLink = document.getElementById("walruscanLink");
+    if (walruscanLink) {
+      if (photo.blob_id) {
+        walruscanLink.href = `https://walruscan.com/testnet/blob/${photo.blob_id}`;
+        walruscanLink.style.display = "inline-flex";
+      } else {
+        walruscanLink.style.display = "none";
+      }
+    }
+
+    const suivisionPolicyLink = document.getElementById("suivisionPolicyLink");
+    if (suivisionPolicyLink) {
+      suivisionPolicyLink.href = `https://testnet.suivision.xyz/object/${policyId}`;
+    }
+
     metaFileSize.textContent = formatBytes(photo.size);
     metaUploadDate.textContent = formatDate(photo.created_at);
 
