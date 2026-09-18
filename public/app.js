@@ -540,7 +540,10 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
           </div>
           <div class="vault-item-actions">
-            <a href="https://testnet.suivision.xyz/account/${v.address}" target="_blank" class="explorer-link-btn" title="Inspect on SuiVision" onclick="event.stopPropagation()">
+            <a href="https://suiscan.xyz/mainnet/account/${v.address}" target="_blank" class="explorer-link-btn" title="Inspect on SuiScan (Mainnet)" onclick="event.stopPropagation()">
+              <i data-lucide="compass"></i>
+            </a>
+            <a href="https://suivision.xyz/account/${v.address}" target="_blank" class="explorer-link-btn" title="Inspect on SuiVision (Mainnet)" onclick="event.stopPropagation()">
               <i data-lucide="external-link"></i>
             </a>
             ${isActive ? '<span class="vault-item-badge">Active</span>' : '<button class="btn btn-ghost btn-sm select-vault-btn">Switch</button>'}
@@ -922,7 +925,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const suivisionPolicyLink = document.getElementById("suivisionPolicyLink");
     if (suivisionPolicyLink) {
-      suivisionPolicyLink.href = `https://testnet.suivision.xyz/object/${policyId}`;
+      suivisionPolicyLink.href = `https://suivision.xyz/object/${policyId}`;
+    }
+    const suiscanPolicyLink = document.getElementById("suiscanPolicyLink");
+    if (suiscanPolicyLink) {
+      suiscanPolicyLink.href = `https://suiscan.xyz/mainnet/object/${policyId}`;
     }
 
     metaFileSize.textContent = formatBytes(photo.size);

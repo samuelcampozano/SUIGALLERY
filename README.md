@@ -52,7 +52,7 @@ graph TD
 2. **Decrypted Streaming & Provenance Inspector**:
    - Stream original high-resolution photos bit-for-bit decrypted on the fly.
    - Lightbox inspector displaying **Walrus Blob ID**, **Console File ID**, **Seal Encryption Policy**, byte size, and timestamps.
-   - Quick external links to inspect storage certification on [Walruscan](https://walruscan.com/testnet) and access objects on [SuiVision](https://testnet.suivision.xyz).
+   - Quick external links to inspect storage certification on [Walruscan](https://walruscan.com/testnet), and on-chain access objects on [SuiVision](https://suivision.xyz) and [SuiScan](https://suiscan.xyz).
 
 3. **Vault Identity & Ephemeral Testing**:
    - Switch between Master Custodian and Ephemeral Beta Tester Vaults.
