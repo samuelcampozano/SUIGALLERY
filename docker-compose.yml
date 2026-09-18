@@ -15,3 +15,4 @@ services:
     volumes:
       - ./temp_storage:/app/temp_storage
       - ./public:/app/public
+      - ./server:/app/server

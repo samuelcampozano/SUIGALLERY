@@ -83,7 +83,7 @@ app.get("/api/status", async (req, res) => {
     res.json({
       success: true,
       service: "SuiGallery Walrus Backend",
-      version: "1.0.0",
+      version: "1.1.0",
       status: ping.ok ? "connected" : "degraded",
       space: {
         id: DEFAULT_SPACE_ID,
