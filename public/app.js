@@ -995,6 +995,9 @@ document.addEventListener("DOMContentLoaded", () => {
       lightboxZoomBtn.innerHTML = '<i data-lucide="maximize-2"></i>';
     }
 
+    const techDrawer = document.querySelector(".tech-drawer");
+    if (techDrawer) techDrawer.open = false;
+
     sidebarFileName.textContent = photo.name;
     sidebarMimeBadge.textContent = photo.content_type || "image/jpeg";
     metaBlobId.textContent = photo.blob_id || t("anchored_walrus");
@@ -1212,6 +1215,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // NON-BLOCKING BACKGROUND UPLOAD PIPELINE
   // ==========================================
   let isUploadingQueue = false;
+  let lastUploadedBlobId = null;
   const uploadQueue = [];
 
   function updateOptimisticCard(taskId, stage, progress, labelText) {
@@ -1223,6 +1227,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function handleFilesUpload(files) {
     if (!files || files.length === 0) return;
+
+    const dockOnchainProof = document.getElementById("dockOnchainProof");
+    if (dockOnchainProof) dockOnchainProof.classList.add("hidden");
 
     const fileList = Array.from(files);
     fileInput.value = "";
@@ -1313,6 +1320,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const data = await res.json();
 
         if (data.success) {
+          // Track blob ID for on-chain proof link
+          lastUploadedBlobId = data.photo?.blob_id || data.file?.blob_id || null;
+
           // Advance to Step 3: Anchored in Bucket
           task.stage = 3;
           task.progress = 100;
@@ -1357,7 +1367,28 @@ document.addEventListener("DOMContentLoaded", () => {
     if (dockCloseBtn) dockCloseBtn.classList.remove("hidden");
     dockProgressFill.style.width = "100%";
 
-    // Auto-dismiss the dock after 6 seconds
+    // Display on-chain proof directly in dock upon successful completion
+    const dockOnchainProof = document.getElementById("dockOnchainProof");
+    const dockWalrusLink = document.getElementById("dockWalrusLink");
+    const dockSuiLink = document.getElementById("dockSuiLink");
+
+    if (dockOnchainProof && completedInBatch > 0) {
+      const policyId = state.status?.bucket?.seal_policy_id || "0x9c1baccb244e45342ac150a0123a4802e8e834f25c00210e50c81081354eee44";
+      if (dockSuiLink) {
+        dockSuiLink.href = `https://suivision.xyz/object/${policyId}`;
+      }
+      if (dockWalrusLink) {
+        if (lastUploadedBlobId) {
+          dockWalrusLink.href = `https://walruscan.com/testnet/blob/${lastUploadedBlobId}`;
+        } else {
+          dockWalrusLink.href = "https://walruscan.com/testnet";
+        }
+      }
+      dockOnchainProof.classList.remove("hidden");
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    // Auto-dismiss the dock after 10 seconds
     setTimeout(() => {
       if (!isUploadingQueue && state.activeUploads.length === 0) {
         uploadDock.classList.add("fade-out");
@@ -1366,7 +1397,7 @@ document.addEventListener("DOMContentLoaded", () => {
           uploadDock.classList.remove("fade-out");
         }, 300);
       }
-    }, 6000);
+    }, 10000);
   }
 
   uploadTriggerBtn.addEventListener("click", () => fileInput.click());

@@ -237,31 +237,9 @@
         </div>
 
         <div class="sidebar-meta-list">
-          <div class="meta-item">
-            <span class="meta-label" data-i18n="meta_blob_id">Walrus Blob ID</span>
-            <div class="meta-value-copy">
-              <code id="metaBlobId" class="mono-code">Pending registration...</code>
-              <a id="walruscanLink" href="#" target="_blank" class="explorer-link-btn" title="Inspect on Walruscan Explorer"><i data-lucide="external-link"></i></a>
-              <button class="copy-btn" data-copy="metaBlobId" title="Copy Blob ID"><i data-lucide="copy"></i></button>
-            </div>
-          </div>
-
-          <div class="meta-item">
-            <span class="meta-label" data-i18n="meta_file_id">Console File ID</span>
-            <div class="meta-value-copy">
-              <code id="metaFileId" class="mono-code">--</code>
-              <button class="copy-btn" data-copy="metaFileId" title="Copy File ID"><i data-lucide="copy"></i></button>
-            </div>
-          </div>
-
-          <div class="meta-item">
-            <span class="meta-label" data-i18n="meta_seal_policy">Seal Encryption Policy</span>
-            <div class="meta-value-copy">
-              <code id="metaSealPolicy" class="mono-code">--</code>
-              <a id="suivisionPolicyLink" href="#" target="_blank" class="explorer-link-btn" title="Inspect on SuiVision (Mainnet)"><i data-lucide="external-link"></i></a>
-              <a id="suiscanPolicyLink" href="#" target="_blank" class="explorer-link-btn" title="Inspect on SuiScan (Mainnet)"><i data-lucide="compass"></i></a>
-              <button class="copy-btn" data-copy="metaSealPolicy" title="Copy Policy ID"><i data-lucide="copy"></i></button>
-            </div>
+          <div class="privacy-status-pill">
+            <i data-lucide="shield-check"></i>
+            <span>Encrypted & Anchored on Walrus</span>
           </div>
 
           <div class="meta-grid">
@@ -274,6 +252,58 @@
               <span id="metaUploadDate" class="meta-val">--</span>
             </div>
           </div>
+
+          <!-- 3 Compact On-Chain Verification Buttons -->
+          <div class="explorer-proof-section">
+            <span class="meta-label">On-Chain Verification</span>
+            <div class="explorer-buttons-row">
+              <a id="walruscanLink" href="#" target="_blank" class="explorer-mini-btn" title="Verify storage on Walruscan">
+                <i data-lucide="cloud"></i> <span>Walruscan</span>
+              </a>
+              <a id="suivisionPolicyLink" href="#" target="_blank" class="explorer-mini-btn" title="Verify policy on SuiVision">
+                <i data-lucide="eye"></i> <span>SuiVision</span>
+              </a>
+              <a id="suiscanPolicyLink" href="#" target="_blank" class="explorer-mini-btn" title="Verify contract on SuiScan">
+                <i data-lucide="compass"></i> <span>SuiScan</span>
+              </a>
+            </div>
+          </div>
+
+          <!-- Collapsible Technical IDs for Developers / Auditors -->
+          <details class="tech-drawer">
+            <summary class="tech-drawer-summary">
+              <span class="tech-drawer-summary-left">
+                <i data-lucide="hash"></i>
+                <span>Technical Details</span>
+              </span>
+              <i data-lucide="chevron-down" class="tech-drawer-icon"></i>
+            </summary>
+            <div class="tech-drawer-content">
+              <div class="tech-mini-item">
+                <span class="tech-mini-label" data-i18n="meta_blob_id">Walrus Blob ID</span>
+                <div class="tech-mini-val">
+                  <code id="metaBlobId" class="mono-code">Pending registration...</code>
+                  <button class="copy-btn" data-copy="metaBlobId" title="Copy Blob ID"><i data-lucide="copy"></i></button>
+                </div>
+              </div>
+
+              <div class="tech-mini-item">
+                <span class="tech-mini-label" data-i18n="meta_file_id">Console File ID</span>
+                <div class="tech-mini-val">
+                  <code id="metaFileId" class="mono-code">--</code>
+                  <button class="copy-btn" data-copy="metaFileId" title="Copy File ID"><i data-lucide="copy"></i></button>
+                </div>
+              </div>
+
+              <div class="tech-mini-item">
+                <span class="tech-mini-label" data-i18n="meta_seal_policy">Seal Encryption Policy</span>
+                <div class="tech-mini-val">
+                  <code id="metaSealPolicy" class="mono-code">--</code>
+                  <button class="copy-btn" data-copy="metaSealPolicy" title="Copy Policy ID"><i data-lucide="copy"></i></button>
+                </div>
+              </div>
+            </div>
+          </details>
         </div>
 
         <div class="sidebar-actions">
@@ -403,6 +433,22 @@
               <div class="dock-step" id="dockStep3">
                 <i data-lucide="check-circle-2"></i>
                 <span data-i18n="step3_short">3. Anchored in Bucket</span>
+              </div>
+            </div>
+
+            <!-- On-Chain Confirmation Banner when upload completes -->
+            <div class="dock-onchain-proof hidden" id="dockOnchainProof">
+              <div class="dock-proof-title">
+                <i data-lucide="shield-check"></i>
+                <span>Anchored on Sui & Walrus</span>
+              </div>
+              <div class="dock-proof-actions">
+                <a id="dockWalruscanLink" href="#" target="_blank" class="dock-proof-btn" title="Inspect Blob on Walruscan">
+                  <i data-lucide="cloud"></i> <span>Walruscan</span>
+                </a>
+                <a id="dockSuivisionLink" href="#" target="_blank" class="dock-proof-btn" title="Inspect Policy on SuiVision">
+                  <i data-lucide="eye"></i> <span>SuiVision</span>
+                </a>
               </div>
             </div>
           </div>

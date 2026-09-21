@@ -2018,3 +2018,228 @@ body.select-mode .photo-select-checkbox {
   font-size: 0.65rem;
   color: var(--text-secondary);
 }
+
+/* ==========================================
+   CONSUMER PHOTO VIEWER: PRIVACY PILL & 3 SMALL BUTTONS
+   ========================================== */
+.privacy-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  background: rgba(63, 185, 80, 0.08);
+  border: 1px solid rgba(63, 185, 80, 0.22);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.8rem;
+  color: #3fb950;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.privacy-status-pill svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.explorer-proof-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+}
+
+.explorer-buttons-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.45rem;
+}
+
+.explorer-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.48rem 0.4rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.explorer-mini-btn:hover {
+  background: rgba(77, 162, 255, 0.12);
+  border-color: rgba(77, 162, 255, 0.45);
+  color: var(--sui-cyan);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(77, 162, 255, 0.15);
+}
+
+.explorer-mini-btn svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+/* Collapsible Technical Details Drawer */
+.tech-drawer {
+  margin-top: 0.35rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+
+.tech-drawer[open] {
+  border-color: var(--border-medium);
+}
+
+.tech-drawer-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  transition: color 0.15s ease;
+}
+
+.tech-drawer-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tech-drawer-summary:hover {
+  color: var(--text-secondary);
+}
+
+.tech-drawer-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tech-drawer-summary-left svg {
+  width: 12px;
+  height: 12px;
+}
+
+.tech-drawer-icon {
+  width: 13px;
+  height: 13px;
+  transition: transform 0.2s ease;
+}
+
+.tech-drawer[open] .tech-drawer-icon {
+  transform: rotate(180deg);
+}
+
+.tech-drawer-content {
+  padding: 0.5rem 0.65rem;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.tech-mini-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.tech-mini-label {
+  font-size: 0.63rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tech-mini-val {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 0.25rem 0.45rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.tech-mini-val .mono-code {
+  font-size: 0.67rem;
+  max-width: 180px;
+}
+
+/* ==========================================
+   UPLOAD DOCK ON-CHAIN CONFIRMATION PROOF
+   ========================================== */
+.dock-onchain-proof {
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  animation: fadeIn 0.3s ease;
+}
+
+.dock-onchain-proof.hidden {
+  display: none !important;
+}
+
+.dock-proof-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: #3fb950;
+  font-weight: 600;
+}
+
+.dock-proof-title svg {
+  width: 14px;
+  height: 14px;
+}
+
+.dock-proof-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.dock-proof-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.55rem;
+  background: rgba(77, 162, 255, 0.12);
+  border: 1px solid rgba(77, 162, 255, 0.3);
+  border-radius: 4px;
+  font-size: 0.69rem;
+  color: var(--sui-cyan);
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.dock-proof-btn:hover {
+  background: var(--sui-blue);
+  color: white;
+  border-color: var(--sui-blue);
+}
+
+.dock-proof-btn svg {
+  width: 11px;
+  height: 11px;
+}
+
