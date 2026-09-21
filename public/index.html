@@ -15,6 +15,17 @@
   <!-- Toast Container -->
   <div class="toast-container" id="toastContainer"></div>
 
+  <!-- Global Drag-and-Drop Overlay -->
+  <div class="drag-drop-overlay hidden" id="dragDropOverlay">
+    <div class="drag-drop-content">
+      <div class="drag-drop-icon">
+        <i data-lucide="shield-check"></i>
+      </div>
+      <h3>Drop Photos to Encrypt & Store on Walrus</h3>
+      <p>Local Seal Threshold Envelope Encryption applied before decentralized storage</p>
+    </div>
+  </div>
+
   <!-- Top Navigation Bar -->
   <header class="navbar">
     <div class="nav-top-row">
@@ -209,8 +220,11 @@
     <div class="lightbox-container">
       <button class="lightbox-close" id="lightboxCloseBtn"><i data-lucide="x"></i></button>
 
-      <div class="lightbox-viewport">
+      <div class="lightbox-viewport" id="lightboxViewport">
+        <button class="lightbox-nav-btn lightbox-prev" id="lightboxPrevBtn" title="Previous photo (←)"><i data-lucide="chevron-left"></i></button>
         <img id="lightboxImg" src="" alt="Encrypted preview" class="lightbox-image">
+        <button class="lightbox-nav-btn lightbox-next" id="lightboxNextBtn" title="Next photo (→)"><i data-lucide="chevron-right"></i></button>
+        <button class="lightbox-zoom-btn" id="lightboxZoomBtn" title="Toggle Zoom / Fullscreen"><i data-lucide="maximize-2"></i></button>
       </div>
 
       <aside class="lightbox-sidebar">
@@ -269,6 +283,11 @@
           <button id="deleteBtn" class="btn btn-danger btn-block">
             <i data-lucide="trash-2"></i> <span data-i18n="delete_btn">Delete from Walrus</span>
           </button>
+          <div class="lightbox-keyboard-hint">
+            <span><kbd>←</kbd> <kbd>→</kbd> Navigate</span>
+            <span><kbd>Esc</kbd> Close</span>
+            <span><kbd>Del</kbd> Delete</span>
+          </div>
         </div>
       </aside>
     </div>
@@ -328,6 +347,10 @@
           <button class="btn btn-primary btn-block" id="generateWalletBtn">
             <i data-lucide="sparkles"></i>
             <span data-i18n="generate_new_vault">Generate Ephemeral Test Vault</span>
+          </button>
+          <button class="btn btn-secondary btn-block" id="exportVaultsBtn" style="margin-top: 8px;">
+            <i data-lucide="download"></i>
+            <span>Export Keypair Backup (JSON)</span>
           </button>
           <p class="generate-hint" data-i18n="generate_hint">Creates a cryptographic Ed25519 keypair and derived Sui address instantly for isolated beta testing.</p>
         </div>

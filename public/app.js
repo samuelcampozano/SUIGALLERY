@@ -326,6 +326,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const lightboxModal = document.getElementById("lightboxModal");
   const lightboxBackdrop = document.getElementById("lightboxBackdrop");
   const lightboxCloseBtn = document.getElementById("lightboxCloseBtn");
+  const lightboxViewport = document.getElementById("lightboxViewport");
+  const lightboxPrevBtn = document.getElementById("lightboxPrevBtn");
+  const lightboxNextBtn = document.getElementById("lightboxNextBtn");
+  const lightboxZoomBtn = document.getElementById("lightboxZoomBtn");
   const lightboxImg = document.getElementById("lightboxImg");
   const sidebarFileName = document.getElementById("sidebarFileName");
   const sidebarMimeBadge = document.getElementById("sidebarMimeBadge");
@@ -336,6 +340,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const metaUploadDate = document.getElementById("metaUploadDate");
   const downloadBtn = document.getElementById("downloadBtn");
   const deleteBtn = document.getElementById("deleteBtn");
+  const exportVaultsBtn = document.getElementById("exportVaultsBtn");
+  const dragDropOverlay = document.getElementById("dragDropOverlay");
 
   // Upload Dock Elements
   const uploadDock = document.getElementById("uploadDock");
@@ -671,6 +677,29 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // Export Vault Backup (JSON)
+  if (exportVaultsBtn) {
+    exportVaultsBtn.addEventListener("click", () => {
+      const backupData = {
+        exported_at: new Date().toISOString(),
+        application: "SuiGallery Walrus Console",
+        active_vault_index: state.activeVaultIndex,
+        active_vault: state.vaults[state.activeVaultIndex] || state.vaults[0],
+        vaults: state.vaults
+      };
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `suigallery-vaults-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast("Vault backup exported securely to JSON", "success");
+    });
+  }
+
   // ==========================================
   // API INTERACTIONS & STATUS
   // ==========================================
@@ -961,6 +990,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
   function openLightbox(photo) {
     state.selectedPhoto = photo;
+    if (lightboxViewport) lightboxViewport.classList.remove("zoomed");
+    if (lightboxZoomBtn) {
+      lightboxZoomBtn.innerHTML = '<i data-lucide="maximize-2"></i>';
+    }
+
     sidebarFileName.textContent = photo.name;
     sidebarMimeBadge.textContent = photo.content_type || "image/jpeg";
     metaBlobId.textContent = photo.blob_id || t("anchored_walrus");
@@ -995,21 +1029,86 @@ document.addEventListener("DOMContentLoaded", () => {
 
     lightboxModal.classList.remove("hidden");
     document.body.style.overflow = "hidden";
+    if (window.lucide) window.lucide.createIcons();
   }
 
   function closeLightbox() {
     lightboxModal.classList.add("hidden");
+    if (lightboxViewport) lightboxViewport.classList.remove("zoomed");
     document.body.style.overflow = "";
     state.selectedPhoto = null;
   }
 
+  function navigateLightbox(direction) {
+    if (!state.selectedPhoto || !state.photos || state.photos.length === 0) return;
+    const currentIndex = state.photos.findIndex((p) => p.id === state.selectedPhoto.id);
+    if (currentIndex === -1) return;
+    let nextIndex = currentIndex + direction;
+    if (nextIndex < 0) nextIndex = state.photos.length - 1;
+    if (nextIndex >= state.photos.length) nextIndex = 0;
+    openLightbox(state.photos[nextIndex]);
+  }
+
+  function toggleLightboxZoom() {
+    if (!lightboxViewport) return;
+    lightboxViewport.classList.toggle("zoomed");
+    const isZoomed = lightboxViewport.classList.contains("zoomed");
+    if (lightboxZoomBtn) {
+      lightboxZoomBtn.innerHTML = isZoomed
+        ? '<i data-lucide="minimize-2"></i>'
+        : '<i data-lucide="maximize-2"></i>';
+      if (window.lucide) window.lucide.createIcons();
+    }
+  }
+
+  if (lightboxPrevBtn) {
+    lightboxPrevBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      navigateLightbox(-1);
+    });
+  }
+
+  if (lightboxNextBtn) {
+    lightboxNextBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      navigateLightbox(1);
+    });
+  }
+
+  if (lightboxZoomBtn) {
+    lightboxZoomBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleLightboxZoom();
+    });
+  }
+
   lightboxCloseBtn.addEventListener("click", closeLightbox);
   lightboxBackdrop.addEventListener("click", closeLightbox);
+
   document.addEventListener("keydown", (e) => {
+    // If user is focused on an input/textarea, ignore shortcut navigation
+    if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
+      if (e.key === "Escape") {
+        document.activeElement.blur();
+      }
+      return;
+    }
+
     if (e.key === "Escape") {
       if (!editModal.classList.contains("hidden")) closeEditModal();
       else if (!vaultModal.classList.contains("hidden")) closeVaultModal();
       else if (!lightboxModal.classList.contains("hidden")) closeLightbox();
+    } else if (!lightboxModal.classList.contains("hidden")) {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        navigateLightbox(-1);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        navigateLightbox(1);
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        deleteBtn.click();
+      }
     }
   });
 
@@ -1298,6 +1397,38 @@ document.addEventListener("DOMContentLoaded", () => {
     const dt = e.dataTransfer;
     const files = dt.files;
     handleFilesUpload(files);
+  });
+
+  // Global Window Drag & Drop Overlay
+  let dragCounter = 0;
+  window.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) {
+      dragCounter++;
+      if (dragDropOverlay) dragDropOverlay.classList.remove("hidden");
+    }
+  });
+
+  window.addEventListener("dragover", (e) => {
+    e.preventDefault();
+  });
+
+  window.addEventListener("dragleave", (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter <= 0) {
+      dragCounter = 0;
+      if (dragDropOverlay) dragDropOverlay.classList.add("hidden");
+    }
+  });
+
+  window.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    if (dragDropOverlay) dragDropOverlay.classList.add("hidden");
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFilesUpload(e.dataTransfer.files);
+    }
   });
 
   // Search filter

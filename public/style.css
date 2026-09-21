@@ -1847,3 +1847,174 @@ body.select-mode .photo-select-checkbox {
     white-space: nowrap;
   }
 }
+
+/* ==========================================
+   GLOBAL DRAG-AND-DROP DROPZONE OVERLAY
+   ========================================== */
+.drag-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(10, 15, 29, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+.drag-drop-overlay.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.drag-drop-content {
+  background: var(--bg-card);
+  border: 2px dashed var(--sui-cyan);
+  border-radius: var(--radius-lg);
+  padding: 3.5rem 4rem;
+  text-align: center;
+  box-shadow: 0 0 50px rgba(77, 162, 255, 0.25);
+  animation: pulseDropzone 2s infinite ease-in-out;
+  max-width: 500px;
+}
+
+@keyframes pulseDropzone {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 35px rgba(77, 162, 255, 0.2);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 55px rgba(77, 162, 255, 0.4);
+  }
+}
+
+.drag-drop-icon {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: rgba(77, 162, 255, 0.15);
+  color: var(--sui-cyan);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.25rem;
+}
+
+.drag-drop-icon svg {
+  width: 36px;
+  height: 36px;
+}
+
+.drag-drop-content h3 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.drag-drop-content p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ==========================================
+   LIGHTBOX NAVIGATION & ZOOM CONTROLS
+   ========================================== */
+.lightbox-viewport {
+  position: relative;
+  overflow: hidden;
+}
+
+.lightbox-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(10, 15, 29, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.lightbox-nav-btn:hover {
+  background: var(--sui-blue);
+  color: white;
+  border-color: var(--sui-blue);
+  transform: translateY(-50%) scale(1.08);
+}
+
+.lightbox-prev { left: 1.25rem; }
+.lightbox-next { right: 1.25rem; }
+
+.lightbox-zoom-btn {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: rgba(10, 15, 29, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.lightbox-zoom-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-medium);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.lightbox-viewport.zoomed .lightbox-image {
+  transform: scale(1.6);
+  cursor: zoom-out;
+}
+
+.lightbox-image {
+  transition: transform 0.25s ease;
+  cursor: zoom-in;
+}
+
+/* ==========================================
+   LIGHTBOX KEYBOARD SHORTCUTS HINT
+   ========================================== */
+.lightbox-keyboard-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.lightbox-keyboard-hint kbd {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}

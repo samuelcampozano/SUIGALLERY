@@ -1,11 +1,20 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { walrus, DEFAULT_SPACE_ID, DEFAULT_BUCKET_ID } from "./walrus-client.js";
+import {
+  validateMagicBytes,
+  isValidFileId,
+  sanitizeString,
+  sanitizeTags,
+  DecryptedCacheManager
+} from "./security.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,9 +26,68 @@ if (!fs.existsSync(tempStorageDir)) {
   fs.mkdirSync(tempStorageDir, { recursive: true });
 }
 
+// Initialize Decrypted Cache Lifecycle Manager (10-minute TTL)
+const cacheManager = new DecryptedCacheManager({ ttlMs: 10 * 60 * 1000 });
+
+// Startup cleanup: purge stale decrypted files from prior sessions
+cacheManager.cleanupOrphanedFiles(tempStorageDir);
+
+// Periodic sweep: clean expired cache files every 5 minutes
+const pruneInterval = setInterval(() => {
+  cacheManager.prune();
+}, 5 * 60 * 1000);
+
 const app = express();
+
+// 1. Security Headers (Helmet + Custom Content Security Policy)
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        upgradeInsecureRequests: []
+      }
+    },
+    crossOriginEmbedderPolicy: false
+  })
+);
+
+// 2. Cross-Origin Resource Sharing
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
+
+// 3. Rate Limiters
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 500, // Limit each IP to 500 requests per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: "Too many requests. Please try again later." }
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60, // Limit each IP to 60 uploads per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: "Upload rate limit exceeded. Please wait a few minutes." }
+});
+
+const walletLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: "Wallet generation rate limit exceeded. Please wait." }
+});
+
+app.use("/api/", apiLimiter);
 
 // Serve static frontend files
 const publicDir = path.join(rootDir, "public");
@@ -35,13 +103,11 @@ const storage = multer.diskStorage({
     cb(null, `upload_${Date.now()}_${safeName}`);
   }
 });
+
 const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 } // 50 MB max
 });
-
-// Cache map for decrypted files: fileId -> local path
-const decryptedCache = new Map();
 
 // Helper to determine Content-Type
 function getContentType(filename) {
@@ -84,7 +150,7 @@ app.get("/api/status", async (req, res) => {
       success: true,
       service: "SuiGallery Walrus Backend",
       version: "1.1.0",
-      status: ping.ok ? "connected" : "degraded",
+      status: ping?.ok ? "connected" : "degraded",
       space: {
         id: DEFAULT_SPACE_ID,
         name: "Personal Space",
@@ -135,8 +201,8 @@ app.get("/api/photos", async (req, res) => {
   }
 });
 
-// 3. Upload Photo (Client-Side Seal Encrypted before upload)
-app.post("/api/photos/upload", upload.single("photo"), async (req, res) => {
+// 3. Upload Photo (Magic Byte Validation + Local Seal Threshold Encryption)
+app.post("/api/photos/upload", uploadLimiter, upload.single("photo"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, error: "No photo file uploaded" });
   }
@@ -148,11 +214,25 @@ app.post("/api/photos/upload", upload.single("photo"), async (req, res) => {
   console.log(`📸 [API] Received upload request for ${originalName} (${req.file.size} bytes)`);
 
   try {
+    // Byte-level validation of file signature (magic numbers)
+    const magic = await validateMagicBytes(localFilePath);
+    if (!magic.valid) {
+      console.warn(`⚠️ [API] Rejected upload of ${originalName}: ${magic.error}`);
+      try {
+        if (fs.existsSync(localFilePath)) fs.unlinkSync(localFilePath);
+      } catch {}
+      return res.status(400).json({ success: false, error: magic.error });
+    }
+
+    const sanitizedName = sanitizeString(originalName, 128);
+    const sanitizedDesc = sanitizeString(description, 512);
+    const ext = path.extname(originalName).replace(".", "");
+
     const result = await walrus.uploadPhoto({
       localPath: localFilePath,
-      fileName: originalName,
-      description,
-      tags: ["photo", "suigallery", path.extname(originalName).replace(".", "")]
+      fileName: sanitizedName,
+      description: sanitizedDesc,
+      tags: ["photo", "suigallery", ext].filter(Boolean)
     });
 
     // Clean up the local temp upload file
@@ -160,9 +240,7 @@ app.post("/api/photos/upload", upload.single("photo"), async (req, res) => {
       if (fs.existsSync(localFilePath)) {
         fs.unlinkSync(localFilePath);
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     res.json({
       success: true,
@@ -175,30 +253,32 @@ app.post("/api/photos/upload", upload.single("photo"), async (req, res) => {
       if (fs.existsSync(localFilePath)) {
         fs.unlinkSync(localFilePath);
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
     console.error("❌ [API] Upload failed:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// 4. Stream / Decrypt Photo
+// 4. Stream / Decrypt Photo (with TTL Cache)
 app.get("/api/photos/:fileId/stream", async (req, res) => {
   const { fileId } = req.params;
   const shouldDownload = req.query.download === "true";
 
-  try {
-    let cachedPath = decryptedCache.get(fileId);
+  if (!isValidFileId(fileId)) {
+    return res.status(400).json({ success: false, error: "Invalid file ID parameter" });
+  }
 
-    // If not in cache or file was deleted, fetch and decrypt
+  try {
+    let cachedPath = cacheManager.get(fileId);
+
+    // If not in cache or file was pruned, fetch and decrypt
     if (!cachedPath || !fs.existsSync(cachedPath)) {
       const destFilename = `decrypted_${fileId}_${Date.now()}.bin`;
       const destPath = path.join(tempStorageDir, destFilename);
 
       await walrus.downloadAndDecryptPhoto({ fileId, destPath });
       cachedPath = destPath;
-      decryptedCache.set(fileId, cachedPath);
+      cacheManager.set(fileId, cachedPath);
     }
 
     // Try to get original filename from photos list
@@ -222,23 +302,19 @@ app.get("/api/photos/:fileId/stream", async (req, res) => {
   }
 });
 
-// 5. Delete Photo
+// 5. Delete Photo (Crypto-Shredding)
 app.delete("/api/photos/:fileId", async (req, res) => {
   const { fileId } = req.params;
+
+  if (!isValidFileId(fileId)) {
+    return res.status(400).json({ success: false, error: "Invalid file ID parameter" });
+  }
 
   try {
     await walrus.deletePhoto(fileId);
 
-    // Clean cache
-    const cachedPath = decryptedCache.get(fileId);
-    if (cachedPath && fs.existsSync(cachedPath)) {
-      try {
-        fs.unlinkSync(cachedPath);
-      } catch {
-        // ignore
-      }
-      decryptedCache.delete(fileId);
-    }
+    // Immediately evict and unlink decrypted cache from disk
+    cacheManager.evict(fileId);
 
     res.json({ success: true, message: `Photo ${fileId} deleted from Walrus` });
   } catch (err) {
@@ -247,13 +323,27 @@ app.delete("/api/photos/:fileId", async (req, res) => {
   }
 });
 
-// 6. Update Photo Metadata (Rename, Tags, Description)
+// 6. Update Photo Metadata (Sanitized Rename, Tags, Description)
 app.patch("/api/photos/:fileId", async (req, res) => {
   const { fileId } = req.params;
   const { name, description, tags } = req.body;
 
+  if (!isValidFileId(fileId)) {
+    return res.status(400).json({ success: false, error: "Invalid file ID parameter" });
+  }
+
+  const cleanName = name !== undefined ? sanitizeString(name, 128) : undefined;
+  const cleanDesc = description !== undefined ? sanitizeString(description, 512) : undefined;
+  const cleanTags = tags !== undefined ? sanitizeTags(tags) : undefined;
+
   try {
-    const result = await walrus.updatePhoto({ fileId, name, description, tags });
+    const result = await walrus.updatePhoto({
+      fileId,
+      name: cleanName,
+      description: cleanDesc,
+      tags: cleanTags
+    });
+
     res.json({
       success: true,
       message: "Photo metadata updated successfully",
@@ -272,15 +362,17 @@ app.post("/api/photos/batch-delete", async (req, res) => {
     return res.status(400).json({ success: false, error: "fileIds array required" });
   }
 
+  // Filter valid file IDs to prevent traversal injection
+  const validIds = fileIds.filter(isValidFileId);
+  if (validIds.length === 0) {
+    return res.status(400).json({ success: false, error: "No valid file IDs provided" });
+  }
+
   const results = [];
-  for (const fileId of fileIds) {
+  for (const fileId of validIds) {
     try {
       await walrus.deletePhoto(fileId);
-      const cached = decryptedCache.get(fileId);
-      if (cached && fs.existsSync(cached)) {
-        try { fs.unlinkSync(cached); } catch {}
-        decryptedCache.delete(fileId);
-      }
+      cacheManager.evict(fileId);
       results.push({ fileId, success: true });
     } catch (err) {
       results.push({ fileId, success: false, error: err.message });
@@ -294,8 +386,8 @@ app.post("/api/photos/batch-delete", async (req, res) => {
   });
 });
 
-// 8. Generate Ephemeral Test Vault / Sui Wallet
-app.post("/api/wallet/generate", (req, res) => {
+// 8. Generate Ephemeral Test Vault / Sui Wallet (Fallback Endpoint)
+app.post("/api/wallet/generate", walletLimiter, (req, res) => {
   try {
     const wallet = walrus.generateEphemeralWallet();
     res.json({
@@ -307,22 +399,41 @@ app.post("/api/wallet/generate", (req, res) => {
   }
 });
 
-// Fallback to index.html for client routing
+// Fallback to index.html for GET client routing; 404 for non-GET
 app.use((req, res) => {
-  res.sendFile(path.join(publicDir, "index.html"));
+  if (req.method === "GET") {
+    res.sendFile(path.join(publicDir, "index.html"));
+  } else {
+    res.status(404).json({ success: false, error: "Endpoint not found" });
+  }
 });
 
-// Start Server
-const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => {
-  console.log("====================================================");
-  console.log(`🌊 SuiGallery / Walrus Photos running on:`);
-  console.log(`👉 http://localhost:${PORT}`);
-  console.log("====================================================");
-});
+// Start Server only if executed directly and not in test mode
+let server = null;
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+
+if (process.env.NODE_ENV !== "test" && isDirectRun) {
+  const PORT = process.env.PORT || 3000;
+  server = app.listen(PORT, () => {
+    console.log("====================================================");
+    console.log(`🌊 SuiGallery / Walrus Photos running on:`);
+    console.log(`👉 http://localhost:${PORT}`);
+    console.log("====================================================");
+  });
+}
 
 // Handle graceful shutdown
-process.on("SIGINT", () => {
+function shutdown() {
   console.log("\nShutting down server...");
-  server.close(() => process.exit(0));
-});
+  clearInterval(pruneInterval);
+  if (server) {
+    server.close(() => process.exit(0));
+  } else {
+    process.exit(0);
+  }
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
+export default app;

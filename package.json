@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js",
-    "test-connection": "node test-connection.js",
+    "test": "node test/run-all-tests.js",
+    "test:security": "node test/test-security.js",
+    "test:api": "node test/test-api.js",
+    "test:onchain": "node test/test-onchain.js",
     "test:shred": "node test-crypto-shredding.js",
+    "test-connection": "node test-connection.js",
     "mcp:install": "npx -y @mysten-incubation/walrus-console-mcp@beta install",
     "mcp:ping": "node -e \"import('./test-connection.js').then(m => m.testConnection())\""
   },
@@ -26,6 +29,8 @@
     "cors": "^2.8.6",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
     "multer": "^2.4.0"
   }
 }

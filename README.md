@@ -108,11 +108,19 @@ npm install
 npm run dev
 ```
 
-### 4. Run Automated Crypto-Shredding Verification
-Verify end-to-end encryption, bit-for-bit decryption, cryptographic deletion, and post-shred irrecoverability against live storage:
+### 4. Run Automated Test Suites
+Run the automated test suites verifying backend security defenses, API endpoints, on-chain Sui Mainnet policies, and live crypto-shredding:
 ```bash
-npm run test:shred
+# Run all test suites end-to-end
+npm test
+
+# Run individual suites
+npm run test:security   # Magic bytes validation, path traversal defense, XSS escaping, cache TTL
+npm run test:api        # REST endpoints, rate limiting, and HTTP security headers
+npm run test:onchain    # Sui Mainnet GraphQL Move policy and custodian verification
+npm run test:shred      # End-to-end live crypto-shredding and bit-for-bit validation
 ```
+
 
 ---
 
