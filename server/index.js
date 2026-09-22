@@ -36,6 +36,9 @@ cacheManager.cleanupOrphanedFiles(tempStorageDir);
 const pruneInterval = setInterval(() => {
   cacheManager.prune();
 }, 5 * 60 * 1000);
+if (typeof pruneInterval.unref === "function") {
+  pruneInterval.unref();
+}
 
 const app = express();
 

@@ -1,6 +1,7 @@
 process.env.NODE_ENV = "test";
 import http from "node:http";
 import app from "../server/index.js";
+import { walrus } from "../server/walrus-client.js";
 
 async function runApiTests() {
   console.log("==================================================");
@@ -20,11 +21,11 @@ async function runApiTests() {
     }
   }
 
-  // Start ephemeral test server on an open port
+  // Start ephemeral test server explicitly on 127.0.0.1
   const testServer = http.createServer(app);
-  await new Promise((resolve) => testServer.listen(0, resolve));
+  await new Promise((resolve) => testServer.listen(0, "127.0.0.1", resolve));
   const port = testServer.address().port;
-  const baseUrl = `http://localhost:${port}`;
+  const baseUrl = `http://127.0.0.1:${port}`;
   console.log(`🚀 Ephemeral test server listening on ${baseUrl}\n`);
 
   try {
@@ -115,8 +116,15 @@ async function runApiTests() {
       body: JSON.stringify({ fileIds: [] })
     });
     assert(badBatchRes.status === 400, "Rejects empty fileIds array in batch delete with HTTP 400");
+  } catch (err) {
+    console.error("❌ Unexpected test execution error:", err);
+    failed++;
   } finally {
-    testServer.close();
+    if (typeof testServer.closeAllConnections === "function") {
+      testServer.closeAllConnections();
+    }
+    await new Promise((resolve) => testServer.close(resolve));
+    await walrus.disconnect();
   }
 
   console.log("\n==================================================");
@@ -124,7 +132,6 @@ async function runApiTests() {
   console.log("==================================================\n");
 
   if (failed > 0) process.exit(1);
-  process.exit(0);
 }
 
 runApiTests();

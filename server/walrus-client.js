@@ -31,9 +31,48 @@ class WalrusClientManager {
     this.transport = null;
     this.isConnecting = false;
     this.activeBucket = null;
+    this.mockFiles = [
+      {
+        id: "demo_photo_1",
+        name: "Welcome_to_SuiGallery.png",
+        blob_id: "7X9jPuF1K8ZQq7VxABEnzk74d5VQ7VjohrMockBlob01",
+        size: 1048576,
+        content_type: "image/png",
+        created_at: new Date(Date.now() - 3600000).toISOString(),
+        tags: ["photo", "suigallery", "demo"],
+        description: "Decentralized memory secured by Walrus Protocol & Sui Move threshold policy"
+      }
+    ];
+  }
+
+  isMockMode() {
+    if (process.env.NODE_ENV === "test" && process.env.WALRUS_LIVE_TEST !== "true") {
+      return true;
+    }
+    const hasKeys = Boolean(
+      process.env.CONSOLE_API_KEY &&
+      (process.env.CONSOLE_SERVICE_PRIVATE_KEY || process.env.CONSOLE_CREDENTIAL_BUNDLE)
+    );
+    return !hasKeys || process.env.WALRUS_MOCK === "true";
+  }
+
+  async disconnect() {
+    try {
+      if (this.client) {
+        await this.client.close();
+        this.client = null;
+      }
+      if (this.transport) {
+        await this.transport.close();
+        this.transport = null;
+      }
+    } catch {}
   }
 
   async getClient() {
+    if (this.isMockMode()) {
+      return null;
+    }
     if (this.client) return this.client;
     if (this.isConnecting) {
       // Wait for existing connection attempt
@@ -104,18 +143,38 @@ class WalrusClientManager {
   }
 
   async ping() {
+    if (this.isMockMode()) {
+      return { ok: true, mode: "sandbox" };
+    }
     const client = await this.getClient();
     const res = await client.callTool({ name: "ping_console", arguments: {} });
     return this.parseMcpResponse(res);
   }
 
   async getStorageUsage() {
+    if (this.isMockMode()) {
+      return {
+        storage_cap: 5000000000,
+        storage_used: 1048576,
+        available: 4998951424,
+        percent_used: 0.0002
+      };
+    }
     const client = await this.getClient();
     const res = await client.callTool({ name: "get_storage_usage", arguments: {} });
     return this.parseMcpResponse(res);
   }
 
   async getBucketDetails(bucketId = DEFAULT_BUCKET_ID) {
+    if (this.isMockMode()) {
+      return {
+        id: bucketId,
+        name: "Default (Sandbox)",
+        visibility: "private",
+        seal_policy_id: DEFAULT_SEAL_POLICY_ID,
+        file_count: this.mockFiles.length
+      };
+    }
     const client = await this.getClient();
     const res = await client.callTool({
       name: "get_bucket",
@@ -127,6 +186,9 @@ class WalrusClientManager {
   }
 
   async listPhotos(bucketId = DEFAULT_BUCKET_ID) {
+    if (this.isMockMode()) {
+      return this.mockFiles;
+    }
     const client = await this.getClient();
     const res = await client.callTool({
       name: "list_files",
@@ -137,6 +199,24 @@ class WalrusClientManager {
   }
 
   async uploadPhoto({ localPath, fileName, description = "", tags = ["photo", "suigallery"] }) {
+    if (this.isMockMode()) {
+      const stat = fs.existsSync(localPath) ? fs.statSync(localPath) : { size: 65536 };
+      const fileId = "sandbox_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
+      const blobId = "mock_blob_" + Date.now();
+      const newFile = {
+        id: fileId,
+        name: fileName,
+        blob_id: blobId,
+        size: stat.size,
+        content_type: "image/png",
+        created_at: new Date().toISOString(),
+        tags: tags || ["photo", "suigallery"],
+        description: description || ""
+      };
+      this.mockFiles.unshift(newFile);
+      return { fileId, name: fileName, blobId, state: "completed", pending: false };
+    }
+
     const client = await this.getClient();
     const bucket = await this.getBucketDetails();
     const sealPolicyId = bucket?.seal_policy_id || DEFAULT_SEAL_POLICY_ID;
@@ -161,6 +241,17 @@ class WalrusClientManager {
   }
 
   async downloadAndDecryptPhoto({ fileId, destPath }) {
+    if (this.isMockMode()) {
+      const dir = path.dirname(destPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const transparentPng = Buffer.from(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360606060000000050001a7e48b560000000049454e44ae426082",
+        "hex"
+      );
+      fs.writeFileSync(destPath, transparentPng);
+      return { fileId, destPath, success: true };
+    }
+
     const client = await this.getClient();
     const bucket = await this.getBucketDetails();
     const sealPolicyId = bucket?.seal_policy_id || DEFAULT_SEAL_POLICY_ID;
@@ -181,6 +272,12 @@ class WalrusClientManager {
   }
 
   async deletePhoto(fileId) {
+    if (this.isMockMode()) {
+      const idx = this.mockFiles.findIndex((f) => f.id === fileId);
+      if (idx !== -1) this.mockFiles.splice(idx, 1);
+      return { id: fileId, deleted: true };
+    }
+
     const client = await this.getClient();
     console.log(`🗑️ [WalrusClient] Deleting file ${fileId} from bucket ${DEFAULT_BUCKET_ID}`);
 
@@ -196,6 +293,16 @@ class WalrusClientManager {
   }
 
   async updatePhoto({ fileId, name, description, tags }) {
+    if (this.isMockMode()) {
+      const file = this.mockFiles.find((f) => f.id === fileId);
+      if (file) {
+        if (name !== undefined) file.name = name;
+        if (description !== undefined) file.description = description;
+        if (tags !== undefined) file.tags = tags;
+      }
+      return { id: fileId, updated: true };
+    }
+
     const client = await this.getClient();
     console.log(`✏️ [WalrusClient] Updating metadata for file ${fileId}`);
 
