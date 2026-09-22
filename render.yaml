@@ -1,0 +1,59 @@
+# ========================================================
+# RENDER BLUEPRINT SPECIFICATION (Infrastructure-as-Code)
+# Documentation: https://render.com/docs/blueprint-spec
+# ========================================================
+
+services:
+  # ------------------------------------------------------
+  # 1. DEVELOPMENT / STAGING ENVIRONMENT (Branch: dev)
+  # ------------------------------------------------------
+  - type: web
+    name: suigallery-dev
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: dev
+    healthCheckPath: /api/status
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      - key: CONSOLE_API_BASE_URL
+        value: https://api.console.walrus.xyz
+      - key: CONSOLE_MCP_ALLOWED_DIRS
+        value: /app
+      - key: CONSOLE_API_KEY
+        sync: false
+      - key: CONSOLE_SERVICE_PRIVATE_KEY
+        sync: false
+      - key: CONSOLE_WEB_ACCOUNT_ADDRESS
+        sync: false
+
+  # ------------------------------------------------------
+  # 2. PRODUCTION ENVIRONMENT (Branch: main)
+  # ------------------------------------------------------
+  - type: web
+    name: suigallery-prod
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: main
+    healthCheckPath: /api/status
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      - key: CONSOLE_API_BASE_URL
+        value: https://api.console.walrus.xyz
+      - key: CONSOLE_MCP_ALLOWED_DIRS
+        value: /app
+      - key: CONSOLE_API_KEY
+        sync: false
+      - key: CONSOLE_SERVICE_PRIVATE_KEY
+        sync: false
+      - key: CONSOLE_WEB_ACCOUNT_ADDRESS
+        sync: false
