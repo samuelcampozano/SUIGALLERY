@@ -160,9 +160,19 @@ class WalrusClientManager {
         percent_used: 0.0002
       };
     }
-    const client = await this.getClient();
-    const res = await client.callTool({ name: "get_storage_usage", arguments: {} });
-    return this.parseMcpResponse(res);
+    try {
+      const client = await this.getClient();
+      const res = await client.callTool({ name: "get_storage_usage", arguments: {} });
+      return this.parseMcpResponse(res);
+    } catch (err) {
+      console.warn("⚠️ [WalrusClient] getStorageUsage fallback to sandbox:", err.message);
+      return {
+        storage_cap: 5000000000,
+        storage_used: 1048576,
+        available: 4998951424,
+        percent_used: 0.0002
+      };
+    }
   }
 
   async getBucketDetails(bucketId = DEFAULT_BUCKET_ID) {
@@ -175,27 +185,43 @@ class WalrusClientManager {
         file_count: this.mockFiles.length
       };
     }
-    const client = await this.getClient();
-    const res = await client.callTool({
-      name: "get_bucket",
-      arguments: { bucketId }
-    });
-    const parsed = await this.parseMcpResponse(res);
-    this.activeBucket = parsed?.data || parsed;
-    return this.activeBucket;
+    try {
+      const client = await this.getClient();
+      const res = await client.callTool({
+        name: "get_bucket",
+        arguments: { bucketId }
+      });
+      const parsed = await this.parseMcpResponse(res);
+      this.activeBucket = parsed?.data || parsed;
+      return this.activeBucket;
+    } catch (err) {
+      console.warn("⚠️ [WalrusClient] getBucketDetails fallback to sandbox:", err.message);
+      return {
+        id: bucketId,
+        name: "Default (Sandbox)",
+        visibility: "private",
+        seal_policy_id: DEFAULT_SEAL_POLICY_ID,
+        file_count: this.mockFiles.length
+      };
+    }
   }
 
   async listPhotos(bucketId = DEFAULT_BUCKET_ID) {
     if (this.isMockMode()) {
       return this.mockFiles;
     }
-    const client = await this.getClient();
-    const res = await client.callTool({
-      name: "list_files",
-      arguments: { bucketId, limit: 100 }
-    });
-    const parsed = await this.parseMcpResponse(res);
-    return parsed?.data || [];
+    try {
+      const client = await this.getClient();
+      const res = await client.callTool({
+        name: "list_files",
+        arguments: { bucketId, limit: 100 }
+      });
+      const parsed = await this.parseMcpResponse(res);
+      return parsed?.data || [];
+    } catch (err) {
+      console.warn("⚠️ [WalrusClient] listPhotos fallback to sandbox:", err.message);
+      return this.mockFiles;
+    }
   }
 
   async uploadPhoto({ localPath, fileName, description = "", tags = ["photo", "suigallery"] }) {

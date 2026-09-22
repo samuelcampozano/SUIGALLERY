@@ -38,26 +38,34 @@
             <span class="brand-name">SuiGallery</span>
             <span class="brand-tag" data-i18n="brand_tag">WALRUS PROTOCOL</span>
           </div>
-        </div>
-
-        <div class="status-badge" id="connectionBadge">
-          <span class="status-dot"></span>
-          <span id="statusText" data-i18n="status_connecting">Connecting to Walrus...</span>
-        </div>
       </div>
 
       <div class="nav-right">
-        <!-- Wallet / Vault Identity Pill -->
-        <button class="vault-pill" id="vaultPill" title="Manage Connected Vault & Identity">
-          <div class="vault-avatar">
-            <i data-lucide="wallet"></i>
-          </div>
-          <div class="vault-meta">
-            <span class="vault-label" data-i18n="active_vault">Active Vault</span>
-            <span class="vault-addr" id="activeVaultAddr">0x7cd0...3033</span>
-          </div>
-          <i data-lucide="chevron-down" class="chevron-icon"></i>
-        </button>
+        <!-- Auth Container: zkLogin Button (when unauthenticated) OR User Profile Pill (when authenticated) -->
+        <div class="auth-nav-container" id="authNavContainer">
+          <!-- Unauthenticated State: Sign In with zkLogin Button -->
+          <button class="btn btn-primary zklogin-nav-btn" id="loginTriggerBtn">
+            <svg class="google-icon" viewBox="0 0 24 24" width="16" height="16">
+              <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"/>
+              <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.7-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z"/>
+              <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3 0-.8.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12.3 1.9 7.9l3.7-2.9z"/>
+              <path fill="#34A853" d="M12 23.5c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.3L1.9 16.5C3.7 20.2 7.5 23.5 12 23.5z"/>
+            </svg>
+            <span data-i18n="signin_zklogin">Sign In with zkLogin</span>
+          </button>
+
+          <!-- Authenticated State: User Profile Pill -->
+          <button class="vault-pill user-profile-pill hidden" id="vaultPill" title="Manage Account & Sovereign Vault">
+            <div class="vault-avatar user-avatar-badge" id="userAvatar">
+              <i data-lucide="shield-check"></i>
+            </div>
+            <div class="vault-meta">
+              <span class="vault-label" id="userDisplayName">zkLogin User</span>
+              <span class="vault-addr" id="activeVaultAddr">alex@gmail.com</span>
+            </div>
+            <i data-lucide="chevron-down" class="chevron-icon"></i>
+          </button>
+        </div>
 
         <!-- Language Selector Dropdown -->
         <div class="lang-dropdown" id="langDropdown">
@@ -352,37 +360,150 @@
     </div>
   </div>
 
-  <!-- Wallet & Vault Manager Modal -->
+  <!-- zkLogin Authentication Modal -->
+  <div class="modal-dialog hidden" id="zkLoginModal">
+    <div class="modal-backdrop" id="zkLoginModalBackdrop"></div>
+    <div class="modal-content auth-modal-content">
+      <div class="modal-header auth-modal-header">
+        <div class="auth-brand-badge">
+          <div class="logo-icon-sm"><i data-lucide="shield-check"></i></div>
+          <span class="auth-badge-label">Zero-Knowledge Sovereign Identity</span>
+        </div>
+        <button class="btn-close" id="zkLoginModalClose"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="modal-body auth-modal-body">
+        <h2 class="auth-title" data-i18n="auth_title">Sign in to SuiGallery</h2>
+        <p class="auth-subtitle" data-i18n="auth_subtitle">
+          Your photos are client-side encrypted before touching Walrus. Powered by Sui zkLogin—no seed phrases, zero gas, and frictionless privacy.
+        </p>
+
+        <div class="auth-methods">
+          <!-- Primary CTA: Google zkLogin -->
+          <button class="btn btn-google-auth" id="googleZkLoginBtn">
+            <svg class="google-icon" viewBox="0 0 24 24" width="20" height="20">
+              <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"/>
+              <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.7-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z"/>
+              <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3 0-.8.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12.3 1.9 7.9l3.7-2.9z"/>
+              <path fill="#34A853" d="M12 23.5c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.3L1.9 16.5C3.7 20.2 7.5 23.5 12 23.5z"/>
+            </svg>
+            <span data-i18n="btn_google_zklogin">Continue with Google (zkLogin)</span>
+          </button>
+
+          <div class="auth-divider">
+            <span data-i18n="or_continue_with">or choose another method</span>
+          </div>
+
+          <!-- Secondary Options -->
+          <div class="auth-secondary-grid">
+            <button class="auth-secondary-card" id="connectSuiWalletBtn">
+              <div class="auth-card-icon"><i data-lucide="wallet"></i></div>
+              <div class="auth-card-info">
+                <span class="auth-card-title">Sui Wallet</span>
+                <span class="auth-card-desc">Browser extension</span>
+              </div>
+            </button>
+
+            <button class="auth-secondary-card" id="guestPasskeyBtn">
+              <div class="auth-card-icon"><i data-lucide="sparkles"></i></div>
+              <div class="auth-card-info">
+                <span class="auth-card-title">Guest Passkey</span>
+                <span class="auth-card-desc">100% on-device testing</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <div class="auth-footer-notice">
+          <i data-lucide="lock"></i>
+          <span data-i18n="auth_privacy_notice">Google only verifies your identity; it never has access to your photos, encryption keys, or Walrus storage.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sovereign Account & Vault Profile Modal -->
   <div class="modal-dialog hidden" id="vaultModal">
     <div class="modal-backdrop" id="vaultModalBackdrop"></div>
     <div class="modal-content modal-lg">
       <div class="modal-header">
         <div class="header-icon-title">
-          <div class="vault-modal-icon"><i data-lucide="key-round"></i></div>
+          <div class="vault-modal-icon"><i data-lucide="shield-check"></i></div>
           <div>
-            <h3 data-i18n="vault_manager_title">Sui Vault & Identity Manager</h3>
-            <p class="modal-subtitle" data-i18n="vault_manager_subtitle">Switch between verified Master Custodian and Ephemeral Beta Tester Vaults.</p>
+            <h3 data-i18n="account_manager_title">Sovereign Account & Vault</h3>
+            <p class="modal-subtitle" data-i18n="account_manager_subtitle">Decentralized memory vault secured by Sui zkLogin and Walrus Protocol.</p>
           </div>
         </div>
         <button class="btn-close" id="vaultModalClose"><i data-lucide="x"></i></button>
       </div>
 
       <div class="modal-body">
-        <!-- Vault List -->
-        <div class="vault-list" id="vaultList">
-          <!-- Populated dynamically -->
+        <!-- Active User Profile Card -->
+        <div class="account-card" id="activeAccountCard">
+          <div class="account-avatar-large" id="modalUserAvatar">
+            <i data-lucide="user-check"></i>
+          </div>
+          <div class="account-info">
+            <div class="account-name-row">
+              <h4 id="modalUserName" class="account-name">Alex</h4>
+              <span class="account-badge" id="modalAuthBadge">Google zkLogin</span>
+            </div>
+            <p id="modalUserEmail" class="account-email">alex@gmail.com</p>
+            <div class="account-meta-chips">
+              <span class="meta-chip">🔒 End-to-End Encrypted</span>
+              <span class="meta-chip">🌊 Walrus Sovereign Vault</span>
+            </div>
+          </div>
         </div>
 
-        <div class="vault-generate-section">
-          <button class="btn btn-primary btn-block" id="generateWalletBtn">
-            <i data-lucide="sparkles"></i>
-            <span data-i18n="generate_new_vault">Generate Ephemeral Test Vault</span>
+        <!-- Collapsible Technical Blockchain Details (Hidden by Default to Hide Network Complexity) -->
+        <details class="tech-drawer" style="margin-top: 1rem;">
+          <summary class="tech-drawer-summary">
+            <span class="tech-drawer-summary-left">
+              <i data-lucide="cpu"></i>
+              <span>Advanced Blockchain Details</span>
+            </span>
+            <i data-lucide="chevron-down" class="tech-drawer-icon"></i>
+          </summary>
+          <div class="tech-drawer-content">
+            <div class="tech-mini-item">
+              <span class="tech-mini-label">Derived Sui Address</span>
+              <div class="tech-mini-val">
+                <code id="modalSuiAddress" class="mono-code">0x...</code>
+                <button class="copy-btn" id="copyAddressBtn" title="Copy Sui Address"><i data-lucide="copy"></i></button>
+              </div>
+            </div>
+            <div class="tech-mini-item">
+              <span class="tech-mini-label">Signature Scheme</span>
+              <div class="tech-mini-val">
+                <code id="modalSigScheme" class="mono-code">zkLogin (ZKS)</code>
+              </div>
+            </div>
+            <div class="tech-mini-actions" style="margin-top: 8px; display: flex; gap: 8px;">
+              <a id="accountSuiScanLink" href="#" target="_blank" class="explorer-mini-btn">
+                <i data-lucide="compass"></i> <span>View on SuiScan</span>
+              </a>
+              <a id="accountSuiVisionLink" href="#" target="_blank" class="explorer-mini-btn">
+                <i data-lucide="external-link"></i> <span>View on SuiVision</span>
+              </a>
+            </div>
+          </div>
+        </details>
+
+        <!-- Account Actions -->
+        <div class="account-modal-actions" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+          <button class="btn btn-secondary btn-block" id="switchAccountBtn">
+            <i data-lucide="user-plus"></i>
+            <span data-i18n="switch_account">Switch Account / Sign In with Another ID</span>
           </button>
-          <button class="btn btn-secondary btn-block" id="exportVaultsBtn" style="margin-top: 8px;">
+          <button class="btn btn-secondary btn-block" id="exportVaultsBtn">
             <i data-lucide="download"></i>
             <span>Export Keypair Backup (JSON)</span>
           </button>
-          <p class="generate-hint" data-i18n="generate_hint">Creates a cryptographic Ed25519 keypair and derived Sui address instantly for isolated beta testing.</p>
+          <button class="btn btn-danger btn-block" id="signOutBtn" style="margin-top: 4px;">
+            <i data-lucide="log-out"></i>
+            <span data-i18n="sign_out">Sign Out</span>
+          </button>
         </div>
       </div>
     </div>

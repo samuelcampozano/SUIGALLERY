@@ -2243,3 +2243,350 @@ body.select-mode .photo-select-checkbox {
   height: 11px;
 }
 
+/* ==========================================
+   ZKLOGIN & MODERN AUTHENTICATION STYLES
+========================================== */
+.auth-nav-container {
+  display: inline-flex;
+  align-items: center;
+}
+
+.zklogin-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 1rem;
+  border-radius: var(--radius-full);
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, rgba(77, 162, 255, 0.2), rgba(63, 185, 80, 0.2));
+  border: 1px solid rgba(77, 162, 255, 0.4);
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.zklogin-nav-btn:hover {
+  background: linear-gradient(135deg, rgba(77, 162, 255, 0.35), rgba(63, 185, 80, 0.35));
+  border-color: var(--brand-sui);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(77, 162, 255, 0.25);
+}
+
+.google-icon {
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.user-profile-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.35rem 0.85rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.user-profile-pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-active);
+}
+
+.user-avatar-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--brand-sui), var(--accent-success));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #05080e;
+  font-weight: 700;
+  font-size: 0.75rem;
+  box-shadow: 0 0 8px rgba(63, 185, 80, 0.3);
+}
+
+.user-avatar-badge svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* zkLogin Modal */
+.auth-modal-content {
+  max-width: 440px !important;
+  border-radius: 20px !important;
+  background: radial-gradient(circle at 50% 0%, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98)) !important;
+  border: 1px solid rgba(77, 162, 255, 0.25) !important;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(77, 162, 255, 0.1) !important;
+  padding: 1.5rem !important;
+}
+
+.auth-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: none !important;
+  padding: 0 0 1rem 0 !important;
+}
+
+.auth-brand-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(77, 162, 255, 0.1);
+  border: 1px solid rgba(77, 162, 255, 0.2);
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-full);
+}
+
+.logo-icon-sm {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--brand-sui);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #05080e;
+}
+
+.logo-icon-sm svg {
+  width: 12px;
+  height: 12px;
+}
+
+.auth-badge-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--brand-sui);
+  letter-spacing: 0.02em;
+}
+
+.auth-modal-body {
+  padding: 0 !important;
+}
+
+.auth-title {
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.45rem;
+  background: linear-gradient(90deg, #ffffff, #c2e0ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.auth-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-bottom: 1.5rem;
+}
+
+.btn-google-auth {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1.25rem;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  color: #1f1f1f;
+  font-size: 0.92rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.btn-google-auth:hover {
+  background: #f1f3f4;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(255, 255, 255, 0.15);
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 1.25rem 0;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.auth-divider span {
+  padding: 0 0.75rem;
+  font-weight: 500;
+}
+
+.auth-secondary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.auth-secondary-card {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem 0.85rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auth-secondary-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-active);
+  transform: translateY(-1px);
+}
+
+.auth-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: rgba(77, 162, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-sui);
+  flex-shrink: 0;
+}
+
+.auth-card-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-card-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.auth-card-desc {
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+}
+
+.auth-footer-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  background: rgba(63, 185, 80, 0.06);
+  border: 1px solid rgba(63, 185, 80, 0.2);
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.auth-footer-notice svg {
+  width: 14px;
+  height: 14px;
+  color: var(--accent-success);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* Account & Vault Profile Card in Modal */
+.account-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.account-avatar-large {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--brand-sui), var(--accent-success));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #05080e;
+  font-size: 1.25rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.account-avatar-large svg {
+  width: 24px;
+  height: 24px;
+}
+
+.account-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+}
+
+.account-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.account-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.account-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.15rem 0.55rem;
+  background: rgba(63, 185, 80, 0.15);
+  border: 1px solid rgba(63, 185, 80, 0.35);
+  color: var(--accent-success);
+  border-radius: var(--radius-full);
+}
+
+.account-email {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.account-meta-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.meta-chip {
+  font-size: 0.68rem;
+  font-weight: 500;
+  padding: 0.15rem 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-full);
+  color: var(--text-tertiary);
+}
+
+
