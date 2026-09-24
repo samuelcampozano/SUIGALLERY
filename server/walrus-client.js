@@ -34,12 +34,12 @@ class WalrusClientManager {
     this.mockFiles = [
       {
         id: "demo_photo_1",
-        name: "Welcome_to_SuiGallery.png",
+        name: "Welcome_to_Nodus.png",
         blob_id: "7X9jPuF1K8ZQq7VxABEnzk74d5VQ7VjohrMockBlob01",
         size: 1048576,
         content_type: "image/png",
         created_at: new Date(Date.now() - 3600000).toISOString(),
-        tags: ["photo", "suigallery", "demo"],
+        tags: ["photo", "nodus", "demo"],
         description: "Decentralized memory secured by Walrus Protocol & Sui Move threshold policy"
       }
     ];
@@ -103,7 +103,7 @@ class WalrusClientManager {
       });
 
       this.client = new Client(
-        { name: "suigallery-backend", version: "1.0.0" },
+        { name: "nodus-backend", version: "1.0.0" },
         { capabilities: {} }
       );
 
@@ -224,7 +224,7 @@ class WalrusClientManager {
     }
   }
 
-  async uploadPhoto({ localPath, fileName, description = "", tags = ["photo", "suigallery"] }) {
+  async uploadPhoto({ localPath, fileName, description = "", tags = ["photo", "nodus"] }) {
     if (this.isMockMode()) {
       const stat = fs.existsSync(localPath) ? fs.statSync(localPath) : { size: 65536 };
       const fileId = "sandbox_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
@@ -236,7 +236,7 @@ class WalrusClientManager {
         size: stat.size,
         content_type: "image/png",
         created_at: new Date().toISOString(),
-        tags: tags || ["photo", "suigallery"],
+        tags: tags || ["photo", "nodus"],
         description: description || ""
       };
       this.mockFiles.unshift(newFile);
@@ -268,6 +268,10 @@ class WalrusClientManager {
 
   async downloadAndDecryptPhoto({ fileId, destPath }) {
     if (this.isMockMode()) {
+      const file = this.mockFiles.find((f) => f.id === fileId);
+      if (!file) {
+        throw new Error(`File ${fileId} not found or has been crypto-shredded`);
+      }
       const dir = path.dirname(destPath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       const transparentPng = Buffer.from(

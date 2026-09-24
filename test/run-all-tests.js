@@ -36,7 +36,7 @@ async function runSuite(suite) {
 
 async function runAll() {
   console.log("===============================================================");
-  console.log("🌊 SUIGALLERY COMPREHENSIVE AUTOMATED TEST RUNNER");
+  console.log("🌊 NODUS SOVEREIGN CLOUD COMPREHENSIVE AUTOMATED TEST RUNNER");
   console.log("===============================================================");
 
   const results = [];

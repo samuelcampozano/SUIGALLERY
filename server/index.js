@@ -151,7 +151,7 @@ app.get("/api/status", async (req, res) => {
 
     res.json({
       success: true,
-      service: "SuiGallery Walrus Backend",
+      service: "Nodus Sovereign Cloud Backend",
       version: "1.1.0",
       status: ping?.ok ? "connected" : "degraded",
       space: {
@@ -212,7 +212,7 @@ app.post("/api/photos/upload", uploadLimiter, upload.single("photo"), async (req
 
   const localFilePath = req.file.path;
   const originalName = req.file.originalname;
-  const description = req.body.description || "Uploaded via SuiGallery";
+  const description = req.body.description || "Uploaded via Nodus";
 
   console.log(`📸 [API] Received upload request for ${originalName} (${req.file.size} bytes)`);
 
@@ -235,7 +235,7 @@ app.post("/api/photos/upload", uploadLimiter, upload.single("photo"), async (req
       localPath: localFilePath,
       fileName: sanitizedName,
       description: sanitizedDesc,
-      tags: ["photo", "suigallery", ext].filter(Boolean)
+      tags: ["photo", "nodus", ext].filter(Boolean)
     });
 
     // Clean up the local temp upload file
@@ -419,7 +419,7 @@ if (process.env.NODE_ENV !== "test" && isDirectRun) {
   const PORT = process.env.PORT || 3000;
   server = app.listen(PORT, () => {
     console.log("====================================================");
-    console.log(`🌊 SuiGallery / Walrus Photos running on:`);
+    console.log(`🌊 Nodus Sovereign Cloud running on:`);
     console.log(`👉 http://localhost:${PORT}`);
     console.log("====================================================");
   });

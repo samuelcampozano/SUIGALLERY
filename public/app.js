@@ -1,4 +1,4 @@
-// SuiGallery / Walrus Photos Advanced Client Application
+// Nodus / Walrus Photos Advanced Client Application
 document.addEventListener("DOMContentLoaded", () => {
   // Initialize Lucide icons
   if (window.lucide) {
@@ -83,7 +83,7 @@ document.addEventListener("DOMContentLoaded", () => {
       optimistic_failed: "Upload Failed",
       signin_zklogin: "Sign In with zkLogin",
       btn_google_zklogin: "Continue with Google (zkLogin)",
-      auth_title: "Sign in to SuiGallery",
+      auth_title: "Sign in to Nodus",
       auth_subtitle: "Your photos are client-side encrypted before touching Walrus. Powered by Sui zkLogin—no seed phrases, zero gas, and frictionless privacy.",
       or_continue_with: "or choose another method",
       auth_privacy_notice: "Google only verifies your identity; it never has access to your photos, encryption keys, or Walrus storage.",
@@ -91,7 +91,7 @@ document.addEventListener("DOMContentLoaded", () => {
       account_manager_subtitle: "Decentralized memory vault secured by Sui zkLogin and Walrus Protocol.",
       switch_account: "Switch Account / Sign In with Another ID",
       sign_out: "Sign Out",
-      toast_signed_in: "Welcome to SuiGallery! Signed in with Google zkLogin",
+      toast_signed_in: "Welcome to Nodus! Signed in with Google zkLogin",
       toast_signed_out: "Signed out of sovereign session",
       toast_wallet_connected: "Connected Sui Wallet: {addr}"
     },
@@ -169,7 +169,7 @@ document.addEventListener("DOMContentLoaded", () => {
       optimistic_failed: "Error al subir",
       signin_zklogin: "Iniciar Sesión con zkLogin",
       btn_google_zklogin: "Continuar con Google (zkLogin)",
-      auth_title: "Iniciar Sesión en SuiGallery",
+      auth_title: "Iniciar Sesión en Nodus",
       auth_subtitle: "Tus fotos se encriptan en tu dispositivo antes de tocar Walrus. Impulsado por Sui zkLogin: sin frases semilla, sin gas y con privacidad total.",
       or_continue_with: "o elige otro método",
       auth_privacy_notice: "Google solo verifica tu identidad; nunca tiene acceso a tus fotos, claves de encriptación ni almacenamiento en Walrus.",
@@ -177,7 +177,7 @@ document.addEventListener("DOMContentLoaded", () => {
       account_manager_subtitle: "Bóveda de recuerdos descentralizada protegida por Sui zkLogin y Protocolo Walrus.",
       switch_account: "Cambiar Cuenta / Iniciar con Otro ID",
       sign_out: "Cerrar Sesión",
-      toast_signed_in: "¡Bienvenido a SuiGallery! Sesión iniciada con Google zkLogin",
+      toast_signed_in: "¡Bienvenido a Nodus! Sesión iniciada con Google zkLogin",
       toast_signed_out: "Sesión cerrada correctamente",
       toast_wallet_connected: "Billetera Sui conectada: {addr}"
     },
@@ -255,7 +255,7 @@ document.addEventListener("DOMContentLoaded", () => {
       optimistic_failed: "Falha no envio",
       signin_zklogin: "Iniciar Sessão com zkLogin",
       btn_google_zklogin: "Continuar com o Google (zkLogin)",
-      auth_title: "Iniciar Sessão no SuiGallery",
+      auth_title: "Iniciar Sessão no Nodus",
       auth_subtitle: "As suas fotos são encriptadas no dispositivo antes de tocar o Walrus. Equipado com Sui zkLogin—sem frases-semente, sem taxas de gás e privacidade total.",
       or_continue_with: "ou escolha outro método",
       auth_privacy_notice: "O Google apenas verifica a sua identidade; nunca tem acesso às suas fotos, chaves de encriptação ou armazenamento Walrus.",
@@ -263,13 +263,13 @@ document.addEventListener("DOMContentLoaded", () => {
       account_manager_subtitle: "Cofre de memórias descentralizado protegido por Sui zkLogin e Protocolo Walrus.",
       switch_account: "Mudar de Conta / Entrar com Outro ID",
       sign_out: "Terminar Sessão",
-      toast_signed_in: "Bem-vindo ao SuiGallery! Sessão iniciada com Google zkLogin",
+      toast_signed_in: "Bem-vindo ao Nodus! Sessão iniciada com Google zkLogin",
       toast_signed_out: "Sessão terminada com sucesso",
       toast_wallet_connected: "Carteira Sui conectada: {addr}"
     }
   };
 
-  let currentLang = localStorage.getItem("suigallery_lang") || "en";
+  let currentLang = localStorage.getItem("nodus_lang") || localStorage.getItem("suigallery_lang") || "en";
   if (!translations[currentLang]) currentLang = "en";
 
   // App State
@@ -288,7 +288,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Load persistent auth session from localStorage
   try {
-    const savedSession = localStorage.getItem("suigallery_auth_session");
+    const savedSession = localStorage.getItem("nodus_auth_session") || localStorage.getItem("suigallery_auth_session");
     if (savedSession) {
       state.currentUser = JSON.parse(savedSession);
     }
@@ -475,7 +475,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Apply Language
   function applyLanguage(lang) {
     currentLang = lang;
-    localStorage.setItem("suigallery_lang", lang);
+    localStorage.setItem("nodus_lang", lang);
     currentLangCode.textContent = lang.toUpperCase();
 
     document.querySelectorAll(".lang-option").forEach((opt) => {
@@ -634,12 +634,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function saveAuthSession(session) {
     state.currentUser = session;
-    localStorage.setItem("suigallery_auth_session", JSON.stringify(session));
+    localStorage.setItem("nodus_auth_session", JSON.stringify(session));
+    localStorage.removeItem("suigallery_auth_session");
     updateAuthUI();
   }
 
   function signOut() {
     state.currentUser = null;
+    localStorage.removeItem("nodus_auth_session");
     localStorage.removeItem("suigallery_auth_session");
     closeVaultModal();
     updateAuthUI();
@@ -798,7 +800,7 @@ document.addEventListener("DOMContentLoaded", () => {
     exportVaultsBtn.addEventListener("click", () => {
       const backupData = {
         exported_at: new Date().toISOString(),
-        application: "SuiGallery Walrus Console",
+        application: "Nodus Sovereign Cloud",
         current_user: state.currentUser,
         session_active: Boolean(state.currentUser)
       };
@@ -806,7 +808,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `suigallery-session-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `nodus-session-backup-${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -854,7 +856,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Dynamic Tag Chips
   function updateTagChips() {
-    const allTags = new Set(["all", "photo", "suigallery"]);
+    const allTags = new Set(["all", "photo", "nodus"]);
     state.photos.forEach((p) => {
       const ext = p.name.split(".").pop().toLowerCase();
       if (ext) allTags.add(ext);
@@ -1231,7 +1233,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!state.selectedPhoto) return;
     editFileNameInput.value = state.selectedPhoto.name;
     editDescriptionInput.value = "";
-    editTagsInput.value = "photo, suigallery";
+    editTagsInput.value = "photo, nodus";
     editModal.classList.remove("hidden");
   });
 

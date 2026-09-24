@@ -5,7 +5,7 @@ import { walrus } from "../server/walrus-client.js";
 
 async function runApiTests() {
   console.log("==================================================");
-  console.log("🔌 SUIGALLERY — REST API INTEGRATION TEST SUITE");
+  console.log("🔌 NODUS — REST API INTEGRATION TEST SUITE");
   console.log("==================================================");
 
   let passed = 0;

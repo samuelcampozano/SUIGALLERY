@@ -43,3 +43,9 @@ WALRUS_BETA_BUG_REPORT.md
 !public/index.html
 *.pdf
 
+# Agent Skills & toolchains
+.agents/
+.claude/
+agent/
+skills-lock.json
+

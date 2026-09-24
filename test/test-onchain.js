@@ -2,7 +2,7 @@ import { DEFAULT_SEAL_POLICY_ID } from "../server/walrus-client.js";
 
 async function runOnChainVerification() {
   console.log("==================================================");
-  console.log("⛓️  SUIGALLERY — LIVE SUI ON-CHAIN VERIFICATION");
+  console.log("⛓️  NODUS — LIVE SUI ON-CHAIN VERIFICATION");
   console.log("==================================================");
 
   const endpoint = "https://graphql.mainnet.sui.io/graphql";

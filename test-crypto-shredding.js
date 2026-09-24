@@ -5,7 +5,7 @@ import { walrus } from "./server/walrus-client.js";
 
 async function testCryptoShredding() {
   console.log("==================================================");
-  console.log("🧪 SUIGALLERY — END-TO-END CRYPTO-SHREDDING TEST");
+  console.log("🧪 NODUS — END-TO-END CRYPTO-SHREDDING TEST");
   console.log("==================================================");
 
   const testDir = path.resolve("./temp_storage/test_sandbox");

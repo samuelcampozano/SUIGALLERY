@@ -12,7 +12,7 @@ import { blake2b } from "@noble/hashes/blake2.js";
 
 async function runSecurityTests() {
   console.log("==================================================");
-  console.log("🛡️ SUIGALLERY — UNIT & SECURITY TEST SUITE");
+  console.log("🛡️ NODUS — UNIT & SECURITY TEST SUITE");
   console.log("==================================================");
 
   let passed = 0;

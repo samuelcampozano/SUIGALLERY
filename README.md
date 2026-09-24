@@ -1,6 +1,6 @@
-# 🌊 SuiGallery — Sovereign Cloud Photo Vault
+# 🌊 Nodus — Sovereign Cloud & Private Storage
 
-> **A consumer-grade, privacy-first alternative to Google Photos and Apple iCloud, powered by the Walrus Protocol and the Sui blockchain.**
+> **A consumer-grade, privacy-first programmable private cloud alternative to Google Drive, Photos, and Apple iCloud, powered by the Walrus Protocol and the Sui blockchain.**
 
 [![Sui Network](https://img.shields.io/badge/Network-Sui%20Mainnet%20%2F%20Testnet-0070f3?logo=sui)](https://sui.io)
 [![Walrus Protocol](https://img.shields.io/badge/Storage-Walrus%20Protocol-4da2ff)](https://walrus.xyz)
@@ -12,7 +12,7 @@
 
 ## 📸 Overview
 
-**SuiGallery** gives users full cryptographic sovereignty over their personal media. Traditional cloud storage providers inspect private photos to train commercial machine-learning models, build advertising profiles, or lock accounts arbitrarily. SuiGallery reclaims user ownership:
+**Nodus** gives users full cryptographic sovereignty over their personal media and documents. Traditional cloud storage providers inspect private files to train commercial machine-learning models, build advertising profiles, or lock accounts arbitrarily. Nodus reclaims user ownership:
 
 - 🔒 **Threshold Envelope Encryption (Seal)**: Media is sealed via AES-256-GCM envelope encryption wrapped against on-chain Sui policies before raw slivers are distributed across the Walrus decentralized network.
 - 🌊 **Decentralized Fountain Erasure Coding (Walrus)**: Files are split into 2D Red Stuff erasure-coded slivers distributed across independent storage nodes, cutting redundancy storage costs compared to traditional cloud infrastructure (AWS S3 / Google Cloud).
@@ -64,7 +64,7 @@ graph TD
    - 1-click in-browser generation of cryptographic Ed25519 keypairs and derived `0x...` Sui addresses using standard `window.crypto.subtle` (zero server transmission).
 
 4. **Dynamic Tag Filtering & Batch Actions**:
-   - Instant filtering chips (`All`, `crypto`, `photo`, `suigallery`, etc.) and multi-criteria sorting (Newest, Oldest, Name A-Z, Size).
+   - Instant filtering chips (`All`, `crypto`, `photo`, `nodus`, etc.) and multi-criteria sorting (Newest, Oldest, Name A-Z, Size).
    - Floating batch selection bar with bulk download and batch deletion.
 
 5. **Irreversible Crypto-Shredding**:

@@ -122,7 +122,7 @@ export function sanitizeString(input, maxLength = 256) {
  * @returns {string[]}
  */
 export function sanitizeTags(tags) {
-  if (!Array.isArray(tags)) return ["photo", "suigallery"];
+  if (!Array.isArray(tags)) return ["photo", "nodus"];
   return tags
     .filter((t) => typeof t === "string")
     .map((t) => t.replace(/[^a-zA-Z0-9_-]/g, "").trim().toLowerCase())

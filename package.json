@@ -1,7 +1,7 @@
 {
-  "name": "walrus-console-project",
+  "name": "nodus-vault",
   "version": "1.1.0",
-  "description": "Integration and automation project for Walrus Console decentralized storage",
+  "description": "Nodus — Programmable Sovereign Cloud Vault powered by Walrus & Sui",
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
