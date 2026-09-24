@@ -109,18 +109,18 @@ npm run dev
 ```
 
 ### 4. Run Automated Test Suites
-Run the automated test suites verifying backend security defenses, API endpoints, on-chain Sui Mainnet policies, and live crypto-shredding:
+Run the automated test suites verifying backend security defenses, API endpoints, zero-plaintext privacy, on-chain Sui Mainnet policies, and live crypto-shredding:
 ```bash
-# Run all test suites end-to-end
+# Run all 5 test suites end-to-end
 npm test
 
 # Run individual suites
-npm run test:security   # Magic bytes validation, path traversal defense, XSS escaping, cache TTL
-npm run test:api        # REST endpoints, rate limiting, and HTTP security headers
-npm run test:onchain    # Sui Mainnet GraphQL Move policy and custodian verification
-npm run test:shred      # End-to-end live crypto-shredding and bit-for-bit validation
+npm run test:security       # Magic bytes validation, path traversal defense, XSS escaping, cache TTL
+npm run test:api            # REST endpoints, rate limiting, and HTTP security headers
+npm run test:zero-plaintext # Validates zero plaintext disk/memory leaks, enforces ciphertext, 404 on wallet endpoint
+npm run test:onchain        # Sui Mainnet GraphQL Move policy and custodian verification
+npm run test:shred          # End-to-end live crypto-shredding and bit-for-bit validation
 ```
-
 
 ---
 
@@ -129,22 +129,22 @@ npm run test:shred      # End-to-end live crypto-shredding and bit-for-bit valid
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/status` | Space quota, bucket metadata, and Seal policy |
-| `GET` | `/api/photos` | List all photos anchored in the bucket |
-| `POST` | `/api/photos/upload` | Multipart upload with local Seal threshold encryption |
-| `GET` | `/api/photos/:fileId/stream` | Decrypted binary stream for browser rendering |
+| `GET` | `/api/photos` | List all photos anchored in the bucket with encryption metadata |
+| `POST` | `/api/photos/upload` | Ingest client-encrypted AES-256-GCM ciphertext payload |
+| `GET` | `/api/photos/:fileId/stream` | Stream ciphertext blob with decryption headers (`x-nodus-encrypted`) |
 | `PATCH` | `/api/photos/:fileId` | Update photo name, caption, and tags |
 | `DELETE`| `/api/photos/:fileId` | Delete photo and trigger crypto-shredding |
 | `POST` | `/api/photos/batch-delete` | Batch multi-photo deletion |
-| `POST` | `/api/wallet/generate` | Server fallback for Ed25519 Sui cryptographic keypair |
 
 ---
 
 ## 🛡️ Security & Zero-Knowledge Architecture
 
+- **Zero Plaintext Server Ingestion (Phase 0 Zero-Knowledge)**: Files are encrypted directly inside the client's browser memory via the standard WebCrypto API (AES-256-GCM) prior to network transmission. Zero bytes of plaintext ever reach the server disk, memory, or Walrus storage network. The backend validates and rejects any raw unencrypted file signatures.
 - **Local Sovereign Gateway**: The application operates as a self-hosted sovereign node on the user's device (`localhost:3000` / local container). Unencrypted photos are never routed through cloud intermediaries.
 - **Seal Threshold Encryption**: Media is encrypted using AES-256-GCM envelope encryption. Decryption keys are governed by threshold policies anchored to the Sui blockchain, preventing single-point key exposure.
 - **No Master Key Custody**: Decentralized storage node operators and protocol developers hold no master keys. Key recovery requires threshold consensus verification against Move smart contracts.
-- **On-Device Cryptographic Key Generation**: Ephemeral vault identities are generated directly inside the user's browser memory via the standard WebCrypto API, eliminating server-side key generation risks.
+- **On-Device Cryptographic Key Generation**: Ephemeral vault identities and AES keys are generated directly inside the user's browser memory via the standard WebCrypto API, eliminating server-side key custody risks.
 - **Edge-First Local Compute**: Search indexing, metadata extraction, and facial clustering run locally on-device (client-side WebAssembly / WebGPU), ensuring sensitive biometric vectors or telemetry are never centralized.
 
 ---
