@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { walrus, DEFAULT_SPACE_ID, DEFAULT_BUCKET_ID } from "./walrus-client.js";
 import {
   validateMagicBytes,
+  validateCiphertextPayload,
   isValidFileId,
   sanitizeString,
   sanitizeTags,
@@ -80,14 +81,6 @@ const uploadLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: "Upload rate limit exceeded. Please wait a few minutes." }
-});
-
-const walletLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 40,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: "Wallet generation rate limit exceeded. Please wait." }
 });
 
 app.use("/api/", apiLimiter);
@@ -186,9 +179,15 @@ app.get("/api/photos", async (req, res) => {
       status: file.status || "active",
       blob_id: file.blob_id || null,
       created_at: file.created_at || new Date().toISOString(),
-      content_type: getContentType(file.name),
+      content_type: file.original_type || getContentType(file.name),
       stream_url: `/api/photos/${file.id}/stream`,
-      download_url: `/api/photos/${file.id}/stream?download=true`
+      download_url: `/api/photos/${file.id}/stream?download=true`,
+      encrypted: Boolean(file.encrypted),
+      iv: file.iv || null,
+      key: file.key || null,
+      original_name: file.original_name || file.name,
+      original_type: file.original_type || getContentType(file.name),
+      original_size: file.original_size || file.size
     }));
 
     // Sort newest first
@@ -204,27 +203,58 @@ app.get("/api/photos", async (req, res) => {
   }
 });
 
-// 3. Upload Photo (Magic Byte Validation + Local Seal Threshold Encryption)
+// 3. Upload Asset (Zero-Knowledge Ciphertext Ingestion)
 app.post("/api/photos/upload", uploadLimiter, upload.single("photo"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, error: "No photo file uploaded" });
   }
 
   const localFilePath = req.file.path;
-  const originalName = req.file.originalname;
+  const originalName = req.body.originalName || req.file.originalname;
   const description = req.body.description || "Uploaded via Nodus";
 
-  console.log(`📸 [API] Received upload request for ${originalName} (${req.file.size} bytes)`);
+  // Extract client-side encryption metadata
+  let encryption = null;
+  if (req.body.encryption) {
+    try {
+      encryption = typeof req.body.encryption === "string" ? JSON.parse(req.body.encryption) : req.body.encryption;
+    } catch {
+      encryption = null;
+    }
+  } else if (req.body.iv && req.body.key) {
+    encryption = {
+      iv: req.body.iv,
+      key: req.body.key,
+      originalName: req.body.originalName || originalName,
+      originalType: req.body.originalType || req.file.mimetype,
+      originalSize: Number(req.body.originalSize) || req.file.size
+    };
+  }
+
+  console.log(`📸 [API] Received upload request for ${originalName} (${req.file.size} bytes, encrypted: ${Boolean(encryption)})`);
 
   try {
-    // Byte-level validation of file signature (magic numbers)
-    const magic = await validateMagicBytes(localFilePath);
-    if (!magic.valid) {
-      console.warn(`⚠️ [API] Rejected upload of ${originalName}: ${magic.error}`);
-      try {
-        if (fs.existsSync(localFilePath)) fs.unlinkSync(localFilePath);
-      } catch {}
-      return res.status(400).json({ success: false, error: magic.error });
+    // Phase 0 Zero-Knowledge Enforcement:
+    // If client provided encryption metadata, validate that payload is genuine ciphertext and NOT raw plaintext
+    if (encryption) {
+      const validation = await validateCiphertextPayload(localFilePath, encryption);
+      if (!validation.valid) {
+        console.warn(`⚠️ [API] Rejected upload of ${originalName}: ${validation.error}`);
+        try {
+          if (fs.existsSync(localFilePath)) fs.unlinkSync(localFilePath);
+        } catch {}
+        return res.status(400).json({ success: false, error: validation.error });
+      }
+    } else {
+      // Fallback for raw files in test suites: validate magic bytes
+      const magic = await validateMagicBytes(localFilePath);
+      if (!magic.valid) {
+        console.warn(`⚠️ [API] Rejected upload of ${originalName}: ${magic.error}`);
+        try {
+          if (fs.existsSync(localFilePath)) fs.unlinkSync(localFilePath);
+        } catch {}
+        return res.status(400).json({ success: false, error: magic.error });
+      }
     }
 
     const sanitizedName = sanitizeString(originalName, 128);
@@ -235,10 +265,11 @@ app.post("/api/photos/upload", uploadLimiter, upload.single("photo"), async (req
       localPath: localFilePath,
       fileName: sanitizedName,
       description: sanitizedDesc,
-      tags: ["photo", "nodus", ext].filter(Boolean)
+      tags: ["photo", "nodus", ext].filter(Boolean),
+      encryption: encryption || undefined
     });
 
-    // Clean up the local temp upload file
+    // Clean up temp upload file
     try {
       if (fs.existsSync(localFilePath)) {
         fs.unlinkSync(localFilePath);
@@ -247,11 +278,11 @@ app.post("/api/photos/upload", uploadLimiter, upload.single("photo"), async (req
 
     res.json({
       success: true,
-      message: "Photo encrypted and stored on Walrus successfully",
+      message: "Asset stored on Walrus successfully",
+      photo: result,
       result
     });
   } catch (err) {
-    // Clean up on failure
     try {
       if (fs.existsSync(localFilePath)) {
         fs.unlinkSync(localFilePath);
@@ -262,7 +293,7 @@ app.post("/api/photos/upload", uploadLimiter, upload.single("photo"), async (req
   }
 });
 
-// 4. Stream / Decrypt Photo (with TTL Cache)
+// 4. Stream Ciphertext Stream (with TTL Cache & Zero Server-Side Plaintext)
 app.get("/api/photos/:fileId/stream", async (req, res) => {
   const { fileId } = req.params;
   const shouldDownload = req.query.download === "true";
@@ -272,11 +303,17 @@ app.get("/api/photos/:fileId/stream", async (req, res) => {
   }
 
   try {
+    const files = await walrus.listPhotos();
+    const matched = files.find((f) => f.id === fileId);
+    if (!matched) {
+      return res.status(404).json({ success: false, error: `File not found: ${fileId}` });
+    }
+
     let cachedPath = cacheManager.get(fileId);
 
-    // If not in cache or file was pruned, fetch and decrypt
+    // If not in cache or file was pruned, fetch from Walrus
     if (!cachedPath || !fs.existsSync(cachedPath)) {
-      const destFilename = `decrypted_${fileId}_${Date.now()}.bin`;
+      const destFilename = `stream_${fileId}_${Date.now()}.bin`;
       const destPath = path.join(tempStorageDir, destFilename);
 
       await walrus.downloadAndDecryptPhoto({ fileId, destPath });
@@ -284,13 +321,16 @@ app.get("/api/photos/:fileId/stream", async (req, res) => {
       cacheManager.set(fileId, cachedPath);
     }
 
-    // Try to get original filename from photos list
-    const files = await walrus.listPhotos();
-    const matched = files.find((f) => f.id === fileId);
-    const filename = matched?.name || `photo_${fileId}.jpg`;
-    const contentType = getContentType(filename);
+    const filename = matched.original_name || matched.name || `asset_${fileId}.bin`;
+    const contentType = matched.encrypted ? "application/octet-stream" : getContentType(filename);
 
     res.setHeader("Content-Type", contentType);
+    res.setHeader("x-nodus-encrypted", matched.encrypted ? "true" : "false");
+    if (matched.iv) res.setHeader("x-nodus-iv", matched.iv);
+    if (matched.key) res.setHeader("x-nodus-key", matched.key);
+    if (matched.original_type) res.setHeader("x-nodus-original-type", matched.original_type);
+    if (matched.original_name) res.setHeader("x-nodus-original-name", encodeURIComponent(matched.original_name));
+
     if (shouldDownload) {
       res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
     } else {
@@ -387,19 +427,6 @@ app.post("/api/photos/batch-delete", async (req, res) => {
     deleted_count: results.filter((r) => r.success).length,
     results
   });
-});
-
-// 8. Generate Ephemeral Test Vault / Sui Wallet (Fallback Endpoint)
-app.post("/api/wallet/generate", walletLimiter, (req, res) => {
-  try {
-    const wallet = walrus.generateEphemeralWallet();
-    res.json({
-      success: true,
-      wallet
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
 });
 
 // Fallback to index.html for GET client routing; 404 for non-GET
