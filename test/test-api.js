@@ -66,18 +66,11 @@ async function runApiTests() {
     assert(Array.isArray(photosData.photos), "Returns array of anchored photos");
 
     // ----------------------------------------------------
-    // TEST 4: POST /api/wallet/generate
+    // TEST 4: POST /api/wallet/generate (Zero-Custody Deprecation)
     // ----------------------------------------------------
-    console.log("\n[TEST 4] POST /api/wallet/generate");
+    console.log("\n[TEST 4] POST /api/wallet/generate (Zero-Custody Deprecation)");
     const walletRes = await fetch(`${baseUrl}/api/wallet/generate`, { method: "POST" });
-    const walletData = await walletRes.json();
-
-    assert(walletRes.status === 200, "Wallet endpoint returns HTTP 200");
-    assert(walletData.success === true, "Wallet generation returns success: true");
-    assert(
-      walletData.wallet && walletData.wallet.address.startsWith("0x") && walletData.wallet.address.length === 66,
-      `Generates valid 66-character Ed25519 Sui address (${walletData?.wallet?.address?.slice(0, 10)}...)`
-    );
+    assert(walletRes.status === 404, "Server-side wallet generation endpoint is removed (HTTP 404)");
 
     // ----------------------------------------------------
     // TEST 5: Upload Validation (Missing Payload)

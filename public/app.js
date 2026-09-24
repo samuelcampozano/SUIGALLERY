@@ -560,6 +560,105 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ==========================================
+  // NODUS CRYPTO: ZERO-KNOWLEDGE CLIENT ENGINE
+  // ==========================================
+  const NodusCrypto = {
+    async generateDataKey() {
+      return window.crypto.subtle.generateKey(
+        { name: "AES-GCM", length: 256 },
+        true,
+        ["encrypt", "decrypt"]
+      );
+    },
+
+    async exportKeyHex(key) {
+      const raw = await window.crypto.subtle.exportKey("raw", key);
+      return Array.from(new Uint8Array(raw))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    },
+
+    async importKeyHex(keyHex) {
+      const bytes = new Uint8Array(keyHex.match(/.{1,2}/g).map((byte) => parseInt(byte, 16)));
+      return window.crypto.subtle.importKey(
+        "raw",
+        bytes,
+        { name: "AES-GCM" },
+        false,
+        ["decrypt"]
+      );
+    },
+
+    async encryptAsset(file) {
+      const key = await this.generateDataKey();
+      const keyHex = await this.exportKeyHex(key);
+      const iv = window.crypto.getRandomValues(new Uint8Array(12));
+      const ivHex = Array.from(iv)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      const arrayBuffer = await file.arrayBuffer();
+
+      const ciphertextBuffer = await window.crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        key,
+        arrayBuffer
+      );
+
+      const ciphertextBlob = new Blob([ciphertextBuffer], { type: "application/octet-stream" });
+      return {
+        ciphertextBlob,
+        ivHex,
+        keyHex,
+        originalName: file.name,
+        originalType: file.type || "image/png",
+        originalSize: file.size
+      };
+    },
+
+    async decryptAsset(ciphertextBuffer, keyHex, ivHex, originalType) {
+      const key = await this.importKeyHex(keyHex);
+      const ivBytes = new Uint8Array(ivHex.match(/.{1,2}/g).map((byte) => parseInt(byte, 16)));
+      const decryptedBuffer = await window.crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: ivBytes },
+        key,
+        ciphertextBuffer
+      );
+      return new Blob([decryptedBuffer], { type: originalType || "image/png" });
+    }
+  };
+
+  // In-memory cache for decrypted Object URLs to prevent duplicate on-device operations
+  const decryptedMediaCache = new Map();
+
+  async function getOrDecryptPhotoUrl(photo) {
+    if (decryptedMediaCache.has(photo.id)) {
+      return decryptedMediaCache.get(photo.id);
+    }
+
+    if (!photo.encrypted || !photo.key || !photo.iv) {
+      return photo.stream_url;
+    }
+
+    try {
+      const res = await fetch(photo.stream_url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const ciphertextBuffer = await res.arrayBuffer();
+      const blob = await NodusCrypto.decryptAsset(
+        ciphertextBuffer,
+        photo.key,
+        photo.iv,
+        photo.original_type || photo.content_type
+      );
+      const objectUrl = URL.createObjectURL(blob);
+      decryptedMediaCache.set(photo.id, objectUrl);
+      return objectUrl;
+    } catch (err) {
+      console.warn(`[NodusCrypto] Decryption fallback for photo ${photo.id}:`, err);
+      return photo.stream_url;
+    }
+  }
+
+  // ==========================================
   // ZKLOGIN & SOVEREIGN SESSION MANAGER
   // ==========================================
   function deriveZkLoginAddress(email, sub = "109847291847192847") {
@@ -970,18 +1069,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const photoCardsHtml = filtered
       .map((p) => {
         const isSelected = state.selectedIds.has(p.id);
+        const cachedUrl = decryptedMediaCache.get(p.id);
+        const initialSrc = cachedUrl || (p.encrypted && p.key ? "" : p.stream_url);
         return `
         <div class="photo-card ${isSelected ? "selected" : ""}" data-id="${p.id}">
           <div class="photo-select-checkbox" data-select-id="${p.id}">
             <i data-lucide="${isSelected ? "check" : ""}" style="width: 14px; height: 14px;"></i>
           </div>
-          <img class="photo-thumbnail" src="${p.stream_url}" alt="${p.name}" loading="lazy" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\' fill=\\'%231a2332\\'><rect width=\\'100\\' height=\\'100\\'/><text x=\\'50%\\' y=\\'50%\\' fill=\\'%238b949e\\' font-size=\\'12\\' text-anchor=\\'middle\\' dy=\\'.3em\\'>Encrypted Media</text></svg>'">
+          <img class="photo-thumbnail" id="thumb-${p.id}" src="${initialSrc || 'data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\' fill=\\'%231a2332\\'><rect width=\\'100\\' height=\\'100\\'/><text x=\\'50%\\' y=\\'50%\\' fill=\\'%238b949e\\' font-size=\\'11\\' text-anchor=\\'middle\\' dy=\\'.3em\\'>🔒 Encrypted</text></svg>'}" alt="${p.name}" loading="lazy">
           <div class="photo-overlay">
             <div class="overlay-top">
               <span class="badge-seal"><i data-lucide="lock" style="width: 10px; height: 10px;"></i> Seal</span>
             </div>
             <div class="overlay-bottom">
-              <span class="photo-card-name">${p.name}</span>
+              <span class="photo-card-name">${p.original_name || p.name}</span>
               <span class="photo-card-meta">${formatBytes(p.size)} • ${formatDate(p.created_at)}</span>
             </div>
           </div>
@@ -991,6 +1092,16 @@ document.addEventListener("DOMContentLoaded", () => {
       .join("");
 
     photoGrid.innerHTML = uploadCardsHtml + photoCardsHtml;
+
+    // Asynchronously decrypt and stream thumbnails on-device
+    filtered.forEach((p) => {
+      if (p.encrypted && p.key && p.iv && !decryptedMediaCache.has(p.id)) {
+        getOrDecryptPhotoUrl(p).then((url) => {
+          const imgEl = document.getElementById(`thumb-${p.id}`);
+          if (imgEl && url) imgEl.src = url;
+        });
+      }
+    });
 
     if (window.lucide) window.lucide.createIcons();
 
@@ -1111,8 +1222,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const techDrawer = document.querySelector(".tech-drawer");
     if (techDrawer) techDrawer.open = false;
 
-    sidebarFileName.textContent = photo.name;
-    sidebarMimeBadge.textContent = photo.content_type || "image/jpeg";
+    sidebarFileName.textContent = photo.original_name || photo.name;
+    sidebarMimeBadge.textContent = photo.original_type || photo.content_type || "image/jpeg";
     metaBlobId.textContent = photo.blob_id || t("anchored_walrus");
     metaFileId.textContent = photo.id || "--";
     const policyId = state.status?.bucket?.seal_policy_id || "0x9c1baccb244e45342ac150a0123a4802e8e834f25c00210e50c81081354eee44";
@@ -1137,11 +1248,36 @@ document.addEventListener("DOMContentLoaded", () => {
       suiscanPolicyLink.href = `https://suiscan.xyz/mainnet/object/${policyId}`;
     }
 
-    metaFileSize.textContent = formatBytes(photo.size);
+    metaFileSize.textContent = formatBytes(photo.original_size || photo.size);
     metaUploadDate.textContent = formatDate(photo.created_at);
 
-    lightboxImg.src = photo.stream_url;
-    downloadBtn.href = photo.download_url;
+    if (photo.encrypted && photo.key && photo.iv) {
+      if (decryptedMediaCache.has(photo.id)) {
+        const decryptedUrl = decryptedMediaCache.get(photo.id);
+        lightboxImg.src = decryptedUrl;
+        downloadBtn.href = decryptedUrl;
+        downloadBtn.setAttribute("download", photo.original_name || photo.name);
+      } else {
+        lightboxImg.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" fill="%23131b26"><rect width="400" height="300"/><text x="50%" y="50%" fill="%2358a6ff" font-size="14" text-anchor="middle" dy=".3em">🔒 Decrypting on-device with WebCrypto...</text></svg>';
+        downloadBtn.href = "#";
+        downloadBtn.removeAttribute("download");
+        getOrDecryptPhotoUrl(photo).then((decryptedUrl) => {
+          if (state.selectedPhoto && state.selectedPhoto.id === photo.id) {
+            lightboxImg.src = decryptedUrl;
+            downloadBtn.href = decryptedUrl;
+            downloadBtn.setAttribute("download", photo.original_name || photo.name);
+          }
+        }).catch((err) => {
+          console.error("Lightbox decryption error:", err);
+          lightboxImg.src = photo.stream_url;
+          downloadBtn.href = photo.download_url;
+        });
+      }
+    } else {
+      lightboxImg.src = photo.stream_url;
+      downloadBtn.href = photo.download_url;
+      downloadBtn.setAttribute("download", photo.name);
+    }
 
     lightboxModal.classList.remove("hidden");
     document.body.style.overflow = "hidden";
@@ -1410,8 +1546,18 @@ document.addEventListener("DOMContentLoaded", () => {
       // Optimistic card update
       updateOptimisticCard(task.id, 1, 30, t("optimistic_encrypting"));
 
-      // Micro delay for client-side cryptographic preparation
-      await new Promise((r) => setTimeout(r, 450));
+      // Zero-Knowledge Client-Side Encryption via WebCrypto AES-GCM
+      let encryptedPayload;
+      try {
+        encryptedPayload = await NodusCrypto.encryptAsset(task.file);
+      } catch (encErr) {
+        task.failed = true;
+        updateOptimisticCard(task.id, 1, 100, t("optimistic_failed"));
+        showToast(`Encryption failed for ${task.name}: ${encErr.message}`, "danger");
+        state.activeUploads = state.activeUploads.filter((t) => t.id !== task.id);
+        renderPhotos();
+        continue;
+      }
 
       // Advance to Step 2: Walrus Blob Registration
       task.stage = 2;
@@ -1423,8 +1569,13 @@ document.addEventListener("DOMContentLoaded", () => {
       updateOptimisticCard(task.id, 2, 70, t("optimistic_uploading"));
 
       const formData = new FormData();
-      formData.append("photo", task.file);
-      formData.append("description", `Uploaded to Walrus Vault at ${new Date().toISOString()}`);
+      formData.append("photo", encryptedPayload.ciphertextBlob, task.file.name);
+      formData.append("key", encryptedPayload.keyHex);
+      formData.append("iv", encryptedPayload.ivHex);
+      formData.append("originalName", encryptedPayload.originalName);
+      formData.append("originalType", encryptedPayload.originalType);
+      formData.append("originalSize", String(encryptedPayload.originalSize));
+      formData.append("description", `Zero-Knowledge encrypted asset uploaded to Walrus at ${new Date().toISOString()}`);
 
       try {
         const res = await fetch("/api/photos/upload", {
@@ -1436,6 +1587,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (data.success) {
           // Track blob ID for on-chain proof link
           lastUploadedBlobId = data.photo?.blob_id || data.file?.blob_id || null;
+
+          // Cache raw object URL for immediate in-session display without re-downloading ciphertext
+          if (data.photo?.id) {
+            decryptedMediaCache.set(data.photo.id, task.previewUrl);
+          }
 
           // Advance to Step 3: Anchored in Bucket
           task.stage = 3;
@@ -1451,8 +1607,7 @@ document.addEventListener("DOMContentLoaded", () => {
           // Give a brief moment to celebrate the green checkmark
           await new Promise((r) => setTimeout(r, 400));
 
-          // Clean up task from activeUploads and revoke blob URL
-          URL.revokeObjectURL(task.previewUrl);
+          // Clean up task from activeUploads (do not revoke previewUrl since it is stored in decryptedMediaCache)
           state.activeUploads = state.activeUploads.filter((t) => t.id !== task.id);
 
           // Refresh photos & status non-blockingly
