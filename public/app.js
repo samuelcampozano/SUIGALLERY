@@ -953,21 +953,65 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Dynamic Tag Chips
+  // Multi-type asset classifier
+  function getAssetCategory(photo) {
+    const filename = (photo.original_name || photo.name || "").toLowerCase();
+    const ext = filename.split(".").pop();
+    const mime = (photo.original_type || photo.content_type || "").toLowerCase();
+
+    if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext) || mime.startsWith("image/")) {
+      return { category: "image", icon: "image", label: "Image" };
+    }
+    if (ext === "pdf" || mime === "application/pdf") {
+      return { category: "document", icon: "file-text", label: "PDF" };
+    }
+    if (["docx", "doc", "txt", "md", "json", "csv"].includes(ext) || mime.startsWith("text/") || mime.includes("document")) {
+      return { category: "document", icon: "file-text", label: "Document" };
+    }
+    if (["mp4", "webm", "mov"].includes(ext) || mime.startsWith("video/")) {
+      return { category: "media", icon: "video", label: "Video" };
+    }
+    if (["mp3", "wav", "ogg"].includes(ext) || mime.startsWith("audio/")) {
+      return { category: "media", icon: "music", label: "Audio" };
+    }
+    if (["zip", "tar", "gz", "7z", "rar"].includes(ext) || mime.includes("zip") || mime.includes("tar")) {
+      return { category: "archive", icon: "archive", label: "Archive" };
+    }
+    return { category: "other", icon: "file", label: ext ? ext.toUpperCase() : "File" };
+  }
+
+  // Dynamic Category & Tag Chips
   function updateTagChips() {
-    const allTags = new Set(["all", "photo", "nodus"]);
+    const categories = [
+      { id: "all", label: "All" },
+      { id: "images", label: "Images" },
+      { id: "documents", label: "Documents" },
+      { id: "media", label: "Media" },
+      { id: "archives", label: "Archives" }
+    ];
+
+    const customTags = new Set();
     state.photos.forEach((p) => {
-      const ext = p.name.split(".").pop().toLowerCase();
-      if (ext) allTags.add(ext);
+      if (Array.isArray(p.tags)) {
+        p.tags.forEach((t) => {
+          if (!["photo", "nodus", "all", "image", "images"].includes(t.toLowerCase())) {
+            customTags.add(t.toLowerCase());
+          }
+        });
+      }
     });
 
-    tagChips.innerHTML = Array.from(allTags)
-      .map((tag) => {
-        const isActive = state.selectedTag === tag;
-        const label = tag === "all" ? "All" : tag.charAt(0).toUpperCase() + tag.slice(1);
-        return `<button class="tag-chip ${isActive ? "active" : ""}" data-tag="${tag}">${label}</button>`;
-      })
-      .join("");
+    const categoryChips = categories.map((cat) => {
+      const isActive = state.selectedTag === cat.id;
+      return `<button class="tag-chip ${isActive ? "active" : ""}" data-tag="${cat.id}">${cat.label}</button>`;
+    });
+
+    const tagChipsList = Array.from(customTags).slice(0, 6).map((tag) => {
+      const isActive = state.selectedTag === tag;
+      return `<button class="tag-chip ${isActive ? "active" : ""}" data-tag="${tag}">#${tag}</button>`;
+    });
+
+    tagChips.innerHTML = [...categoryChips, ...tagChipsList].join("");
 
     tagChips.querySelectorAll(".tag-chip").forEach((chip) => {
       chip.addEventListener("click", () => {
@@ -979,23 +1023,41 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Render Photo Grid
+  // Render Asset Grid with Zero-Knowledge Search & Multi-Type Icons
   function renderPhotos() {
     const query = state.searchQuery.toLowerCase().trim();
+    const queryTokens = query.split(/\s+/).filter(Boolean);
 
     let filtered = state.photos.filter((p) => {
-      // Query filter
-      const matchesQuery =
-        !query ||
-        p.name.toLowerCase().includes(query) ||
-        (p.blob_id && p.blob_id.toLowerCase().includes(query)) ||
-        (p.id && p.id.toLowerCase().includes(query));
+      const cat = getAssetCategory(p);
+      const name = (p.original_name || p.name || "").toLowerCase();
+      const desc = (p.description || "").toLowerCase();
+      const tags = (p.tags || []).map((t) => t.toLowerCase());
+      const ext = name.split(".").pop();
 
-      // Tag filter
-      const matchesTag =
-        state.selectedTag === "all" ||
-        p.name.toLowerCase().endsWith(state.selectedTag.toLowerCase()) ||
-        state.selectedTag === "photo";
+      // Zero-Knowledge Private Search matching
+      let matchesQuery = true;
+      if (queryTokens.length > 0) {
+        matchesQuery = queryTokens.every((tok) =>
+          name.includes(tok) ||
+          desc.includes(tok) ||
+          tags.some((t) => t.includes(tok)) ||
+          cat.label.toLowerCase().includes(tok) ||
+          cat.category.toLowerCase().includes(tok) ||
+          (p.blob_id && p.blob_id.toLowerCase().includes(tok)) ||
+          (p.id && p.id.toLowerCase().includes(tok))
+        );
+      }
+
+      // Tag & Category filter
+      let matchesTag = true;
+      if (state.selectedTag && state.selectedTag !== "all") {
+        if (state.selectedTag === "images") matchesTag = cat.category === "image";
+        else if (state.selectedTag === "documents") matchesTag = cat.category === "document";
+        else if (state.selectedTag === "media") matchesTag = cat.category === "media";
+        else if (state.selectedTag === "archives") matchesTag = cat.category === "archive";
+        else matchesTag = tags.includes(state.selectedTag.toLowerCase()) || ext === state.selectedTag.toLowerCase();
+      }
 
       return matchesQuery && matchesTag;
     });
@@ -1006,7 +1068,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } else if (state.sortBy === "oldest") {
       filtered.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     } else if (state.sortBy === "name") {
-      filtered.sort((a, b) => a.name.localeCompare(b.name));
+      filtered.sort((a, b) => (a.original_name || a.name).localeCompare(b.original_name || b.name));
     } else if (state.sortBy === "size") {
       filtered.sort((a, b) => (b.size || 0) - (a.size || 0));
     }
@@ -1068,15 +1130,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const photoCardsHtml = filtered
       .map((p) => {
+        const cat = getAssetCategory(p);
+        const isImage = cat.category === "image";
         const isSelected = state.selectedIds.has(p.id);
         const cachedUrl = decryptedMediaCache.get(p.id);
         const initialSrc = cachedUrl || (p.encrypted && p.key ? "" : p.stream_url);
+
+        const thumbnailHtml = isImage
+          ? `<img class="photo-thumbnail" id="thumb-${p.id}" src="${initialSrc || 'data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\' fill=\\'%231a2332\\'><rect width=\\'100\\' height=\\'100\\'/><text x=\\'50%\\' y=\\'50%\\' fill=\\'%238b949e\\' font-size=\\'11\\' text-anchor=\\'middle\\' dy=\\'.3em\\'>🔒 Encrypted</text></svg>'}" alt="${p.name}" loading="lazy">`
+          : `<div class="photo-thumbnail doc-card-thumb" style="display:flex; flex-direction:column; align-items:center; justify-content:center; background: radial-gradient(circle at 50% 30%, #1e293b, #0f172a); width:100%; height:100%; position:relative;">
+              <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(56, 139, 253, 0.12); border: 1px solid rgba(56, 139, 253, 0.28); display: flex; align-items: center; justify-content: center; margin-bottom: 8px;">
+                <i data-lucide="${cat.icon}" style="width: 24px; height: 24px; color: #58a6ff;"></i>
+              </div>
+              <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #8b949e; background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 6px;">${cat.label}</span>
+            </div>`;
+
         return `
         <div class="photo-card ${isSelected ? "selected" : ""}" data-id="${p.id}">
           <div class="photo-select-checkbox" data-select-id="${p.id}">
             <i data-lucide="${isSelected ? "check" : ""}" style="width: 14px; height: 14px;"></i>
           </div>
-          <img class="photo-thumbnail" id="thumb-${p.id}" src="${initialSrc || 'data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\' fill=\\'%231a2332\\'><rect width=\\'100\\' height=\\'100\\'/><text x=\\'50%\\' y=\\'50%\\' fill=\\'%238b949e\\' font-size=\\'11\\' text-anchor=\\'middle\\' dy=\\'.3em\\'>🔒 Encrypted</text></svg>'}" alt="${p.name}" loading="lazy">
+          ${thumbnailHtml}
           <div class="photo-overlay">
             <div class="overlay-top">
               <span class="badge-seal"><i data-lucide="lock" style="width: 10px; height: 10px;"></i> Seal</span>
@@ -1093,9 +1167,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     photoGrid.innerHTML = uploadCardsHtml + photoCardsHtml;
 
-    // Asynchronously decrypt and stream thumbnails on-device
+    // Asynchronously decrypt and stream thumbnails on-device only for images
     filtered.forEach((p) => {
-      if (p.encrypted && p.key && p.iv && !decryptedMediaCache.has(p.id)) {
+      const cat = getAssetCategory(p);
+      if (cat.category === "image" && p.encrypted && p.key && p.iv && !decryptedMediaCache.has(p.id)) {
         getOrDecryptPhotoUrl(p).then((url) => {
           const imgEl = document.getElementById(`thumb-${p.id}`);
           if (imgEl && url) imgEl.src = url;
@@ -1251,10 +1326,16 @@ document.addEventListener("DOMContentLoaded", () => {
     metaFileSize.textContent = formatBytes(photo.original_size || photo.size);
     metaUploadDate.textContent = formatDate(photo.created_at);
 
+    const cat = getAssetCategory(photo);
+
     if (photo.encrypted && photo.key && photo.iv) {
       if (decryptedMediaCache.has(photo.id)) {
         const decryptedUrl = decryptedMediaCache.get(photo.id);
-        lightboxImg.src = decryptedUrl;
+        if (cat.category === "image") {
+          lightboxImg.src = decryptedUrl;
+        } else {
+          lightboxImg.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" fill="%230f172a"><rect width="500" height="350" rx="16"/><circle cx="250" cy="140" r="44" fill="%231e293b" stroke="%23388bfd" stroke-width="2"/><text x="50%" y="150" fill="%2358a6ff" font-size="26" font-family="sans-serif" text-anchor="middle">📄</text><text x="50%" y="220" fill="%23f0f6fc" font-size="16" font-weight="bold" font-family="sans-serif" text-anchor="middle">${encodeURIComponent(cat.label)}</text><text x="50%" y="246" fill="%238b949e" font-size="13" font-family="sans-serif" text-anchor="middle">Decrypted on-device with WebCrypto</text></svg>`;
+        }
         downloadBtn.href = decryptedUrl;
         downloadBtn.setAttribute("download", photo.original_name || photo.name);
       } else {
@@ -1263,7 +1344,11 @@ document.addEventListener("DOMContentLoaded", () => {
         downloadBtn.removeAttribute("download");
         getOrDecryptPhotoUrl(photo).then((decryptedUrl) => {
           if (state.selectedPhoto && state.selectedPhoto.id === photo.id) {
-            lightboxImg.src = decryptedUrl;
+            if (cat.category === "image") {
+              lightboxImg.src = decryptedUrl;
+            } else {
+              lightboxImg.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" fill="%230f172a"><rect width="500" height="350" rx="16"/><circle cx="250" cy="140" r="44" fill="%231e293b" stroke="%23388bfd" stroke-width="2"/><text x="50%" y="150" fill="%2358a6ff" font-size="26" font-family="sans-serif" text-anchor="middle">📄</text><text x="50%" y="220" fill="%23f0f6fc" font-size="16" font-weight="bold" font-family="sans-serif" text-anchor="middle">${encodeURIComponent(cat.label)}</text><text x="50%" y="246" fill="%238b949e" font-size="13" font-family="sans-serif" text-anchor="middle">Decrypted on-device with WebCrypto</text></svg>`;
+            }
             downloadBtn.href = decryptedUrl;
             downloadBtn.setAttribute("download", photo.original_name || photo.name);
           }
@@ -1274,7 +1359,11 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
     } else {
-      lightboxImg.src = photo.stream_url;
+      if (cat.category === "image") {
+        lightboxImg.src = photo.stream_url;
+      } else {
+        lightboxImg.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" fill="%230f172a"><rect width="500" height="350" rx="16"/><circle cx="250" cy="140" r="44" fill="%231e293b" stroke="%23388bfd" stroke-width="2"/><text x="50%" y="150" fill="%2358a6ff" font-size="26" font-family="sans-serif" text-anchor="middle">📄</text><text x="50%" y="220" fill="%23f0f6fc" font-size="16" font-weight="bold" font-family="sans-serif" text-anchor="middle">${encodeURIComponent(cat.label)}</text><text x="50%" y="246" fill="%238b949e" font-size="13" font-family="sans-serif" text-anchor="middle">Walrus Anchored File</text></svg>`;
+      }
       downloadBtn.href = photo.download_url;
       downloadBtn.setAttribute("download", photo.name);
     }
