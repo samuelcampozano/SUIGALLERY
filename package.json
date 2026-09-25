@@ -8,11 +8,17 @@
     "test": "node test/run-all-tests.js",
     "test:security": "node test/test-security.js",
     "test:api": "node test/test-api.js",
+    "test:zero-plaintext": "node test/test-zero-plaintext.js",
+    "test:sdk": "node test/test-sdk.js",
     "test:onchain": "node test/test-onchain.js",
     "test:shred": "node test-crypto-shredding.js",
     "test-connection": "node test-connection.js",
     "mcp:install": "npx -y @mysten-incubation/walrus-console-mcp@beta install",
     "mcp:ping": "node -e \"import('./test-connection.js').then(m => m.testConnection())\""
+  },
+  "exports": {
+    ".": "./server/index.js",
+    "./sdk": "./sdk/index.js"
   },
   "keywords": [
     "walrus",

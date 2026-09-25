@@ -109,17 +109,51 @@ npm run dev
 ```
 
 ### 4. Run Automated Test Suites
-Run the automated test suites verifying backend security defenses, API endpoints, zero-plaintext privacy, on-chain Sui Mainnet policies, and live crypto-shredding:
+Run the automated test suites verifying backend security defenses, API endpoints, zero-plaintext privacy, developer SDK, private search, on-chain Sui Mainnet policies, and live crypto-shredding:
 ```bash
-# Run all 5 test suites end-to-end
+# Run all 6 test suites end-to-end
 npm test
 
 # Run individual suites
 npm run test:security       # Magic bytes validation, path traversal defense, XSS escaping, cache TTL
 npm run test:api            # REST endpoints, rate limiting, and HTTP security headers
 npm run test:zero-plaintext # Validates zero plaintext disk/memory leaks, enforces ciphertext, 404 on wallet endpoint
+npm run test:sdk            # Developer SDK operations: put, get, private search, and crypto-shredding
 npm run test:onchain        # Sui Mainnet GraphQL Move policy and custodian verification
 npm run test:shred          # End-to-end live crypto-shredding and bit-for-bit validation
+```
+
+---
+
+## 📦 Developer SDK (`@nodus/sdk`)
+
+Nodus provides an isomorphic TypeScript/ESM SDK for developers building decentralized applications on Walrus with zero cryptographic complexity:
+
+```javascript
+import { createNodusClient } from "nodus-vault/sdk";
+
+// Initialize client (defaults to localhost:3000)
+const nodus = createNodusClient({ gatewayUrl: "http://localhost:3000" });
+
+// 1. Client-Side Encrypt & Anchor Asset (PDF, DOCX, Images, Video)
+const upload = await nodus.put(fileBuffer, {
+  name: "confidential_contract.pdf",
+  type: "application/pdf",
+  description: "Signed Partnership Agreement",
+  tags: ["legal", "partnerships"],
+  encrypt: true // Encrypts client-side with AES-256-GCM before transport
+});
+console.log(`Anchored on Walrus Blob: ${upload.blob_id}`);
+
+// 2. Zero-Knowledge Private Search (100% on-device, zero cloud queries)
+const results = await nodus.search("contract", { type: "application/pdf" });
+
+// 3. Bit-for-Bit Decrypted Stream
+const asset = await nodus.get(upload.id);
+// asset.data contains decrypted Uint8Array bytes
+
+// 4. Verifiable Crypto-Shredding
+await nodus.delete(upload.id);
 ```
 
 ---
@@ -129,12 +163,12 @@ npm run test:shred          # End-to-end live crypto-shredding and bit-for-bit v
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/status` | Space quota, bucket metadata, and Seal policy |
-| `GET` | `/api/photos` | List all photos anchored in the bucket with encryption metadata |
-| `POST` | `/api/photos/upload` | Ingest client-encrypted AES-256-GCM ciphertext payload |
-| `GET` | `/api/photos/:fileId/stream` | Stream ciphertext blob with decryption headers (`x-nodus-encrypted`) |
-| `PATCH` | `/api/photos/:fileId` | Update photo name, caption, and tags |
-| `DELETE`| `/api/photos/:fileId` | Delete photo and trigger crypto-shredding |
-| `POST` | `/api/photos/batch-delete` | Batch multi-photo deletion |
+| `GET` | `/api/photos` or `/api/assets` | List all assets anchored in the bucket with encryption metadata |
+| `POST` | `/api/photos/upload` or `/api/assets/upload` | Ingest client-encrypted AES-256-GCM ciphertext payload |
+| `GET` | `/api/photos/:id/stream` or `/api/assets/:id/stream` | Stream ciphertext blob with decryption headers (`x-nodus-encrypted`) |
+| `PATCH` | `/api/photos/:id` or `/api/assets/:id` | Update asset name, caption, and tags |
+| `DELETE`| `/api/photos/:id` or `/api/assets/:id` | Delete asset and trigger crypto-shredding |
+| `POST` | `/api/photos/batch-delete` or `/api/assets/batch-delete` | Batch multi-asset deletion |
 
 ---
 
