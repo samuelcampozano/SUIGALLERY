@@ -120,10 +120,34 @@ function getContentType(filename) {
       return "image/webp";
     case ".svg":
       return "image/svg+xml";
+    case ".pdf":
+      return "application/pdf";
+    case ".docx":
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    case ".doc":
+      return "application/msword";
+    case ".txt":
+      return "text/plain";
+    case ".md":
+      return "text/markdown";
+    case ".json":
+      return "application/json";
+    case ".zip":
+      return "application/zip";
+    case ".tar":
+      return "application/x-tar";
+    case ".gz":
+      return "application/gzip";
     case ".mp4":
       return "video/mp4";
+    case ".webm":
+      return "video/webm";
     case ".mov":
       return "video/quicktime";
+    case ".mp3":
+      return "audio/mpeg";
+    case ".wav":
+      return "audio/wav";
     default:
       return "application/octet-stream";
   }
@@ -168,8 +192,8 @@ app.get("/api/status", async (req, res) => {
   }
 });
 
-// 2. List Photos in Bucket
-app.get("/api/photos", async (req, res) => {
+// 2. List Assets in Bucket
+app.get(["/api/photos", "/api/assets"], async (req, res) => {
   try {
     const rawFiles = await walrus.listPhotos();
     const photos = (Array.isArray(rawFiles) ? rawFiles : []).map((file) => ({
@@ -187,7 +211,9 @@ app.get("/api/photos", async (req, res) => {
       key: file.key || null,
       original_name: file.original_name || file.name,
       original_type: file.original_type || getContentType(file.name),
-      original_size: file.original_size || file.size
+      original_size: file.original_size || file.size,
+      tags: Array.isArray(file.tags) ? file.tags : [],
+      description: file.description || ""
     }));
 
     // Sort newest first
@@ -196,7 +222,8 @@ app.get("/api/photos", async (req, res) => {
     res.json({
       success: true,
       count: photos.length,
-      photos
+      photos,
+      assets: photos
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -204,13 +231,15 @@ app.get("/api/photos", async (req, res) => {
 });
 
 // 3. Upload Asset (Zero-Knowledge Ciphertext Ingestion)
-app.post("/api/photos/upload", uploadLimiter, upload.single("photo"), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, error: "No photo file uploaded" });
+app.post(["/api/photos/upload", "/api/assets/upload"], uploadLimiter, upload.any(), async (req, res) => {
+  const uploadedFile = req.file || (req.files && req.files[0]);
+  if (!uploadedFile) {
+    return res.status(400).json({ success: false, error: "No asset file uploaded" });
   }
+  req.file = uploadedFile;
 
   const localFilePath = req.file.path;
-  const originalName = req.body.originalName || req.file.originalname;
+  const originalName = req.body.originalName || req.body.original_name || req.file.originalname;
   const description = req.body.description || "Uploaded via Nodus";
 
   // Extract client-side encryption metadata
@@ -260,12 +289,21 @@ app.post("/api/photos/upload", uploadLimiter, upload.single("photo"), async (req
     const sanitizedName = sanitizeString(originalName, 128);
     const sanitizedDesc = sanitizeString(description, 512);
     const ext = path.extname(originalName).replace(".", "");
+    let userTags = [];
+    if (req.body.tags) {
+      if (Array.isArray(req.body.tags)) {
+        userTags = req.body.tags;
+      } else if (typeof req.body.tags === "string") {
+        userTags = req.body.tags.split(",").map((s) => s.trim());
+      }
+    }
+    const combinedTags = Array.from(new Set(["nodus", ext, ...userTags].filter(Boolean)));
 
     const result = await walrus.uploadPhoto({
       localPath: localFilePath,
       fileName: sanitizedName,
       description: sanitizedDesc,
-      tags: ["photo", "nodus", ext].filter(Boolean),
+      tags: combinedTags,
       encryption: encryption || undefined
     });
 
@@ -294,7 +332,7 @@ app.post("/api/photos/upload", uploadLimiter, upload.single("photo"), async (req
 });
 
 // 4. Stream Ciphertext Stream (with TTL Cache & Zero Server-Side Plaintext)
-app.get("/api/photos/:fileId/stream", async (req, res) => {
+app.get(["/api/photos/:fileId/stream", "/api/assets/:fileId/stream"], async (req, res) => {
   const { fileId } = req.params;
   const shouldDownload = req.query.download === "true";
 
@@ -345,8 +383,8 @@ app.get("/api/photos/:fileId/stream", async (req, res) => {
   }
 });
 
-// 5. Delete Photo (Crypto-Shredding)
-app.delete("/api/photos/:fileId", async (req, res) => {
+// 5. Delete Asset (Crypto-Shredding)
+app.delete(["/api/photos/:fileId", "/api/assets/:fileId"], async (req, res) => {
   const { fileId } = req.params;
 
   if (!isValidFileId(fileId)) {
@@ -359,15 +397,15 @@ app.delete("/api/photos/:fileId", async (req, res) => {
     // Immediately evict and unlink decrypted cache from disk
     cacheManager.evict(fileId);
 
-    res.json({ success: true, message: `Photo ${fileId} deleted from Walrus` });
+    res.json({ success: true, message: `Asset ${fileId} deleted from Walrus` });
   } catch (err) {
     console.error(`❌ [API] Delete failed for fileId ${fileId}:`, err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// 6. Update Photo Metadata (Sanitized Rename, Tags, Description)
-app.patch("/api/photos/:fileId", async (req, res) => {
+// 6. Update Asset Metadata (Sanitized Rename, Tags, Description)
+app.patch(["/api/photos/:fileId", "/api/assets/:fileId"], async (req, res) => {
   const { fileId } = req.params;
   const { name, description, tags } = req.body;
 
@@ -389,7 +427,7 @@ app.patch("/api/photos/:fileId", async (req, res) => {
 
     res.json({
       success: true,
-      message: "Photo metadata updated successfully",
+      message: "Asset metadata updated successfully",
       result
     });
   } catch (err) {
@@ -398,8 +436,8 @@ app.patch("/api/photos/:fileId", async (req, res) => {
   }
 });
 
-// 7. Batch Delete Photos
-app.post("/api/photos/batch-delete", async (req, res) => {
+// 7. Batch Delete Assets
+app.post(["/api/photos/batch-delete", "/api/assets/batch-delete"], async (req, res) => {
   const { fileIds } = req.body;
   if (!Array.isArray(fileIds) || fileIds.length === 0) {
     return res.status(400).json({ success: false, error: "fileIds array required" });
