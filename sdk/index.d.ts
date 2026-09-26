@@ -6,6 +6,25 @@ export interface NodusClientConfig {
   gatewayUrl?: string;
   apiKey?: string;
   fetch?: typeof fetch;
+  keyIdentity?: DeviceKeyIdentity;
+}
+
+export interface DeviceKeyIdentity {
+  version?: number;
+  algorithm?: "ECDH-P256/AES-256-GCM";
+  primaryPublicKey: JsonWebKey;
+  primaryPrivateKey: JsonWebKey;
+  recoveryPublicKey?: JsonWebKey | null;
+  recoveryPrivateKey?: JsonWebKey | null;
+}
+
+export interface RecoveryKit {
+  version: number;
+  algorithm: "PBKDF2-SHA256/AES-256-GCM";
+  iterations: number;
+  salt: string;
+  iv: string;
+  ciphertext: string;
 }
 
 export interface PutOptions {
@@ -149,6 +168,7 @@ export declare class NodusClient {
   searchIndex: NodusSearchIndex;
   /** Ephemeral device-local decryption keys, never sent to the gateway. */
   keyCache: Map<string, string>;
+  keyIdentity: DeviceKeyIdentity | null;
 
   constructor(config?: NodusClientConfig);
   getStatus(): Promise<any>;
@@ -176,6 +196,12 @@ export declare class NodusClient {
 
   getSolanaChallenge(address: string, domain?: string): Promise<SolanaChallengeResult>;
   verifySolanaAuth(address: string, signature: string, message?: string): Promise<SolanaAuthResult>;
+  bootstrapKeyIdentity(options?: { passphrase?: string }): Promise<{ identity: DeviceKeyIdentity; recoveryKit: RecoveryKit | null }>;
+  registerKeyIdentity(identity: DeviceKeyIdentity): Promise<any>;
+  getKeyIdentity(address: string): Promise<any>;
+  getOrganizationKeyRecipients(orgId: string): Promise<any[]>;
+  protectAssetKey(assetId: string, options?: { recipientAddresses?: string[]; organizationId?: string | null }): Promise<any>;
+  recoverAssetKey(assetId: string, options?: { recoveryKit?: RecoveryKit; passphrase?: string; recoveryPrivateKey?: JsonWebKey }): Promise<string>;
   listOrganizations(address?: string): Promise<Organization[]>;
   createOrganization(params: { orgId: string; name?: string; ownerAddress: string; storageCapBytes?: number }): Promise<Organization>;
   getOrganization(orgId: string): Promise<Organization>;

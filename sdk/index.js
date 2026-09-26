@@ -173,6 +173,90 @@ export const NodusCrypto = {
     return new Uint8Array(plaintext);
   },
 
+  bytesToHex(bytes) {
+    return Array.from(new Uint8Array(bytes)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  },
+
+  hexToBytes(hex) {
+    if (typeof hex !== "string" || !/^[a-f0-9]+$/i.test(hex) || hex.length % 2) throw new Error("Invalid hexadecimal value");
+    return new Uint8Array(hex.match(/.{1,2}/g).map((byte) => parseInt(byte, 16)));
+  },
+
+  async createEnvelopeIdentity({ recovery = true } = {}) {
+    const subtle = globalThis.crypto?.subtle;
+    if (!subtle) throw new Error("WebCrypto (crypto.subtle) is not available in this environment.");
+    const createPair = async () => {
+      const pair = await subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+      return { publicKey: await subtle.exportKey("jwk", pair.publicKey), privateKey: await subtle.exportKey("jwk", pair.privateKey) };
+    };
+    const primary = await createPair();
+    const recoveryPair = recovery ? await createPair() : null;
+    return {
+      version: 1,
+      algorithm: "ECDH-P256/AES-256-GCM",
+      primaryPublicKey: primary.publicKey,
+      primaryPrivateKey: primary.privateKey,
+      recoveryPublicKey: recoveryPair?.publicKey || null,
+      recoveryPrivateKey: recoveryPair?.privateKey || null
+    };
+  },
+
+  async wrapDataKey(dataKeyHex, recipientPublicKey, { assetId, recipientAddress, recipientType = "user", organizationId = null } = {}) {
+    const subtle = globalThis.crypto?.subtle;
+    const recipient = await subtle.importKey("jwk", recipientPublicKey, { name: "ECDH", namedCurve: "P-256" }, false, []);
+    const ephemeral = await subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+    const shared = await subtle.deriveBits({ name: "ECDH", public: recipient }, ephemeral.privateKey, 256);
+    const wrappingKey = await subtle.importKey("raw", shared, { name: "AES-GCM" }, false, ["encrypt"]);
+    const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
+    const aad = new TextEncoder().encode(`nodus:key-envelope:v1:${assetId}:${recipientAddress}:${recipientType}:${organizationId || "personal"}`);
+    const ciphertext = await subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad }, wrappingKey, this.hexToBytes(dataKeyHex));
+    return {
+      recipientAddress,
+      recipientType,
+      organizationId,
+      algorithm: "ECDH-P256/AES-256-GCM",
+      ephemeralPublicKey: await subtle.exportKey("jwk", ephemeral.publicKey),
+      iv: this.bytesToHex(iv),
+      ciphertext: this.bytesToHex(ciphertext)
+    };
+  },
+
+  async unwrapDataKey(envelope, recipientPrivateKey, { assetId } = {}) {
+    const subtle = globalThis.crypto?.subtle;
+    const privateKey = await subtle.importKey("jwk", recipientPrivateKey, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
+    const ephemeral = await subtle.importKey("jwk", envelope.ephemeralPublicKey, { name: "ECDH", namedCurve: "P-256" }, false, []);
+    const shared = await subtle.deriveBits({ name: "ECDH", public: ephemeral }, privateKey, 256);
+    const wrappingKey = await subtle.importKey("raw", shared, { name: "AES-GCM" }, false, ["decrypt"]);
+    const aad = new TextEncoder().encode(`nodus:key-envelope:v1:${assetId}:${envelope.recipientAddress}:${envelope.recipientType}:${envelope.organizationId || "personal"}`);
+    const plaintext = await subtle.decrypt({ name: "AES-GCM", iv: this.hexToBytes(envelope.iv), additionalData: aad }, wrappingKey, this.hexToBytes(envelope.ciphertext));
+    return this.bytesToHex(plaintext);
+  },
+
+  async createRecoveryKit(identity, passphrase) {
+    if (!identity?.recoveryPrivateKey || typeof passphrase !== "string" || passphrase.length < 12) {
+      throw new Error("A recovery identity and a passphrase of at least 12 characters are required");
+    }
+    const subtle = globalThis.crypto?.subtle;
+    const salt = globalThis.crypto.getRandomValues(new Uint8Array(16));
+    const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
+    const material = await subtle.importKey("raw", new TextEncoder().encode(passphrase), "PBKDF2", false, ["deriveKey"]);
+    const key = await subtle.deriveKey({ name: "PBKDF2", salt, iterations: 210000, hash: "SHA-256" }, material, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
+    const payload = new TextEncoder().encode(JSON.stringify({ version: 1, recoveryPrivateKey: identity.recoveryPrivateKey }));
+    const ciphertext = await subtle.encrypt({ name: "AES-GCM", iv }, key, payload);
+    return { version: 1, algorithm: "PBKDF2-SHA256/AES-256-GCM", iterations: 210000, salt: this.bytesToHex(salt), iv: this.bytesToHex(iv), ciphertext: this.bytesToHex(ciphertext) };
+  },
+
+  async openRecoveryKit(kit, passphrase) {
+    if (!kit || kit.algorithm !== "PBKDF2-SHA256/AES-256-GCM" || typeof passphrase !== "string") throw new Error("Invalid recovery kit");
+    const subtle = globalThis.crypto?.subtle;
+    const material = await subtle.importKey("raw", new TextEncoder().encode(passphrase), "PBKDF2", false, ["deriveKey"]);
+    const key = await subtle.deriveKey({ name: "PBKDF2", salt: this.hexToBytes(kit.salt), iterations: kit.iterations, hash: "SHA-256" }, material, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+    const plaintext = await subtle.decrypt({ name: "AES-GCM", iv: this.hexToBytes(kit.iv) }, key, this.hexToBytes(kit.ciphertext));
+    const payload = JSON.parse(new TextDecoder().decode(plaintext));
+    if (!payload?.recoveryPrivateKey) throw new Error("Recovery kit has no recovery identity");
+    return payload.recoveryPrivateKey;
+  },
+
   async sha256Hex(bytes) {
     const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
     return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -298,6 +382,7 @@ export class NodusClient {
     // Ephemeral device-local mapping. It is never serialized into an upload,
     // session, catalog entry, or HTTP header.
     this.keyCache = new Map();
+    this.keyIdentity = config.keyIdentity || null;
   }
 
   /**
@@ -412,7 +497,10 @@ export class NodusClient {
         record.name = name;
       }
       this.searchIndex.indexDocument(record);
-      if (encrypt && record.id) this.keyCache.set(record.id, keyHex);
+      if (encrypt && record.id) {
+        this.keyCache.set(record.id, keyHex);
+        await this._protectUploadedAsset(record.id, options);
+      }
     }
 
     return {
@@ -517,7 +605,11 @@ export class NodusClient {
       const completed = await this.completeResumableUpload(upload.uploadId);
       const record = completed.asset || completed.result;
       if (record) this._indexRecord(record, { name, type, description, tags });
-      if (record?.id || record?.fileId) this.keyCache.set(record.id || record.fileId, keyHex);
+      if (record?.id || record?.fileId) {
+        const assetId = record.id || record.fileId;
+        this.keyCache.set(assetId, keyHex);
+        await this._protectUploadedAsset(assetId, options);
+      }
       return {
         success: true,
         uploadId: upload.uploadId,
@@ -631,7 +723,10 @@ export class NodusClient {
       const completed = await this.finalizeDirectUpload(upload.uploadId);
       const record = completed.asset;
       if (record) this._indexRecord(record, { name, type, description, tags });
-      if (record?.id) this.keyCache.set(record.id, keyHex);
+      if (record?.id) {
+        this.keyCache.set(record.id, keyHex);
+        await this._protectUploadedAsset(record.id, options);
+      }
       return {
         success: true,
         uploadId: upload.uploadId,
@@ -726,7 +821,7 @@ export class NodusClient {
       throw new Error("Streaming is currently available for direct publisher assets only");
     }
     const manifest = await this.getDirectManifest(fileId);
-    const keyHex = options.key || this.keyCache.get(fileId);
+    const keyHex = options.key || this.keyCache.get(fileId) || await this.recoverAssetKey(fileId, options);
     const ivHex = options.iv || manifest.encryption?.iv;
     if (!keyHex || !ivHex) {
       throw new Error(`Asset ${fileId} is encrypted; provide its device-local key to stream it`);
@@ -926,7 +1021,7 @@ export class NodusClient {
 
     const isEncrypted = res.headers.get("x-nodus-encrypted") === "true";
     const ivHex = options.iv || res.headers.get("x-nodus-iv");
-    const keyHex = options.key || this.keyCache.get(fileId);
+    const keyHex = options.key || this.keyCache.get(fileId) || await this.recoverAssetKey(fileId, options);
     const encryptionMode = res.headers.get("x-nodus-encryption-mode") || "aes-gcm-v1";
     const chunkSize = Number(res.headers.get("x-nodus-chunk-size"));
     const chunkCount = Number(res.headers.get("x-nodus-chunk-count"));
@@ -1071,6 +1166,119 @@ export class NodusClient {
     if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
     this.userAddress = address;
     return data;
+  }
+
+  /** Creates a device encryption identity and registers only its public half. */
+  async bootstrapKeyIdentity({ passphrase } = {}) {
+    if (!this.userAddress) throw new Error("Authenticate with Solana before creating an encryption identity");
+    const identity = await NodusCrypto.createEnvelopeIdentity();
+    await this.registerKeyIdentity(identity);
+    const recoveryKit = passphrase ? await NodusCrypto.createRecoveryKit(identity, passphrase) : null;
+    return { identity, recoveryKit };
+  }
+
+  async registerKeyIdentity(identity) {
+    if (!this.userAddress) throw new Error("Authenticate with Solana before registering an encryption identity");
+    if (!identity?.primaryPublicKey || !identity?.primaryPrivateKey) throw new Error("A complete device encryption identity is required");
+    const res = await this._fetch(`${this.gatewayUrl}/api/key-identities/${encodeURIComponent(this.userAddress)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._getHeaders() },
+      body: JSON.stringify({ publicKey: identity.primaryPublicKey, recoveryPublicKey: identity.recoveryPublicKey || null })
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to register encryption identity: HTTP ${res.status}`);
+    this.keyIdentity = identity;
+    return body.identity;
+  }
+
+  async getKeyIdentity(address) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/key-identities/${encodeURIComponent(address)}`, { headers: this._getHeaders() });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Encryption identity not found for ${address}`);
+    return body.identity;
+  }
+
+  async getOrganizationKeyRecipients(orgId) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/orgs/${encodeURIComponent(orgId)}/key-recipients`, { headers: this._getHeaders() });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to load organization key recipients: HTTP ${res.status}`);
+    return body.recipients || [];
+  }
+
+  async protectAssetKey(assetId, { recipientAddresses = [], organizationId = null } = {}) {
+    if (!assetId || !this.userAddress || !this.keyIdentity) {
+      throw new Error("An authenticated device encryption identity is required to protect an asset key");
+    }
+    const dataKeyHex = this.keyCache.get(assetId);
+    if (!dataKeyHex) throw new Error(`No device-local data key is available for ${assetId}`);
+    const recipients = new Map();
+    recipients.set(this.userAddress, { member: this.userAddress, identity: {
+      address: this.userAddress,
+      publicKey: this.keyIdentity.primaryPublicKey,
+      recoveryPublicKey: this.keyIdentity.recoveryPublicKey || null
+    }, organizationId: null });
+    for (const address of recipientAddresses) {
+      const identity = await this.getKeyIdentity(address);
+      recipients.set(address, { member: address, identity, organizationId: null });
+    }
+    if (organizationId) {
+      for (const recipient of await this.getOrganizationKeyRecipients(organizationId)) {
+        recipients.set(recipient.member, { ...recipient, organizationId });
+      }
+    }
+
+    const envelopes = [];
+    for (const recipient of recipients.values()) {
+      if (!recipient.identity?.publicKey) continue;
+      envelopes.push(await NodusCrypto.wrapDataKey(dataKeyHex, recipient.identity.publicKey, {
+        assetId, recipientAddress: recipient.member, recipientType: "user", organizationId: recipient.organizationId
+      }));
+      if (recipient.identity.recoveryPublicKey) {
+        envelopes.push(await NodusCrypto.wrapDataKey(dataKeyHex, recipient.identity.recoveryPublicKey, {
+          assetId, recipientAddress: recipient.member, recipientType: "recovery", organizationId: recipient.organizationId
+        }));
+      }
+    }
+    if (!envelopes.length) throw new Error("No recipient encryption identities are registered");
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/${encodeURIComponent(assetId)}/key-envelopes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._getHeaders() },
+      body: JSON.stringify({ envelopes })
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to store encrypted key envelopes: HTTP ${res.status}`);
+    return body.asset;
+  }
+
+  async recoverAssetKey(assetId, { recoveryKit = null, passphrase = null, recoveryPrivateKey = null } = {}) {
+    if (!this.userAddress) throw new Error("Authenticate with Solana before recovering an asset key");
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/${encodeURIComponent(assetId)}/key-envelopes`, { headers: this._getHeaders() });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Key envelopes not found for ${assetId}`);
+    const recoveryKey = recoveryPrivateKey || (recoveryKit ? await NodusCrypto.openRecoveryKit(recoveryKit, passphrase) : null);
+    const primary = this.keyIdentity?.primaryPrivateKey || null;
+    const candidates = recoveryKey
+      ? body.envelopes.filter((entry) => entry.recipientType === "recovery").map((entry) => ({ entry, privateKey: recoveryKey }))
+      : body.envelopes.filter((entry) => entry.recipientType === "user" && primary).map((entry) => ({ entry, privateKey: primary }));
+    for (const candidate of candidates) {
+      try {
+        const keyHex = await NodusCrypto.unwrapDataKey(candidate.entry, candidate.privateKey, { assetId });
+        this.keyCache.set(assetId, keyHex);
+        return keyHex;
+      } catch {
+        // An envelope for another device/organization member cannot be opened
+        // with this private key; try the remaining recipient envelopes.
+      }
+    }
+    throw new Error(`No decryptable key envelope is available for ${assetId}`);
+  }
+
+  async _protectUploadedAsset(assetId, options) {
+    if (!this.keyIdentity || !this.userAddress) {
+      if (options?.organizationId) throw new Error("Organization assets require an authenticated device encryption identity");
+      return null;
+    }
+    return this.protectAssetKey(assetId, { organizationId: options?.organizationId || null });
   }
 
   /**

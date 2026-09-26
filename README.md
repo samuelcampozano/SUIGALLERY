@@ -244,6 +244,25 @@ const upload = await nodus.put(largeVideoFile, {
 
 Each segment becomes one Walrus blob; Nodus returns a logical asset plus an ordered manifest. This is required for files larger than a single Walrus blob. The AES key stays with the client and is never sent to the control plane or stored in the manifest. Configure `NODUS_PUBLISHER_URL`, `NODUS_PUBLISHER_JWT_SECRET`, and a distinct `NODUS_PUBLISHER_RECEIPT_SECRET` before enabling this option outside tests. The publisher must consume each JWT `jti` exactly once and return an HMAC-SHA256 signed receipt binding the `jti`, upload ID, segment index, ciphertext SHA-256, ciphertext size, and Walrus blob ID; Nodus refuses to finalize an asset without verified receipts for every segment.
 
+### Recipient envelopes and account recovery
+
+After Solana sign-in, create one client-side encryption identity. Nodus registers only the P-256 public keys. Every asset key is then wrapped locally using ephemeral ECDH P-256 plus AES-256-GCM for the owner, recipients, and (optionally) their recovery keys. The gateway stores only these ciphertext envelopes and cannot unwrap them.
+
+```js
+const { identity, recoveryKit } = await nodus.bootstrapKeyIdentity({
+  passphrase: "a long recovery passphrase"
+});
+
+const upload = await nodus.put(file, { name: "plan.pdf", type: "application/pdf" });
+await nodus.protectAssetKey(upload.id, { recipientAddresses: [teammateSolanaAddress] });
+await nodus.protectAssetKey(upload.id, { organizationId: "acme-corp" });
+
+// On a new device, after authenticating the same Solana identity:
+const keyHex = await nodus.recoverAssetKey(upload.id, { recoveryKit, passphrase: "a long recovery passphrase" });
+```
+
+Store the encrypted `recoveryKit` with the user (download, password manager, or another trusted vault), never in the Nodus gateway. Removing a member blocks future envelope fan-out; re-encrypt existing assets when immediate revocation is required.
+
 ---
 
 ## 📄 License
