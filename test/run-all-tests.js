@@ -5,6 +5,8 @@ const suites = [
   { name: "Unit & Security Hardening", file: "test/test-security.js" },
   { name: "REST API Integration", file: "test/test-api.js" },
   { name: "Zero-Plaintext & Client Encryption", file: "test/test-zero-plaintext.js" },
+  { name: "Resumable Encrypted Uploads", file: "test/test-resumable-upload.js" },
+  { name: "Resumable Upload HTTP API", file: "test/test-resumable-api.js" },
   { name: "Developer SDK & Private Search", file: "test/test-sdk.js" },
   { name: "Live Sui On-Chain Verification", file: "test/test-onchain.js" },
   { name: "End-to-End Crypto-Shredding", file: "test-crypto-shredding.js" },

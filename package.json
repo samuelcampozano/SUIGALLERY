@@ -9,6 +9,8 @@
     "test:security": "node test/test-security.js",
     "test:api": "node test/test-api.js",
     "test:zero-plaintext": "node test/test-zero-plaintext.js",
+    "test:resumable": "node test/test-resumable-upload.js && node test/test-resumable-api.js",
+    "test:resumable-api": "node test/test-resumable-api.js",
     "test:sdk": "node test/test-sdk.js",
     "test:onchain": "node test/test-onchain.js",
     "test:shred": "node test-crypto-shredding.js",

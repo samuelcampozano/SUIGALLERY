@@ -8,6 +8,8 @@
 import { PublicKey } from "@solana/web3.js";
 
 export const DEFAULT_NODUS_PROGRAM_ID = "NodUS11111111111111111111111111111111111111";
+export const DEFAULT_RESUMABLE_THRESHOLD_BYTES = 20 * 1024 * 1024;
+export const DEFAULT_RESUMABLE_CHUNK_SIZE = 8 * 1024 * 1024;
 
 /**
  * Derives the deterministic Anchor Program Derived Address (PDA) for an Organization.
@@ -79,7 +81,7 @@ export const NodusCrypto = {
    * @param {string} keyHex
    * @returns {Promise<CryptoKey>}
    */
-  async importKeyHex(keyHex) {
+  async importKeyHex(keyHex, usages = ["decrypt"]) {
     const subtle = globalThis.crypto?.subtle;
     const bytes = new Uint8Array(keyHex.match(/.{1,2}/g).map((byte) => parseInt(byte, 16)));
     return subtle.importKey(
@@ -87,7 +89,7 @@ export const NodusCrypto = {
       bytes,
       { name: "AES-GCM" },
       false,
-      ["decrypt"]
+      usages
     );
   },
 
@@ -136,6 +138,43 @@ export const NodusCrypto = {
       ciphertextBuffer
     );
     return new Uint8Array(decrypted);
+  },
+
+  /**
+   * Derives a distinct 96-bit IV for an AES-GCM chunk without persisting an IV
+   * per part. XOR with the chunk counter preserves uniqueness for each index.
+   */
+  deriveChunkIv(baseIvHex, chunkIndex) {
+    if (!/^[a-f0-9]{24}$/i.test(baseIvHex)) throw new Error("Invalid base IV");
+    if (!Number.isSafeInteger(chunkIndex) || chunkIndex < 0) throw new Error("Invalid chunk index");
+    const iv = new Uint8Array(baseIvHex.match(/.{1,2}/g).map((byte) => parseInt(byte, 16)));
+    let counter = BigInt(chunkIndex);
+    for (let offset = 0; offset < 8; offset++) {
+      iv[11 - offset] ^= Number(counter & 0xffn);
+      counter >>= 8n;
+    }
+    return iv;
+  },
+
+  async encryptChunk(plaintext, keyHex, baseIvHex, chunkIndex) {
+    const subtle = globalThis.crypto?.subtle;
+    const key = await this.importKeyHex(keyHex, ["encrypt", "decrypt"]);
+    const iv = this.deriveChunkIv(baseIvHex, chunkIndex);
+    const ciphertext = await subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
+    return new Uint8Array(ciphertext);
+  },
+
+  async decryptChunk(ciphertext, keyHex, baseIvHex, chunkIndex) {
+    const subtle = globalThis.crypto?.subtle;
+    const key = await this.importKeyHex(keyHex, ["encrypt", "decrypt"]);
+    const iv = this.deriveChunkIv(baseIvHex, chunkIndex);
+    const plaintext = await subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+    return new Uint8Array(plaintext);
+  },
+
+  async sha256Hex(bytes) {
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
   }
 };
 
@@ -289,6 +328,12 @@ export class NodusClient {
     const tags = options.tags || ["nodus-sdk"];
     const encrypt = options.encrypt !== false;
 
+    const sourceSize = this._sourceSize(data);
+    const resumableThreshold = options.resumableThresholdBytes || DEFAULT_RESUMABLE_THRESHOLD_BYTES;
+    if (options.resumable !== false && (options.resumable === true || sourceSize > resumableThreshold)) {
+      return this.putResumable(data, { ...options, name, type, description, tags, encrypt });
+    }
+
     // Convert data to Uint8Array
     let rawBytes;
     if (typeof data === "string") {
@@ -377,6 +422,178 @@ export class NodusClient {
   }
 
   /**
+   * Starts an encrypted multipart upload. Files above `resumableThresholdBytes`
+   * automatically use this path through put(). Only one ciphertext chunk is held
+   * in memory at once when the input is a Blob/File.
+   *
+   * To resume after an interrupted process, retain `error.uploadId`,
+   * `error.encryption.key`, and `error.encryption.iv`, then call
+   * resumeResumableUpload(uploadId, file, { key, iv }).
+   */
+  async putResumable(data, options = {}) {
+    if (options.encrypt === false) {
+      throw new Error("Resumable uploads require client-side encryption");
+    }
+
+    const originalSize = this._sourceSize(data);
+    if (originalSize < 1) throw new Error("Cannot upload an empty asset");
+    const chunkSize = Number(options.chunkSize || DEFAULT_RESUMABLE_CHUNK_SIZE);
+    if (!Number.isSafeInteger(chunkSize) || chunkSize < 1024 * 1024 || chunkSize > (32 * 1024 * 1024) - 16) {
+      throw new Error("chunkSize must be between 1 MiB and 32 MiB minus the AES-GCM tag");
+    }
+
+    const name = options.name || `asset_${Date.now()}.bin`;
+    const type = options.type || "application/octet-stream";
+    const description = options.description || "Uploaded via Nodus SDK";
+    const tags = options.tags || ["nodus-sdk"];
+    const chunkCount = Math.ceil(originalSize / chunkSize);
+    const encryptedSize = originalSize + (chunkCount * 16); // AES-GCM authentication tag per chunk.
+    const encryptedPartSize = chunkSize + 16;
+    let upload;
+    let keyHex = options.key || null;
+    let ivHex = options.iv || null;
+
+    if (options.uploadId) {
+      if (!keyHex || !ivHex) {
+        throw new Error("Resuming an encrypted upload requires the original key and IV");
+      }
+      upload = await this.getResumableUpload(options.uploadId);
+      if (upload.originalSize !== originalSize || upload.partCount !== chunkCount || upload.partSize !== encryptedPartSize) {
+        throw new Error("Source file or chunk size does not match the existing upload session");
+      }
+    } else {
+      const key = await NodusCrypto.generateDataKey();
+      keyHex = keyHex || await NodusCrypto.exportKeyHex(key);
+      const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
+      ivHex = ivHex || Array.from(iv).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      upload = await this.createResumableUpload({
+        originalName: name,
+        originalType: type,
+        originalSize,
+        encryptedSize,
+        partSize: encryptedPartSize,
+        description,
+        tags,
+        encryption: {
+          mode: "chunked-aes-gcm-v1",
+          key: keyHex,
+          iv: ivHex,
+          chunkSize,
+          chunkCount,
+          originalName: name,
+          originalType: type,
+          originalSize
+        }
+      });
+    }
+
+    const received = new Set(upload.receivedParts || []);
+    try {
+      for (let partNumber = 0; partNumber < chunkCount; partNumber++) {
+        if (received.has(partNumber)) continue;
+        const start = partNumber * chunkSize;
+        const end = Math.min(start + chunkSize, originalSize);
+        const plaintextPart = await this._readSourceChunk(data, start, end);
+        const ciphertextPart = await NodusCrypto.encryptChunk(plaintextPart, keyHex, ivHex, partNumber);
+        const checksum = await NodusCrypto.sha256Hex(ciphertextPart);
+        await this.uploadResumablePart(upload.uploadId, partNumber, ciphertextPart, checksum);
+        if (typeof options.onProgress === "function") {
+          options.onProgress({
+            uploadId: upload.uploadId,
+            partNumber,
+            partCount: chunkCount,
+            uploadedBytes: Math.min(end, originalSize),
+            totalBytes: originalSize
+          });
+        }
+      }
+
+      const completed = await this.completeResumableUpload(upload.uploadId);
+      const record = completed.asset || completed.result;
+      if (record) this._indexRecord(record, { name, type, description, tags });
+      return {
+        success: true,
+        uploadId: upload.uploadId,
+        id: record?.id || record?.fileId,
+        blob_id: record?.blob_id || record?.blobId,
+        name,
+        size: originalSize,
+        encrypted: true,
+        key: keyHex,
+        iv: ivHex,
+        record,
+        upload: completed.upload
+      };
+    } catch (error) {
+      error.uploadId = upload.uploadId;
+      error.encryption = { key: keyHex, iv: ivHex, chunkSize, chunkCount };
+      throw error;
+    }
+  }
+
+  async resumeResumableUpload(uploadId, data, options = {}) {
+    return this.putResumable(data, { ...options, uploadId, resumable: true });
+  }
+
+  async createResumableUpload(payload) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/uploads`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._getHeaders() },
+      body: JSON.stringify(payload)
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to create resumable upload: HTTP ${res.status}`);
+    return body.upload;
+  }
+
+  async getResumableUpload(uploadId) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/uploads/${encodeURIComponent(uploadId)}`, {
+      headers: this._getHeaders()
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to read resumable upload: HTTP ${res.status}`);
+    return body.upload;
+  }
+
+  async uploadResumablePart(uploadId, partNumber, data, checksum) {
+    const res = await this._fetch(
+      `${this.gatewayUrl}/api/assets/uploads/${encodeURIComponent(uploadId)}/parts/${partNumber}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "x-part-sha256": checksum,
+          ...this._getHeaders(false)
+        },
+        body: data
+      }
+    );
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to upload part ${partNumber}: HTTP ${res.status}`);
+    return body;
+  }
+
+  async completeResumableUpload(uploadId) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/uploads/${encodeURIComponent(uploadId)}/complete`, {
+      method: "POST",
+      headers: this._getHeaders()
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to complete resumable upload: HTTP ${res.status}`);
+    return body;
+  }
+
+  async abortResumableUpload(uploadId) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/uploads/${encodeURIComponent(uploadId)}`, {
+      method: "DELETE",
+      headers: this._getHeaders()
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to abort resumable upload: HTTP ${res.status}`);
+    return body;
+  }
+
+  /**
    * Retrieves an asset from Walrus via the gateway.
    * If the asset was encrypted, decrypts on-device and returns plaintext binary.
    *
@@ -400,6 +617,10 @@ export class NodusClient {
     const isEncrypted = res.headers.get("x-nodus-encrypted") === "true";
     const ivHex = options.iv || res.headers.get("x-nodus-iv");
     const keyHex = options.key || res.headers.get("x-nodus-key");
+    const encryptionMode = res.headers.get("x-nodus-encryption-mode") || "aes-gcm-v1";
+    const chunkSize = Number(res.headers.get("x-nodus-chunk-size"));
+    const chunkCount = Number(res.headers.get("x-nodus-chunk-count"));
+    const originalSize = Number(res.headers.get("x-nodus-original-size"));
     const originalType = res.headers.get("x-nodus-original-type") || res.headers.get("content-type") || "application/octet-stream";
     const originalName = res.headers.get("x-nodus-original-name") || fileId;
 
@@ -410,7 +631,30 @@ export class NodusClient {
       if (!keyHex || !ivHex) {
         throw new Error(`Asset ${fileId} is encrypted but missing key or IV parameters`);
       }
-      dataBytes = await NodusCrypto.decryptBuffer(dataBytes, keyHex, ivHex);
+      if (encryptionMode === "chunked-aes-gcm-v1") {
+        if (!Number.isSafeInteger(chunkSize) || !Number.isSafeInteger(chunkCount) || !Number.isSafeInteger(originalSize)) {
+          throw new Error(`Asset ${fileId} is missing resumable encryption metadata`);
+        }
+        const plaintext = new Uint8Array(originalSize);
+        let ciphertextOffset = 0;
+        let plaintextOffset = 0;
+        for (let index = 0; index < chunkCount; index++) {
+          const plainLength = Math.min(chunkSize, originalSize - plaintextOffset);
+          const cipherLength = plainLength + 16;
+          const decryptedChunk = await NodusCrypto.decryptChunk(
+            dataBytes.slice(ciphertextOffset, ciphertextOffset + cipherLength),
+            keyHex,
+            ivHex,
+            index
+          );
+          plaintext.set(decryptedChunk, plaintextOffset);
+          ciphertextOffset += cipherLength;
+          plaintextOffset += decryptedChunk.byteLength;
+        }
+        dataBytes = plaintext;
+      } else {
+        dataBytes = await NodusCrypto.decryptBuffer(dataBytes, keyHex, ivHex);
+      }
     }
 
     return {
@@ -616,6 +860,36 @@ export class NodusClient {
 
   deriveMemberPDA(orgPDA, memberAddress) {
     return deriveMemberPDA(orgPDA, memberAddress);
+  }
+
+  _sourceSize(data) {
+    if (typeof data === "string") return new TextEncoder().encode(data).byteLength;
+    if (data instanceof ArrayBuffer) return data.byteLength;
+    if (data instanceof Uint8Array) return data.byteLength;
+    if (typeof Blob !== "undefined" && data instanceof Blob) return data.size;
+    throw new Error("Unsupported data format. Provide Uint8Array, ArrayBuffer, Blob, or string.");
+  }
+
+  async _readSourceChunk(data, start, end) {
+    if (typeof data === "string") {
+      return new TextEncoder().encode(data).slice(start, end);
+    }
+    if (data instanceof ArrayBuffer) return new Uint8Array(data.slice(start, end));
+    if (data instanceof Uint8Array) return data.slice(start, end);
+    if (typeof Blob !== "undefined" && data instanceof Blob) {
+      return new Uint8Array(await data.slice(start, end).arrayBuffer());
+    }
+    throw new Error("Unsupported data format. Provide Uint8Array, ArrayBuffer, Blob, or string.");
+  }
+
+  _indexRecord(record, defaults = {}) {
+    if (!record) return;
+    if (!record.tags || record.tags.length === 0) record.tags = defaults.tags || [];
+    if (!record.description) record.description = defaults.description || "";
+    if (!record.original_type) record.original_type = defaults.type || "application/octet-stream";
+    if (!record.original_name) record.original_name = defaults.name || record.name;
+    if (!record.name) record.name = defaults.name || record.original_name;
+    this.searchIndex.indexDocument(record);
   }
 
   _getHeaders(includeJson = true) {

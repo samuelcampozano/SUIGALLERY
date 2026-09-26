@@ -274,6 +274,9 @@ class WalrusClientManager {
         original_name: encryption.originalName || fileName,
         original_type: encryption.originalType || "image/png",
         original_size: encryption.originalSize || stat.size,
+        encryption_mode: encryption.mode || "aes-gcm-v1",
+        chunk_size: encryption.chunkSize || null,
+        chunk_count: encryption.chunkCount || null,
         storage_path: storagePath
       };
       this.mockFiles.unshift(newFile);
@@ -333,6 +336,9 @@ class WalrusClientManager {
         original_name: encryption.originalName || fileName,
         original_type: encryption.originalType || "image/png",
         original_size: encryption.originalSize || stat.size,
+        encryption_mode: encryption.mode || "aes-gcm-v1",
+        chunk_size: encryption.chunkSize || null,
+        chunk_count: encryption.chunkCount || null,
         storage_path: storagePath
       };
       this.mockFiles.unshift(newFile);
