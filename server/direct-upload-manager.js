@@ -11,7 +11,19 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 function writeJsonAtomic(filePath, value) {
   const temporaryPath = `${filePath}.${crypto.randomUUID()}.tmp`;
   fs.writeFileSync(temporaryPath, JSON.stringify(value, null, 2), { encoding: "utf8", mode: 0o600 });
-  fs.renameSync(temporaryPath, filePath);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      fs.renameSync(temporaryPath, filePath);
+      return;
+    } catch (error) {
+      const retryable = error?.code === "EPERM" || error?.code === "EACCES";
+      if (!retryable || attempt === 4) {
+        fs.rmSync(temporaryPath, { force: true });
+        throw error;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25 * (attempt + 1));
+    }
+  }
 }
 
 function isUploadId(value) {
@@ -75,6 +87,7 @@ export class DirectUploadManager {
         authorizedAt: null,
         uploadedAt: null,
         verificationState: "pending"
+        ,authorization: null
       });
     }
 
@@ -121,12 +134,31 @@ export class DirectUploadManager {
     return { session, segment: { ...segment } };
   }
 
-  completeSegment(uploadId, index, { blobId, ciphertextSha256, publisherResponse = null, verified = false } = {}) {
+  saveAuthorization(uploadId, index, authorization) {
+    const session = this.read(uploadId);
+    this.ensureWritable(session);
+    const segment = this.segment(session, index);
+    if (!authorization?.jti || !authorization?.expiresAt || !authorization?.ciphertextSha256) throw new Error("Invalid publisher authorization");
+    segment.authorization = { jti: authorization.jti, expiresAt: authorization.expiresAt, ciphertextSha256: authorization.ciphertextSha256 };
+    this.write(session);
+  }
+
+  completionContext(uploadId, index) {
+    const session = this.read(uploadId);
+    this.ensureWritable(session);
+    const segment = this.segment(session, index);
+    if (!segment.authorization) throw new Error("Segment has not been authorized");
+    return { uploadId: session.uploadId, segmentIndex: segment.index, ciphertextSize: segment.ciphertextSize, ...segment.authorization };
+  }
+
+  completeSegment(uploadId, index, { blobId, ciphertextSha256, publisherResponse = null, receipt = null, verified = false } = {}) {
     const session = this.read(uploadId);
     this.ensureWritable(session);
     const segment = this.segment(session, index);
     if (!blobId || !/^[A-Za-z0-9_-]{16,256}$/.test(blobId)) throw new Error("Invalid Walrus blob ID");
     if (ciphertextSha256 && !/^[a-f0-9]{64}$/i.test(ciphertextSha256)) throw new Error("Invalid ciphertext SHA-256");
+    if (!segment.authorization || segment.authorization.ciphertextSha256 !== ciphertextSha256) throw new Error("Segment completion does not match its authorized checksum");
+    if (!verified || !receipt) throw new Error("An independently verified publisher receipt is required");
     if (segment.status === "completed") {
       if (segment.blobId === blobId && segment.ciphertextSha256 === (ciphertextSha256 || null)) return this.publicSession(session);
       throw new Error("Segment was already completed with different content");
@@ -135,6 +167,7 @@ export class DirectUploadManager {
     segment.blobId = blobId;
     segment.ciphertextSha256 = ciphertextSha256 || null;
     segment.publisherResponse = this.safePublisherResponse(publisherResponse);
+    segment.receipt = { blobId: receipt.blobId, jti: receipt.jti, issuedAt: receipt.iat, expiresAt: receipt.exp };
     segment.verificationState = verified ? "verified" : "pending";
     segment.uploadedAt = new Date().toISOString();
     session.updatedAt = segment.uploadedAt;

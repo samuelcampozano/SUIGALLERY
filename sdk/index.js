@@ -602,7 +602,7 @@ export class NodusClient {
       for (const segment of upload.segments) {
         if (segment.status === "completed") continue;
         const { ciphertext, ciphertextSha256 } = await this._encryptDirectSegment(data, segment, keyHex, ivHex, chunkSize);
-        const authorization = await this.authorizeDirectSegment(upload.uploadId, segment.index, options.sendObjectTo);
+        const authorization = await this.authorizeDirectSegment(upload.uploadId, segment.index, ciphertextSha256, options.sendObjectTo);
         const published = await this._fetch(authorization.uploadUrl, {
           method: authorization.method || "PUT",
           headers: authorization.headers,
@@ -614,7 +614,7 @@ export class NodusClient {
         }
         const blobId = this._publisherBlobId(publisherResponse);
         if (!blobId) throw new Error(`Publisher did not return a blob ID for segment ${segment.index}`);
-        upload = await this.completeDirectSegment(upload.uploadId, segment.index, { blobId, ciphertextSha256, publisherResponse });
+        upload = await this.completeDirectSegment(upload.uploadId, segment.index, { ciphertextSha256, publisherResponse, receipt: publisherResponse?.receipt });
         if (typeof options.onProgress === "function") {
           options.onProgress({
             uploadId: upload.uploadId,
@@ -671,11 +671,11 @@ export class NodusClient {
     return body.upload;
   }
 
-  async authorizeDirectSegment(uploadId, segmentIndex, sendObjectTo = null) {
+  async authorizeDirectSegment(uploadId, segmentIndex, ciphertextSha256, sendObjectTo = null) {
     const res = await this._fetch(`${this.gatewayUrl}/api/assets/direct-uploads/${encodeURIComponent(uploadId)}/segments/${segmentIndex}/authorize`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...this._getHeaders() },
-      body: JSON.stringify(sendObjectTo ? { sendObjectTo } : {})
+      body: JSON.stringify({ ciphertextSha256, ...(sendObjectTo ? { sendObjectTo } : {}) })
     });
     const body = await res.json();
     if (!res.ok || !body.success) throw new Error(body.error || `Unable to authorize segment ${segmentIndex}: HTTP ${res.status}`);

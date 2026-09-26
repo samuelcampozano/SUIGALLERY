@@ -511,13 +511,17 @@ app.get("/api/assets/direct-uploads/:uploadId", (req, res) => {
 
 app.post("/api/assets/direct-uploads/:uploadId/segments/:segmentIndex/authorize", uploadLimiter, (req, res) => {
   try {
+    authenticatedPublisher.assertConfigured();
     const { session, segment } = directUploads.authorizeSegment(req.params.uploadId, req.params.segmentIndex);
+    const ciphertextSha256 = req.body?.ciphertextSha256;
     const authorization = authenticatedPublisher.authorize({
       uploadId: session.uploadId,
       segment,
       epochs: session.epochs,
+      ciphertextSha256,
       sendObjectTo: req.body?.sendObjectTo || null
     });
+    directUploads.saveAuthorization(session.uploadId, segment.index, authorization);
     res.json({ success: true, authorization });
   } catch (err) {
     const status = err.message === "Authenticated publisher is not configured" ? 503 : err.message === "Upload session not found" ? 404 : 400;
@@ -527,14 +531,15 @@ app.post("/api/assets/direct-uploads/:uploadId/segments/:segmentIndex/authorize"
 
 app.post("/api/assets/direct-uploads/:uploadId/segments/:segmentIndex/complete", uploadLimiter, (req, res) => {
   try {
-    const suppliedBlobId = req.body?.blobId || req.body?.blob_id;
-    const receiptBlobId = req.body?.publisherResponse?.newlyCreated?.blobObject?.blobId || req.body?.publisherResponse?.alreadyCertified?.blobId || req.body?.publisherResponse?.blobId || req.body?.publisherResponse?.blob_id;
-    if (suppliedBlobId && receiptBlobId && suppliedBlobId !== receiptBlobId) throw new Error("Publisher receipt does not match blob ID");
+    authenticatedPublisher.assertConfigured();
+    const context = directUploads.completionContext(req.params.uploadId, req.params.segmentIndex);
+    const receipt = authenticatedPublisher.verifyReceipt(req.body?.receipt, context);
     const upload = directUploads.completeSegment(req.params.uploadId, req.params.segmentIndex, {
-      blobId: suppliedBlobId || receiptBlobId,
+      blobId: receipt.blobId,
       ciphertextSha256: req.body?.ciphertextSha256,
       publisherResponse: req.body?.publisherResponse,
-      verified: process.env.NODE_ENV === "test" && process.env.NODUS_DIRECT_PUBLISHER_TRUST_RECEIPT === "true"
+      receipt,
+      verified: true
     });
     res.json({ success: true, upload });
   } catch (err) {
