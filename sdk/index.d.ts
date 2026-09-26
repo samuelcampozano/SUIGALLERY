@@ -102,6 +102,7 @@ export declare class NodusClient {
   createOrganization(params: { orgId: string; name?: string; ownerAddress: string; storageCapBytes?: number }): Promise<Organization>;
   getOrganization(orgId: string): Promise<Organization>;
   addOrganizationMember(orgId: string, params: { memberAddress: string; role?: string; callerAddress: string }): Promise<any>;
+  removeOrganizationMember(orgId: string, memberAddress: string, callerAddress?: string): Promise<boolean>;
   deriveOrgPDA(orgId: string): { pda: any; bump: number; pdaString: string };
   deriveMemberPDA(orgPDA: any, memberAddress: string): { pda: any; bump: number; pdaString: string };
 }
