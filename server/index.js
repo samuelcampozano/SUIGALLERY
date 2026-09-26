@@ -23,6 +23,7 @@ import {
 import {
   generateAuthChallenge,
   verifySolanaSignature,
+  isValidSolanaAddress,
   generateDemoSolanaSession,
   createOrganization,
   getOrganization,
@@ -49,6 +50,26 @@ const resumableUploads = new ResumableUploadManager({ rootDir: resumableUploadDi
 const directUploads = new DirectUploadManager({ rootDir: directUploadDir });
 const authenticatedPublisher = new AuthenticatedPublisher();
 const authTenantStore = process.env.DATABASE_URL ? new AuthTenantStore() : null;
+
+function configuredOrigins() {
+  const configured = (process.env.NODUS_ALLOWED_ORIGINS || "").split(",").map((origin) => origin.trim()).filter(Boolean);
+  if (configured.length) return new Set(configured);
+  if (process.env.NODE_ENV === "production") return new Set();
+  return new Set(["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "http://127.0.0.1:5173"]);
+}
+
+const allowedOrigins = configuredOrigins();
+const corsOptions = {
+  origin(origin, callback) {
+    // Browser requests from this application and non-browser clients without an
+    // Origin header are allowed; cross-origin browsers must be explicitly listed.
+    if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+    return callback(new Error("Origin is not allowed by CORS policy"));
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Authorization", "Content-Type", "X-Part-SHA256"],
+  maxAge: 600
+};
 
 async function requireTenant(req, res, next) {
   // Development keeps legacy demos usable; production must never fall back to a global bucket.
@@ -105,7 +126,7 @@ app.use(
 );
 
 // 2. Cross-Origin Resource Sharing
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json({ limit: "2mb" }));
 
 // 3. Rate Limiters
@@ -314,8 +335,16 @@ app.post("/api/auth/solana/demo", (req, res) => {
   }
 });
 
-// List user organizations (or default demo orgs)
-app.get("/api/orgs", (req, res) => {
+// List only organizations that the authenticated principal can access.
+app.get("/api/orgs", requireTenant, async (req, res, next) => {
+  if (authTenantStore) {
+    try {
+      const organizations = await authTenantStore.listOrganizations(req.auth.userId);
+      return res.json({ success: true, organizations });
+    } catch (error) {
+      return next(error);
+    }
+  }
   const address = req.headers["x-solana-address"] || req.query.address;
   if (address) {
     const orgs = listUserOrganizations(address);
@@ -325,8 +354,12 @@ app.get("/api/orgs", (req, res) => {
   res.json({ success: true, organizations: defaultOrg ? [defaultOrg] : [] });
 });
 
-// Create organization with Anchor Org PDA
-app.post("/api/orgs", (req, res) => {
+// Production organizations are pre-provisioned with a storage context. This
+// legacy helper remains only for the zero-environment development demo.
+app.post("/api/orgs", requireTenant, (req, res) => {
+  if (authTenantStore) {
+    return res.status(501).json({ success: false, error: "Organizations must be pre-provisioned by an administrator" });
+  }
   const { orgId, name, ownerAddress, storageCapBytes } = req.body;
   if (!orgId || !ownerAddress) {
     return res.status(400).json({ success: false, error: "orgId and ownerAddress are required" });
@@ -340,9 +373,18 @@ app.post("/api/orgs", (req, res) => {
   }
 });
 
-// Get organization details and PDA proof
-app.get("/api/orgs/:orgId", (req, res) => {
+// Get organization details only when the authenticated user is a member.
+app.get("/api/orgs/:orgId", requireTenant, async (req, res, next) => {
   const { orgId } = req.params;
+  if (authTenantStore) {
+    try {
+      const organization = await authTenantStore.getOrganizationForUser({ organizationId: orgId, userId: req.auth.userId });
+      if (!organization) return res.status(404).json({ success: false, error: `Organization '${orgId}' not found` });
+      return res.json({ success: true, organization });
+    } catch (error) {
+      return next(error);
+    }
+  }
   const org = getOrganization(orgId);
   if (!org) {
     return res.status(404).json({ success: false, error: `Organization '${orgId}' not found` });
@@ -350,10 +392,22 @@ app.get("/api/orgs/:orgId", (req, res) => {
   res.json({ success: true, organization: org });
 });
 
-// Add or update organization member (derives Member PDA)
-app.post("/api/orgs/:orgId/members", (req, res) => {
+// Add/update a member only as an admin/owner in the active organization.
+app.post("/api/orgs/:orgId/members", requireTenant, async (req, res, next) => {
   const { orgId } = req.params;
   const { memberAddress, role, callerAddress } = req.body;
+
+  if (authTenantStore) {
+    if (orgId !== req.tenant.organizationId) return res.status(403).json({ success: false, error: "Organization does not match the active tenant" });
+    if (!['owner', 'admin'].includes(req.auth.role)) return res.status(403).json({ success: false, error: "Insufficient organization role" });
+    if (!isValidSolanaAddress(memberAddress)) return res.status(400).json({ success: false, error: "memberAddress must be a valid Solana address" });
+    try {
+      const member = await authTenantStore.addMembership({ organizationId: orgId, address: memberAddress, role: role || "viewer" });
+      return res.json({ success: true, member });
+    } catch (error) {
+      return next(error);
+    }
+  }
 
   if (!memberAddress || !callerAddress) {
     return res.status(400).json({ success: false, error: "memberAddress and callerAddress are required" });
@@ -368,10 +422,23 @@ app.post("/api/orgs/:orgId/members", (req, res) => {
   }
 });
 
-// Remove organization member
-app.delete("/api/orgs/:orgId/members/:memberAddress", (req, res) => {
+// Remove a member only as an admin/owner in the active organization.
+app.delete("/api/orgs/:orgId/members/:memberAddress", requireTenant, async (req, res, next) => {
   const { orgId, memberAddress } = req.params;
   const callerAddress = req.headers["x-solana-address"] || req.query.callerAddress;
+
+  if (authTenantStore) {
+    if (orgId !== req.tenant.organizationId) return res.status(403).json({ success: false, error: "Organization does not match the active tenant" });
+    if (!['owner', 'admin'].includes(req.auth.role)) return res.status(403).json({ success: false, error: "Insufficient organization role" });
+    if (!isValidSolanaAddress(memberAddress)) return res.status(400).json({ success: false, error: "memberAddress must be a valid Solana address" });
+    try {
+      const removed = await authTenantStore.removeMembership({ organizationId: orgId, address: memberAddress });
+      return res.json({ success: true, removed });
+    } catch (error) {
+      const status = error.message === "Organization member not found" ? 404 : 400;
+      return res.status(status).json({ success: false, error: error.message });
+    }
+  }
 
   if (!callerAddress) {
     return res.status(400).json({ success: false, error: "callerAddress is required" });
@@ -902,6 +969,14 @@ app.use((req, res) => {
   } else {
     res.status(404).json({ success: false, error: "Endpoint not found" });
   }
+});
+
+// CORS rejection is intentional and should not be exposed as a generic 500.
+app.use((error, req, res, next) => {
+  if (error?.message === "Origin is not allowed by CORS policy") {
+    return res.status(403).json({ success: false, error: error.message });
+  }
+  return next(error);
 });
 
 // Start Server only if executed directly and not in test mode
