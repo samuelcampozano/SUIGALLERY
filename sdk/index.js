@@ -372,11 +372,13 @@ export class NodusClient {
    * @param {object} [config]
    * @param {string} [config.gatewayUrl='http://localhost:3000'] - Gateway URL
    * @param {string} [config.apiKey] - Optional scoped API key
+   * @param {string} [config.accessToken] - Persistent tenant session token
    * @param {Function} [config.fetch] - Custom fetch polyfill
    */
   constructor(config = {}) {
     this.gatewayUrl = (config.gatewayUrl || "http://localhost:3000").replace(/\/+$/, "");
     this.apiKey = config.apiKey || null;
+    this.accessToken = config.accessToken || null;
     this._fetch = config.fetch || globalThis.fetch.bind(globalThis);
     this.searchIndex = new NodusSearchIndex();
     // Ephemeral device-local mapping. It is never serialized into an upload,
@@ -1156,15 +1158,16 @@ export class NodusClient {
    * @param {string} [message] - Message string that was signed
    * @returns {Promise<object>} Authenticated session info
    */
-  async verifySolanaAuth(address, signature, message) {
+  async verifySolanaAuth(address, signature, message, organizationId = null) {
     const res = await this._fetch(`${this.gatewayUrl}/api/auth/solana/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address, signature, message })
+      body: JSON.stringify({ address, signature, message, ...(organizationId ? { organizationId } : {}) })
     });
     const data = await res.json();
     if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
     this.userAddress = address;
+    if (data.accessToken) this.accessToken = data.accessToken;
     return data;
   }
 
@@ -1413,7 +1416,7 @@ export class NodusClient {
   _getHeaders(includeJson = true) {
     const headers = {};
     if (includeJson) headers["Accept"] = "application/json";
-    if (this.apiKey) headers["Authorization"] = `Bearer ${this.apiKey}`;
+    if (this.accessToken || this.apiKey) headers["Authorization"] = `Bearer ${this.accessToken || this.apiKey}`;
     if (this.userAddress) headers["x-solana-address"] = this.userAddress;
     return headers;
   }

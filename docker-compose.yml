@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    # Credentials come from the untracked .env file shared with the Nodus service.
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: nodus
+      POSTGRES_USER: nodus
+    ports:
+      - "5432:5432"
+    volumes:
+      - nodus-postgres:/var/lib/postgresql/data
+      - ./server/migrations/001_auth_tenants.sql:/docker-entrypoint-initdb.d/001_auth_tenants.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nodus -d nodus"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
   nodus:
     build:
       context: .
@@ -12,8 +30,14 @@ services:
     environment:
       - PORT=3000
       - CONSOLE_MCP_ALLOWED_DIRS=/app
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ./temp_storage:/app/temp_storage
       - ./public:/app/public
       - ./server:/app/server
       - ./sdk:/app/sdk
+
+volumes:
+  nodus-postgres:

@@ -45,7 +45,7 @@ export class DirectUploadManager {
     fs.mkdirSync(this.rootDir, { recursive: true, mode: 0o700 });
   }
 
-  create({ originalName, originalType, originalSize, segmentSize, description = "", tags = [], encryption, epochs = 1 }) {
+  create({ originalName, originalType, originalSize, segmentSize, description = "", tags = [], encryption, epochs = 1, tenant = null }) {
     const size = Number(originalSize);
     const normalizedSegmentSize = Number(segmentSize) || DIRECT_UPLOAD_DEFAULT_SEGMENT_SIZE;
     const normalizedEpochs = Number(epochs) || 1;
@@ -97,6 +97,7 @@ export class DirectUploadManager {
     const now = new Date().toISOString();
     const session = {
       uploadId,
+      organizationId: tenant?.organizationId || null,
       status: "uploading",
       originalName: String(originalName || "asset.bin").slice(0, 255),
       originalType: String(originalType || "application/octet-stream").slice(0, 255),
@@ -116,8 +117,9 @@ export class DirectUploadManager {
     return this.publicSession(session);
   }
 
-  get(uploadId) {
+  get(uploadId, organizationId = null) {
     const session = this.read(uploadId);
+    this.assertOrganization(session, organizationId);
     if (this.isExpired(session) && session.status !== "completed") {
       this.abort(uploadId);
       throw new Error("Upload session expired");
@@ -125,8 +127,9 @@ export class DirectUploadManager {
     return this.publicSession(session);
   }
 
-  authorizeSegment(uploadId, index) {
+  authorizeSegment(uploadId, index, organizationId = null) {
     const session = this.read(uploadId);
+    this.assertOrganization(session, organizationId);
     this.ensureWritable(session);
     const segment = this.segment(session, index);
     if (segment.status === "completed") throw new Error("Segment has already been completed");
@@ -137,8 +140,9 @@ export class DirectUploadManager {
     return { session, segment: { ...segment } };
   }
 
-  saveAuthorization(uploadId, index, authorization) {
+  saveAuthorization(uploadId, index, authorization, organizationId = null) {
     const session = this.read(uploadId);
+    this.assertOrganization(session, organizationId);
     this.ensureWritable(session);
     const segment = this.segment(session, index);
     if (!authorization?.jti || !authorization?.expiresAt || !authorization?.ciphertextSha256) throw new Error("Invalid publisher authorization");
@@ -146,16 +150,18 @@ export class DirectUploadManager {
     this.write(session);
   }
 
-  completionContext(uploadId, index) {
+  completionContext(uploadId, index, organizationId = null) {
     const session = this.read(uploadId);
+    this.assertOrganization(session, organizationId);
     this.ensureWritable(session);
     const segment = this.segment(session, index);
     if (!segment.authorization) throw new Error("Segment has not been authorized");
     return { uploadId: session.uploadId, segmentIndex: segment.index, ciphertextSize: segment.ciphertextSize, ...segment.authorization };
   }
 
-  completeSegment(uploadId, index, { blobId, ciphertextSha256, publisherResponse = null, receipt = null, verified = false } = {}) {
+  completeSegment(uploadId, index, { blobId, ciphertextSha256, publisherResponse = null, receipt = null, verified = false } = {}, organizationId = null) {
     const session = this.read(uploadId);
+    this.assertOrganization(session, organizationId);
     this.ensureWritable(session);
     const segment = this.segment(session, index);
     if (!blobId || !/^[A-Za-z0-9_-]{16,256}$/.test(blobId)) throw new Error("Invalid Walrus blob ID");
@@ -178,8 +184,9 @@ export class DirectUploadManager {
     return this.publicSession(session);
   }
 
-  finalize(uploadId) {
+  finalize(uploadId, organizationId = null) {
     const session = this.read(uploadId);
+    this.assertOrganization(session, organizationId);
     this.ensureWritable(session);
     const missing = session.segments.filter((segment) => segment.status !== "completed").map((segment) => segment.index);
     if (missing.length) throw new Error(`Cannot finalize upload; ${missing.length} segment(s) missing`);
@@ -213,33 +220,35 @@ export class DirectUploadManager {
     return { upload: this.publicSession(session), asset, manifest: this.buildManifest(session) };
   }
 
-  manifest(uploadId) {
+  manifest(uploadId, organizationId = null) {
     const session = this.read(uploadId);
+    this.assertOrganization(session, organizationId);
     if (session.status !== "completed") throw new Error("Upload is not finalized");
     return this.buildManifest(session);
   }
 
-  manifestByAssetId(assetId) {
+  manifestByAssetId(assetId, organizationId = null) {
     if (typeof assetId !== "string" || !assetId.startsWith("direct_")) {
       throw new Error("Asset is not a direct publisher asset");
     }
-    return this.manifest(assetId.slice("direct_".length));
+    return this.manifest(assetId.slice("direct_".length), organizationId);
   }
 
-  listAssets() {
+  listAssets(organizationId = null) {
     const assets = [];
     for (const entry of fs.readdirSync(this.rootDir, { withFileTypes: true })) {
       if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
       try {
         const session = JSON.parse(fs.readFileSync(path.join(this.rootDir, entry.name), "utf8"));
-        if (session.status === "completed" && session.completedAsset) assets.push(session.completedAsset);
+        if (session.status === "completed" && session.completedAsset && (!organizationId || session.organizationId === organizationId)) assets.push(session.completedAsset);
       } catch {}
     }
     return assets;
   }
 
-  abort(uploadId) {
+  abort(uploadId, organizationId = null) {
     const target = this.filePath(uploadId);
+    if (organizationId && fs.existsSync(target)) this.assertOrganization(this.read(uploadId), organizationId);
     if (fs.existsSync(target)) fs.unlinkSync(target);
     return true;
   }
@@ -290,6 +299,12 @@ export class DirectUploadManager {
 
   isExpired(session) {
     return new Date(session.expiresAt).getTime() <= Date.now();
+  }
+
+  assertOrganization(session, organizationId) {
+    if (organizationId && session.organizationId !== organizationId) {
+      throw new Error("Upload session does not belong to the active organization");
+    }
   }
 
   safePublisherResponse(response) {

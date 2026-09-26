@@ -4,10 +4,12 @@ import path from "node:path";
 const suites = [
   { name: "Unit & Security Hardening", file: "test/test-security.js" },
   { name: "REST API Integration", file: "test/test-api.js" },
+  { name: "CORS & Uniform Organization Auth", file: "test/test-cors-uniform-auth.js" },
   { name: "Zero-Plaintext & Client Encryption", file: "test/test-zero-plaintext.js" },
   { name: "Resumable Encrypted Uploads", file: "test/test-resumable-upload.js" },
   { name: "Resumable Upload HTTP API", file: "test/test-resumable-api.js" },
   { name: "Client-Side Key Envelopes & Recovery", file: "test/test-key-envelopes.js" },
+  { name: "Tenant Upload Context Isolation", file: "test/test-tenant-upload-context.js" },
   { name: "Direct Authenticated Publisher", file: "test/test-direct-publisher.js" },
   { name: "Developer SDK & Private Search", file: "test/test-sdk.js" },
   { name: "Live Sui On-Chain Verification", file: "test/test-onchain.js" },
