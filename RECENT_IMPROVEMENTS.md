@@ -2,7 +2,7 @@
 
 Atualizado em 26 de setembro de 2026.
 
-Este documento registra as melhorias recentes que compõem a branch `dev` e as próximas fundações em preparação.
+Este documento registra as melhorias integradas na branch `dev` e as entregas prontas para merge nas branches de trabalho.
 
 ## Visão geral
 
@@ -11,7 +11,7 @@ Este documento registra as melhorias recentes que compõem a branch `dev` e as p
 | Integrado em `dev` | Uploads cifrados retomáveis | `ab0400d`, merge `440c31a` |
 | Integrado em `dev` | Publisher Walrus autenticado e direto | `b91034f`, merge `86e802f` |
 | Integrado em `dev` | Confiança e verificação de recibos do publisher | `048e49d`, merge `fadc63f` |
-| Em implementação | Autenticação persistente e isolamento por organização | branch `codex/auth-tenant-foundation` |
+| Pronto para merge em `dev` | Autenticação persistente e contexto por organização nos fluxos de assets | `5369fd8`, branch `codex/auth-tenant-foundation` |
 
 ## 1. Uploads cifrados retomáveis
 
@@ -112,7 +112,7 @@ As suítes locais de segurança, API, zero-plaintext, upload retomável, publish
 
 ## 4. Fundação de autenticação e contexto por organização
 
-Implementação iniciada em 26 de setembro de 2026 na branch `codex/auth-tenant-foundation`.
+Entregue em 26 de setembro de 2026 na branch `codex/auth-tenant-foundation`, pelo commit `5369fd8` (`feat: enforce tenant context across asset flows`). Ainda não foi integrada à `dev`.
 
 ### Lacunas que motivam a entrega
 
@@ -132,6 +132,14 @@ Implementação iniciada em 26 de setembro de 2026 na branch `codex/auth-tenant-
 - SDK recebe e reutiliza `accessToken` em memória após `verifySolanaAuth(..., organizationId)`.
 - Docker Compose sobe PostgreSQL e aplica a migração na criação inicial do volume; o serviço Nodus espera a verificação de saúde do banco.
 - Teste de isolamento confirma que uma organização não lê, autoriza ou cancela a sessão de upload da outra.
+
+### Validação da entrega
+
+- `npm run test:resumable`: passou integralmente.
+- `npm run test:direct-publisher`: passou integralmente.
+- `npm run test:sdk`: passou integralmente.
+- `node test/test-tenant-upload-context.js`: passou integralmente.
+- A suíte completa teve somente a falha da verificação on-chain remota por indisponibilidade de conexão com a Sui Mainnet; não indica regressão local.
 
 ### Dependência operacional
 
