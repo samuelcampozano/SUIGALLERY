@@ -11,6 +11,7 @@ RUN npm install --omit=dev
 # Copy application source code
 COPY server/ ./server/
 COPY public/ ./public/
+COPY sdk/ ./sdk/
 COPY test-connection.js ./
 
 # Ensure storage directory exists

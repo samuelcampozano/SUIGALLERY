@@ -1,9 +1,9 @@
 services:
-  suigallery:
+  nodus:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: suigallery-vault
+    container_name: nodus-vault
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -16,3 +16,4 @@ services:
       - ./temp_storage:/app/temp_storage
       - ./public:/app/public
       - ./server:/app/server
+      - ./sdk:/app/sdk

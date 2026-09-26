@@ -5,7 +5,7 @@
  */
 
 import crypto from "node:crypto";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 
@@ -15,8 +15,94 @@ export const NODUS_SOLANA_PROGRAM_ID_STR =
 
 export const NODUS_PROGRAM_ID = new PublicKey(NODUS_SOLANA_PROGRAM_ID_STR);
 
-// In-memory challenge store for SIWS with 5-minute TTL
+// In-memory challenge store for SIWS with 5-minute TTL and max bounded capacity
 const activeChallenges = new Map();
+const MAX_CHALLENGES = 5000;
+
+// Active authenticated sessions with 1-hour sliding TTL
+const authenticatedSessions = new Map(); // address -> { verifiedAt: number, expiresAt: number }
+const SESSION_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Validates a base58 Solana public key address string.
+ * @param {string} address
+ * @returns {boolean}
+ */
+export function isValidSolanaAddress(address) {
+  if (!address || typeof address !== "string" || address.length < 32 || address.length > 44) {
+    return false;
+  }
+  try {
+    new PublicKey(address);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validates an alphanumeric organization identifier (2-64 chars).
+ * @param {string} orgId
+ * @returns {boolean}
+ */
+export function isValidOrgId(orgId) {
+  if (!orgId || typeof orgId !== "string") return false;
+  return /^[a-zA-Z0-9_-]{2,64}$/.test(orgId.trim());
+}
+
+/**
+ * Records an active authenticated session for an address.
+ * @param {string} address
+ */
+export function recordAuthenticatedSession(address) {
+  if (!address) return;
+  const now = Date.now();
+  authenticatedSessions.set(address, {
+    verifiedAt: now,
+    expiresAt: now + SESSION_TTL_MS
+  });
+}
+
+/**
+ * Checks whether an address has an active, unexpired authenticated session.
+ * @param {string} address
+ * @returns {boolean}
+ */
+export function isSessionAuthenticated(address) {
+  if (!address) return false;
+  const session = authenticatedSessions.get(address);
+  if (!session) return false;
+  if (Date.now() > session.expiresAt) {
+    authenticatedSessions.delete(address);
+    return false;
+  }
+  // Slide expiration window
+  session.expiresAt = Date.now() + SESSION_TTL_MS;
+  return true;
+}
+
+/**
+ * Prunes expired SIWS challenges and sessions to prevent memory growth.
+ */
+export function pruneExpiredChallenges() {
+  const now = Date.now();
+  for (const [addr, entry] of activeChallenges.entries()) {
+    if (now > entry.expiresAt) {
+      activeChallenges.delete(addr);
+    }
+  }
+  for (const [addr, sess] of authenticatedSessions.entries()) {
+    if (now > sess.expiresAt) {
+      authenticatedSessions.delete(addr);
+    }
+  }
+}
+
+// Sweep challenges and sessions every 5 minutes
+const cleanupInterval = setInterval(pruneExpiredChallenges, 5 * 60 * 1000);
+if (typeof cleanupInterval.unref === "function") {
+  cleanupInterval.unref();
+}
 
 // Multi-tenant organization and membership state store (Zero-env resilient)
 const organizations = new Map();
@@ -72,6 +158,14 @@ export function generateAuthChallenge(address, domain = "nodus.cloud") {
     `Expiration Time: ${expiresAt}`
   ].join("\n");
 
+  if (activeChallenges.size >= MAX_CHALLENGES) {
+    pruneExpiredChallenges();
+    if (activeChallenges.size >= MAX_CHALLENGES) {
+      const oldestKey = activeChallenges.keys().next().value;
+      activeChallenges.delete(oldestKey);
+    }
+  }
+
   activeChallenges.set(address, {
     nonce,
     message,
@@ -101,18 +195,23 @@ export function verifySolanaSignature(address, signatureBase58, suppliedMessage)
     return { valid: false, error: `Invalid Solana address: ${err.message}` };
   }
 
-  // Retrieve challenge
+  // Retrieve challenge - strictly required to defeat replay attacks
   const challenge = activeChallenges.get(address);
-  const messageToVerify = suppliedMessage || challenge?.message;
-
-  if (!messageToVerify) {
+  if (!challenge) {
     return { valid: false, error: "No active authentication challenge found for this address. Please request a new challenge." };
   }
 
-  if (challenge && Date.now() > challenge.expiresAt) {
+  if (Date.now() > challenge.expiresAt) {
     activeChallenges.delete(address);
     return { valid: false, error: "Authentication challenge has expired. Please request a new challenge." };
   }
+
+  // If client provided a message copy, it must match the challenge issued by the server
+  if (suppliedMessage && suppliedMessage !== challenge.message) {
+    return { valid: false, error: "Supplied message does not match issued challenge." };
+  }
+
+  const messageToVerify = challenge.message;
 
   let signatureBytes;
   try {
@@ -138,6 +237,9 @@ export function verifySolanaSignature(address, signatureBase58, suppliedMessage)
 
   // Clear challenge to prevent replay attacks
   activeChallenges.delete(address);
+
+  // Record active authenticated session for caller
+  recordAuthenticatedSession(address);
 
   return {
     valid: true,
@@ -221,8 +323,15 @@ export function createOrganization({ orgId, name, ownerAddress, storageCapBytes 
     throw new Error("orgId and ownerAddress are required");
   }
 
-  const cleanOrgId = orgId.toLowerCase().trim().replace(/[^a-z0-9_-]/g, "");
-  if (!cleanOrgId) throw new Error("Invalid orgId format");
+  if (!isValidOrgId(orgId)) {
+    throw new Error("Invalid orgId format: must be 2-64 alphanumeric, underscore, or hyphen characters");
+  }
+
+  if (!isValidSolanaAddress(ownerAddress)) {
+    throw new Error("Invalid ownerAddress: must be a valid Base58 Solana public key");
+  }
+
+  const cleanOrgId = orgId.toLowerCase().trim();
 
   if (organizations.has(cleanOrgId)) {
     throw new Error(`Organization '${cleanOrgId}' already exists`);
@@ -233,7 +342,7 @@ export function createOrganization({ orgId, name, ownerAddress, storageCapBytes 
 
   const orgRecord = {
     orgId: cleanOrgId,
-    name: name || cleanOrgId,
+    name: name ? String(name).slice(0, 128) : cleanOrgId,
     owner: ownerAddress,
     storageCapBytes: Number(storageCapBytes) || 10 * 1024 * 1024 * 1024,
     storageUsedBytes: 0,
@@ -260,6 +369,9 @@ export function createOrganization({ orgId, name, ownerAddress, storageCapBytes 
   };
 
   memberAccounts.set(memberKey, ownerMemberRecord);
+
+  // Establish active session for creator
+  recordAuthenticatedSession(ownerAddress);
 
   return {
     ...orgRecord,
@@ -301,7 +413,7 @@ export function getOrganization(orgId) {
  * @returns {object[]}
  */
 export function listUserOrganizations(userAddress) {
-  if (!userAddress) return [];
+  if (!userAddress || !isValidSolanaAddress(userAddress)) return [];
   const matchedOrgs = [];
 
   for (const [key, mem] of memberAccounts.entries()) {
@@ -331,6 +443,21 @@ export function listUserOrganizations(userAddress) {
  * @returns {object}
  */
 export function addOrganizationMember({ orgId, memberAddress, role = "viewer", callerAddress }) {
+  if (!isValidOrgId(orgId)) {
+    throw new Error("Invalid orgId format");
+  }
+  if (!isValidSolanaAddress(memberAddress)) {
+    throw new Error("Invalid memberAddress: must be a valid Base58 Solana public key");
+  }
+  if (!isValidSolanaAddress(callerAddress)) {
+    throw new Error("Invalid callerAddress: must be a valid Base58 Solana public key");
+  }
+
+  // Caller session verification: prevent caller spoofing
+  if (!isSessionAuthenticated(callerAddress)) {
+    throw new Error("Unauthorized: Caller address does not have an active verified session");
+  }
+
   const cleanOrgId = orgId.toLowerCase().trim();
   const org = organizations.get(cleanOrgId);
   if (!org) throw new Error(`Organization '${cleanOrgId}' not found`);
@@ -376,6 +503,21 @@ export function addOrganizationMember({ orgId, memberAddress, role = "viewer", c
  * @returns {boolean}
  */
 export function removeOrganizationMember({ orgId, memberAddress, callerAddress }) {
+  if (!isValidOrgId(orgId)) {
+    throw new Error("Invalid orgId format");
+  }
+  if (!isValidSolanaAddress(memberAddress)) {
+    throw new Error("Invalid memberAddress: must be a valid Base58 Solana public key");
+  }
+  if (!isValidSolanaAddress(callerAddress)) {
+    throw new Error("Invalid callerAddress: must be a valid Base58 Solana public key");
+  }
+
+  // Caller session verification: prevent caller spoofing
+  if (!isSessionAuthenticated(callerAddress)) {
+    throw new Error("Unauthorized: Caller address does not have an active verified session");
+  }
+
   const cleanOrgId = orgId.toLowerCase().trim();
   const org = organizations.get(cleanOrgId);
   if (!org) throw new Error(`Organization '${cleanOrgId}' not found`);

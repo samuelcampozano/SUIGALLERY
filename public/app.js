@@ -565,6 +565,16 @@ document.addEventListener("DOMContentLoaded", () => {
     return addr.slice(0, 6) + "..." + addr.slice(-4);
   }
 
+  function escapeHtml(str) {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   // ==========================================
   // NODUS CRYPTO: ZERO-KNOWLEDGE CLIENT ENGINE
   // ==========================================
@@ -1131,7 +1141,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const tagChipsList = Array.from(customTags).slice(0, 6).map((tag) => {
       const isActive = state.selectedTag === tag;
-      return `<button class="tag-chip ${isActive ? "active" : ""}" data-tag="${tag}">#${tag}</button>`;
+      const safeTag = escapeHtml(tag);
+      return `<button class="tag-chip ${isActive ? "active" : ""}" data-tag="${safeTag}">#${safeTag}</button>`;
     });
 
     tagChips.innerHTML = [...categoryChips, ...tagChipsList].join("");
@@ -1225,9 +1236,10 @@ document.addEventListener("DOMContentLoaded", () => {
           stageIcon = "alert-circle";
         }
 
+        const safeTaskName = escapeHtml(task.name);
         return `
         <div class="photo-card uploading" id="card-${task.id}">
-          <img class="photo-thumbnail" src="${task.previewUrl}" alt="${task.name}">
+          <img class="photo-thumbnail" src="${task.previewUrl}" alt="${safeTaskName}">
           <div class="uploading-overlay">
             <div class="uploading-top-badge">
               <i data-lucide="${stageIcon}" style="width: 12px; height: 12px;"></i>
@@ -1240,7 +1252,7 @@ document.addEventListener("DOMContentLoaded", () => {
               <span class="uploading-status-label" id="status-text-${task.id}">Walrus Cryptographic Vault</span>
             </div>
             <div class="uploading-bottom">
-              <span class="uploading-filename">${task.name}</span>
+              <span class="uploading-filename">${safeTaskName}</span>
               <div class="uploading-progress-track">
                 <div class="uploading-progress-bar" id="bar-${task.id}" style="width: ${task.progress || 25}%;"></div>
               </div>
@@ -1258,9 +1270,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const isSelected = state.selectedIds.has(p.id);
         const cachedUrl = decryptedMediaCache.get(p.id);
         const initialSrc = cachedUrl || (p.encrypted && p.key ? "" : p.stream_url);
+        const safeName = escapeHtml(p.original_name || p.name);
+        const safeId = escapeHtml(p.id);
 
         const thumbnailHtml = isImage
-          ? `<img class="photo-thumbnail" id="thumb-${p.id}" src="${initialSrc || 'data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\' fill=\\'%231a2332\\'><rect width=\\'100\\' height=\\'100\\'/><text x=\\'50%\\' y=\\'50%\\' fill=\\'%238b949e\\' font-size=\\'11\\' text-anchor=\\'middle\\' dy=\\'.3em\\'>🔒 Encrypted</text></svg>'}" alt="${p.name}" loading="lazy">`
+          ? `<img class="photo-thumbnail" id="thumb-${safeId}" src="${initialSrc || 'data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\' fill=\\'%231a2332\\'><rect width=\\'100\\' height=\\'100\\'/><text x=\\'50%\\' y=\\'50%\\' fill=\\'%238b949e\\' font-size=\\'11\\' text-anchor=\\'middle\\' dy=\\'.3em\\'>🔒 Encrypted</text></svg>'}" alt="${safeName}" loading="lazy">`
           : `<div class="photo-thumbnail doc-card-thumb" style="display:flex; flex-direction:column; align-items:center; justify-content:center; background: radial-gradient(circle at 50% 30%, #1e293b, #0f172a); width:100%; height:100%; position:relative;">
               <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(56, 139, 253, 0.12); border: 1px solid rgba(56, 139, 253, 0.28); display: flex; align-items: center; justify-content: center; margin-bottom: 8px;">
                 <i data-lucide="${cat.icon}" style="width: 24px; height: 24px; color: #58a6ff;"></i>
@@ -1269,8 +1283,8 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>`;
 
         return `
-        <div class="photo-card ${isSelected ? "selected" : ""}" data-id="${p.id}">
-          <div class="photo-select-checkbox" data-select-id="${p.id}">
+        <div class="photo-card ${isSelected ? "selected" : ""}" data-id="${safeId}">
+          <div class="photo-select-checkbox" data-select-id="${safeId}">
             <i data-lucide="${isSelected ? "check" : ""}" style="width: 14px; height: 14px;"></i>
           </div>
           ${thumbnailHtml}
@@ -1279,7 +1293,7 @@ document.addEventListener("DOMContentLoaded", () => {
               <span class="badge-seal"><i data-lucide="lock" style="width: 10px; height: 10px;"></i> Seal</span>
             </div>
             <div class="overlay-bottom">
-              <span class="photo-card-name">${p.original_name || p.name}</span>
+              <span class="photo-card-name">${safeName}</span>
               <span class="photo-card-meta">${formatBytes(p.size)} • ${formatDate(p.created_at)}</span>
             </div>
           </div>

@@ -257,7 +257,11 @@ export class DecryptedCacheManager {
       const files = fs.readdirSync(storageDir);
       let count = 0;
       for (const file of files) {
-        if (file.startsWith("decrypted_") && file.endsWith(".bin")) {
+        const isOrphan =
+          (file.startsWith("decrypted_") && file.endsWith(".bin")) ||
+          (file.startsWith("stream_") && file.endsWith(".bin")) ||
+          (file.startsWith("upload_") && !file.includes("/"));
+        if (isOrphan) {
           try {
             fs.unlinkSync(path.join(storageDir, file));
             count++;
@@ -265,7 +269,7 @@ export class DecryptedCacheManager {
         }
       }
       if (count > 0) {
-        console.log(`🧹 [CacheManager] Cleaned up ${count} orphaned decrypted files on startup.`);
+        console.log(`🧹 [CacheManager] Cleaned up ${count} orphaned temporary files on startup.`);
       }
     } catch (err) {
       console.warn("[CacheManager] Error during orphaned file cleanup:", err.message);
