@@ -17,6 +17,14 @@ export interface PutOptions {
   resumable?: boolean;
   resumableThresholdBytes?: number;
   chunkSize?: number;
+  /** Publish encrypted segments directly to the configured Walrus publisher. */
+  directPublisher?: boolean;
+  /** Plaintext bytes per Walrus blob; must be divisible by chunkSize. */
+  segmentSize?: number;
+  /** Walrus storage duration requested for direct publisher uploads. */
+  epochs?: number;
+  /** Optional Sui address to receive the created Walrus Blob object. */
+  sendObjectTo?: string;
   uploadId?: string;
   key?: string;
   iv?: string;
@@ -29,6 +37,28 @@ export interface ResumableUploadProgress {
   partCount: number;
   uploadedBytes: number;
   totalBytes: number;
+}
+
+export interface DirectUploadProgress {
+  uploadId: string;
+  segmentIndex: number;
+  segmentCount: number;
+  uploadedBytes: number;
+  totalBytes: number;
+}
+
+export interface DirectUpload {
+  uploadId: string;
+  status: "uploading" | "completed";
+  originalName: string;
+  originalSize: number;
+  segmentSize: number;
+  segmentCount: number;
+  completedSegments: number[];
+  missingSegments: number[];
+  segments: any[];
+  expiresAt: string;
+  completedAsset?: any;
 }
 
 export interface ResumableUpload {
@@ -123,11 +153,18 @@ export declare class NodusClient {
   put(data: Uint8Array | ArrayBuffer | string | Blob, options: PutOptions): Promise<PutResult>;
   putResumable(data: Uint8Array | ArrayBuffer | string | Blob, options: PutOptions): Promise<PutResult & { uploadId: string; upload: ResumableUpload }>;
   resumeResumableUpload(uploadId: string, data: Uint8Array | ArrayBuffer | string | Blob, options: PutOptions & { key: string; iv: string }): Promise<PutResult & { uploadId: string; upload: ResumableUpload }>;
+  putDirectPublisher(data: Uint8Array | ArrayBuffer | string | Blob, options: PutOptions): Promise<PutResult & { uploadId: string; upload: DirectUpload; manifest: any }>;
+  resumeDirectPublisherUpload(uploadId: string, data: Uint8Array | ArrayBuffer | string | Blob, options: PutOptions & { key: string; iv: string }): Promise<PutResult & { uploadId: string; upload: DirectUpload; manifest: any }>;
   createResumableUpload(payload: Record<string, any>): Promise<ResumableUpload>;
   getResumableUpload(uploadId: string): Promise<ResumableUpload>;
   uploadResumablePart(uploadId: string, partNumber: number, data: Uint8Array, checksum: string): Promise<any>;
   completeResumableUpload(uploadId: string): Promise<any>;
   abortResumableUpload(uploadId: string): Promise<{ success: boolean; aborted: boolean }>;
+  createDirectUpload(payload: Record<string, any>): Promise<DirectUpload>;
+  getDirectUpload(uploadId: string): Promise<DirectUpload>;
+  authorizeDirectSegment(uploadId: string, segmentIndex: number, sendObjectTo?: string): Promise<any>;
+  completeDirectSegment(uploadId: string, segmentIndex: number, payload: any): Promise<DirectUpload>;
+  finalizeDirectUpload(uploadId: string): Promise<{ upload: DirectUpload; asset: any; manifest: any }>;
   get(fileId: string, options?: GetOptions): Promise<GetResult>;
   list(filters?: { tag?: string }): Promise<any[]>;
   search(query: string, options?: SearchOptions): Promise<any[]>;
