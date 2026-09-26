@@ -594,14 +594,14 @@ document.addEventListener("DOMContentLoaded", () => {
         .join("");
     },
 
-    async importKeyHex(keyHex) {
+    async importKeyHex(keyHex, usages = ["decrypt"]) {
       const bytes = new Uint8Array(keyHex.match(/.{1,2}/g).map((byte) => parseInt(byte, 16)));
       return window.crypto.subtle.importKey(
         "raw",
         bytes,
         { name: "AES-GCM" },
         false,
-        ["decrypt"]
+        usages
       );
     },
 
@@ -640,6 +640,33 @@ document.addEventListener("DOMContentLoaded", () => {
         ciphertextBuffer
       );
       return new Blob([decryptedBuffer], { type: originalType || "image/png" });
+    },
+
+    deriveChunkIv(baseIvHex, chunkIndex) {
+      const iv = new Uint8Array(baseIvHex.match(/.{1,2}/g).map((byte) => parseInt(byte, 16)));
+      let counter = BigInt(chunkIndex);
+      for (let offset = 0; offset < 8; offset++) {
+        iv[11 - offset] ^= Number(counter & 0xffn);
+        counter >>= 8n;
+      }
+      return iv;
+    },
+
+    async encryptChunk(plaintext, key, baseIvHex, chunkIndex) {
+      const iv = this.deriveChunkIv(baseIvHex, chunkIndex);
+      const ciphertext = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
+      return new Uint8Array(ciphertext);
+    },
+
+    async decryptChunk(ciphertext, key, baseIvHex, chunkIndex) {
+      const iv = this.deriveChunkIv(baseIvHex, chunkIndex);
+      const plaintext = await window.crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+      return new Uint8Array(plaintext);
+    },
+
+    async sha256Hex(bytes) {
+      const hash = await window.crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
     }
   };
 
@@ -659,12 +686,33 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch(photo.stream_url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const ciphertextBuffer = await res.arrayBuffer();
-      const blob = await NodusCrypto.decryptAsset(
-        ciphertextBuffer,
-        photo.key,
-        photo.iv,
-        photo.original_type || photo.content_type
-      );
+      let blob;
+      if (photo.encryption_mode === "chunked-aes-gcm-v1") {
+        const chunkSize = Number(photo.chunk_size);
+        const chunkCount = Number(photo.chunk_count);
+        const originalSize = Number(photo.original_size);
+        if (!chunkSize || !chunkCount || !originalSize) throw new Error("Missing resumable encryption metadata");
+        const key = await NodusCrypto.importKeyHex(photo.key, ["decrypt"]);
+        const ciphertext = new Uint8Array(ciphertextBuffer);
+        const outputParts = [];
+        let offset = 0;
+        let plaintextOffset = 0;
+        for (let index = 0; index < chunkCount; index++) {
+          const plaintextLength = Math.min(chunkSize, originalSize - plaintextOffset);
+          const ciphertextLength = plaintextLength + 16;
+          outputParts.push(await NodusCrypto.decryptChunk(ciphertext.slice(offset, offset + ciphertextLength), key, photo.iv, index));
+          offset += ciphertextLength;
+          plaintextOffset += plaintextLength;
+        }
+        blob = new Blob(outputParts, { type: photo.original_type || photo.content_type });
+      } else {
+        blob = await NodusCrypto.decryptAsset(
+          ciphertextBuffer,
+          photo.key,
+          photo.iv,
+          photo.original_type || photo.content_type
+        );
+      }
       const objectUrl = URL.createObjectURL(blob);
       decryptedMediaCache.set(photo.id, objectUrl);
       return objectUrl;
@@ -1274,7 +1322,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const safeId = escapeHtml(p.id);
 
         const thumbnailHtml = isImage
-          ? `<img class="photo-thumbnail" id="thumb-${safeId}" src="${initialSrc || 'data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\' fill=\\'%231a2332\\'><rect width=\\'100\\' height=\\'100\\'/><text x=\\'50%\\' y=\\'50%\\' fill=\\'%238b949e\\' font-size=\\'11\\' text-anchor=\\'middle\\' dy=\\'.3em\\'>🔒 Encrypted</text></svg>'}" alt="${safeName}" loading="lazy">`
+          ? `<img class="photo-thumbnail" id="thumb-${safeId}" src="${initialSrc || 'data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\' fill=\'%231a2332\'><rect width=\'100\' height=\'100\'/><text x=\'50%\' y=\'50%\' fill=\'%238b949e\' font-size=\'11\' text-anchor=\'middle\' dy=\'.3em\'>🔒 Encrypted</text></svg>'}" alt="${safeName}" loading="lazy">`
           : `<div class="photo-thumbnail doc-card-thumb" style="display:flex; flex-direction:column; align-items:center; justify-content:center; background: radial-gradient(circle at 50% 30%, #1e293b, #0f172a); width:100%; height:100%; position:relative;">
               <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(56, 139, 253, 0.12); border: 1px solid rgba(56, 139, 253, 0.28); display: flex; align-items: center; justify-content: center; margin-bottom: 8px;">
                 <i data-lucide="${cat.icon}" style="width: 24px; height: 24px; color: #58a6ff;"></i>
@@ -1692,12 +1740,79 @@ document.addEventListener("DOMContentLoaded", () => {
   let isUploadingQueue = false;
   let lastUploadedBlobId = null;
   const uploadQueue = [];
+  const RESUMABLE_THRESHOLD_BYTES = 20 * 1024 * 1024;
+  const RESUMABLE_CHUNK_SIZE = 8 * 1024 * 1024;
 
   function updateOptimisticCard(taskId, stage, progress, labelText) {
     const badgeText = document.getElementById(`badge-text-${taskId}`);
     const bar = document.getElementById(`bar-${taskId}`);
     if (badgeText && labelText) badgeText.textContent = labelText;
     if (bar && progress !== undefined) bar.style.width = `${progress}%`;
+  }
+
+  async function uploadResumableEncryptedAsset(file, onProgress) {
+    const key = await NodusCrypto.generateDataKey();
+    const keyHex = await NodusCrypto.exportKeyHex(key);
+    const baseIv = window.crypto.getRandomValues(new Uint8Array(12));
+    const ivHex = Array.from(baseIv).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const chunkCount = Math.ceil(file.size / RESUMABLE_CHUNK_SIZE);
+    const encryptedSize = file.size + (chunkCount * 16);
+
+    const createRes = await fetch("/api/assets/uploads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        originalName: file.name,
+        originalType: file.type || "application/octet-stream",
+        originalSize: file.size,
+        encryptedSize,
+        partSize: RESUMABLE_CHUNK_SIZE + 16,
+        description: `Zero-Knowledge resumable asset uploaded to Walrus at ${new Date().toISOString()}`,
+        tags: ["nodus", "resumable"],
+        encryption: {
+          mode: "chunked-aes-gcm-v1",
+          key: keyHex,
+          iv: ivHex,
+          chunkSize: RESUMABLE_CHUNK_SIZE,
+          chunkCount,
+          originalName: file.name,
+          originalType: file.type || "application/octet-stream",
+          originalSize: file.size
+        }
+      })
+    });
+    const createData = await createRes.json();
+    if (!createRes.ok || !createData.success) throw new Error(createData.error || "Could not create resumable upload");
+
+    const { uploadId } = createData.upload;
+    try {
+      for (let partNumber = 0; partNumber < chunkCount; partNumber++) {
+        const start = partNumber * RESUMABLE_CHUNK_SIZE;
+        const end = Math.min(start + RESUMABLE_CHUNK_SIZE, file.size);
+        const plaintext = await file.slice(start, end).arrayBuffer();
+        const ciphertext = await NodusCrypto.encryptChunk(plaintext, key, ivHex, partNumber);
+        const checksum = await NodusCrypto.sha256Hex(ciphertext);
+        const partRes = await fetch(`/api/assets/uploads/${uploadId}/parts/${partNumber}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "x-part-sha256": checksum
+          },
+          body: ciphertext
+        });
+        const partData = await partRes.json();
+        if (!partRes.ok || !partData.success) throw new Error(partData.error || `Failed to upload part ${partNumber + 1}`);
+        onProgress?.({ uploadedBytes: end, totalBytes: file.size, partNumber, chunkCount });
+      }
+
+      const completeRes = await fetch(`/api/assets/uploads/${uploadId}/complete`, { method: "POST" });
+      const completeData = await completeRes.json();
+      if (!completeRes.ok || !completeData.success) throw new Error(completeData.error || "Could not complete resumable upload");
+      return completeData;
+    } catch (error) {
+      error.uploadId = uploadId;
+      throw error;
+    }
   }
 
   async function handleFilesUpload(files) {
@@ -1771,6 +1886,47 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Optimistic card update
       updateOptimisticCard(task.id, 1, 30, t("optimistic_encrypting"));
+
+      // Large files are encrypted and transmitted in 8 MiB authenticated chunks.
+      // This avoids File.arrayBuffer() for the entire file and allows the gateway
+      // to retain completed parts when a connection is interrupted.
+      if (task.file.size > RESUMABLE_THRESHOLD_BYTES) {
+        try {
+          task.stage = 2;
+          dockFileMeta.textContent = `${formatBytes(task.size)} • Resumable encrypted upload`;
+          dockStep1.className = "dock-step completed";
+          dockStep2.className = "dock-step active";
+          const data = await uploadResumableEncryptedAsset(task.file, ({ uploadedBytes, totalBytes }) => {
+            const ratio = uploadedBytes / totalBytes;
+            const progress = 30 + (ratio * 60);
+            dockProgressFill.style.width = `${baseProgress + (1 / totalNum) * progress}%`;
+            updateOptimisticCard(task.id, 2, progress, `${Math.round(ratio * 100)}% encrypted & uploaded`);
+          });
+
+          lastUploadedBlobId = data.asset?.blob_id || data.asset?.blobId || null;
+          if (data.asset?.id) decryptedMediaCache.set(data.asset.id, task.previewUrl);
+          task.stage = 3;
+          task.progress = 100;
+          dockStep2.className = "dock-step completed";
+          dockStep3.className = "dock-step completed";
+          dockProgressFill.style.width = `${((completedInBatch + 1) / totalNum) * 100}%`;
+          updateOptimisticCard(task.id, 3, 100, t("optimistic_anchored"));
+          showToast(t("toast_uploaded"), "success");
+          completedInBatch++;
+          await new Promise((r) => setTimeout(r, 400));
+          state.activeUploads = state.activeUploads.filter((t) => t.id !== task.id);
+          await fetchPhotos();
+          await fetchStatus();
+        } catch (err) {
+          task.failed = true;
+          updateOptimisticCard(task.id, 1, 100, t("optimistic_failed"));
+          const resumeHint = err.uploadId ? ` Upload session: ${err.uploadId}` : "";
+          showToast(`Large upload failed for ${task.name}: ${err.message}.${resumeHint}`, "danger");
+          state.activeUploads = state.activeUploads.filter((t) => t.id !== task.id);
+          renderPhotos();
+        }
+        continue;
+      }
 
       // Zero-Knowledge Client-Side Encryption via WebCrypto AES-GCM
       let encryptedPayload;

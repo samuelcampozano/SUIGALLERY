@@ -151,6 +151,18 @@ const upload = await nodus.put(fileBuffer, {
 });
 console.log(`Anchored on Walrus Blob: ${upload.blob_id}`);
 
+// Files above 20 MiB automatically use encrypted resumable upload.
+// A Blob/File is read and encrypted one chunk at a time, so the entire file
+// is never loaded into browser memory.
+const largeUpload = await nodus.put(largeVideoFile, {
+  name: "project-archive.mp4",
+  type: "video/mp4",
+  chunkSize: 8 * 1024 * 1024,
+  onProgress: ({ uploadedBytes, totalBytes }) => {
+    console.log(`${Math.round((uploadedBytes / totalBytes) * 100)}% uploaded`);
+  }
+});
+
 // 2. Zero-Knowledge Private Search (100% on-device, zero cloud queries)
 const results = await nodus.search("contract", { type: "application/pdf" });
 
@@ -184,6 +196,11 @@ console.log(`Anchor Org PDA: ${org.orgPda}`);
 | `GET` | `/api/status` | Space quota, bucket metadata, and Seal policy |
 | `GET` | `/api/photos` or `/api/assets` | List all assets anchored in the bucket with encryption metadata |
 | `POST` | `/api/photos/upload` or `/api/assets/upload` | Ingest client-encrypted AES-256-GCM ciphertext payload |
+| `POST` | `/api/assets/uploads` | Create an encrypted resumable-upload session (up to 500 GiB) |
+| `GET` | `/api/assets/uploads/:uploadId` | Read received and missing parts to resume a session |
+| `PUT` | `/api/assets/uploads/:uploadId/parts/:partNumber` | Upload one ciphertext part with `x-part-sha256` checksum |
+| `POST` | `/api/assets/uploads/:uploadId/complete` | Assemble, verify and anchor every uploaded part |
+| `DELETE` | `/api/assets/uploads/:uploadId` | Abort an upload and remove staged ciphertext |
 | `GET` | `/api/photos/:id/stream` or `/api/assets/:id/stream` | Stream ciphertext blob with decryption headers (`x-nodus-encrypted`) |
 | `PATCH` | `/api/photos/:id` or `/api/assets/:id` | Update asset name, caption, and tags |
 | `DELETE`| `/api/photos/:id` or `/api/assets/:id` | Delete asset and trigger crypto-shredding |
@@ -207,6 +224,12 @@ console.log(`Anchor Org PDA: ${org.orgPda}`);
 - **No Master Key Custody**: Decentralized storage node operators and protocol developers hold no master keys. Key recovery requires threshold consensus verification against Move smart contracts.
 - **On-Device Cryptographic Key Generation**: Ephemeral vault identities and AES keys are generated directly inside the user's browser memory via the standard WebCrypto API, eliminating server-side key custody risks.
 - **Edge-First Local Compute**: Search indexing, metadata extraction, and facial clustering run locally on-device (client-side WebAssembly / WebGPU), ensuring sensitive biometric vectors or telemetry are never centralized.
+
+### Resumable uploads
+
+The gateway supports encrypted multipart sessions for files from 1 byte up to 500 GiB. The SDK automatically chooses this protocol above 20 MiB, using 8 MiB chunks by default. Each part is encrypted independently with AES-256-GCM, checksum-verified by the gateway, persisted to a session directory, and can be retried without re-uploading prior parts. A session expires after 24 hours if it is not completed.
+
+The current gateway assembles ciphertext sequentially on local disk before passing it to the Walrus adapter, so RAM use remains bounded by one part. The next infrastructure milestone is replacing local staging with direct authenticated publisher uploads for production-scale throughput.
 
 ---
 

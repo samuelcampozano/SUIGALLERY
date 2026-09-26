@@ -8,6 +8,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { walrus, DEFAULT_SPACE_ID, DEFAULT_BUCKET_ID } from "./walrus-client.js";
+import { ResumableUploadManager, RESUMABLE_UPLOAD_LIMITS } from "./resumable-upload.js";
 import {
   validateMagicBytes,
   validateCiphertextPayload,
@@ -34,11 +35,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const tempStorageDir = path.join(rootDir, "temp_storage");
+const resumableUploadDir = path.join(tempStorageDir, "resumable_uploads");
 
 // Ensure temp_storage directory exists
 if (!fs.existsSync(tempStorageDir)) {
   fs.mkdirSync(tempStorageDir, { recursive: true });
 }
+const resumableUploads = new ResumableUploadManager({ rootDir: resumableUploadDir });
 
 // Initialize Decrypted Cache Lifecycle Manager (10-minute TTL)
 const cacheManager = new DecryptedCacheManager({ ttlMs: 10 * 60 * 1000 });
@@ -49,6 +52,7 @@ cacheManager.cleanupOrphanedFiles(tempStorageDir);
 // Periodic sweep: clean expired cache files every 5 minutes
 const pruneInterval = setInterval(() => {
   cacheManager.prune();
+  resumableUploads.pruneExpired();
 }, 5 * 60 * 1000);
 if (typeof pruneInterval.unref === "function") {
   pruneInterval.unref();
@@ -85,6 +89,8 @@ const apiLimiter = rateLimit({
   max: 500, // Limit each IP to 500 requests per window
   standardHeaders: true,
   legacyHeaders: false,
+  // Multipart part uploads use their own, less restrictive limiter below.
+  skip: (req) => req.method === "PUT" && /^\/api\/(assets|photos)\/uploads\/[0-9a-f-]+\/parts\/\d+$/.test(req.path),
   message: { success: false, error: "Too many requests. Please try again later." }
 });
 
@@ -94,6 +100,14 @@ const uploadLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: "Upload rate limit exceeded. Please wait a few minutes." }
+});
+
+const resumablePartLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: "Too many upload parts. Please retry shortly." }
 });
 
 app.use("/api/", apiLimiter);
@@ -116,6 +130,11 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 } // 50 MB max
+});
+
+const resumablePartBody = express.raw({
+  type: "application/octet-stream",
+  limit: `${RESUMABLE_UPLOAD_LIMITS.MAX_PART_SIZE / (1024 * 1024)}mb`
 });
 
 // Helper to determine Content-Type
@@ -331,6 +350,122 @@ app.delete("/api/orgs/:orgId/members/:memberAddress", (req, res) => {
   }
 });
 
+// ==========================================
+// RESUMABLE ENCRYPTED UPLOADS
+// ==========================================
+
+// Create an upload session. The client supplies ciphertext size because each AES-GCM
+// chunk carries its own authentication tag and can be safely retried independently.
+app.post(["/api/assets/uploads", "/api/photos/uploads"], uploadLimiter, (req, res) => {
+  const {
+    originalName,
+    originalType,
+    originalSize,
+    encryptedSize,
+    partSize,
+    description,
+    tags,
+    encryption
+  } = req.body || {};
+
+  try {
+    const parsedTags = Array.isArray(tags)
+      ? tags
+      : typeof tags === "string"
+        ? tags.split(",").map((tag) => tag.trim())
+        : [];
+    const session = resumableUploads.create({
+      originalName: sanitizeString(originalName, 128),
+      originalType: sanitizeString(originalType, 255),
+      originalSize,
+      encryptedSize,
+      partSize,
+      description: sanitizeString(description, 512),
+      tags: sanitizeTags(parsedTags),
+      encryption
+    });
+    res.status(201).json({ success: true, upload: session });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Query received parts after an interrupted browser session or network failure.
+app.get(["/api/assets/uploads/:uploadId", "/api/photos/uploads/:uploadId"], (req, res) => {
+  try {
+    const session = resumableUploads.get(req.params.uploadId);
+    res.json({ success: true, upload: session });
+  } catch (err) {
+    const status = err.message === "Upload session not found" ? 404 : 400;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+// Store exactly one authenticated ciphertext part. The checksum makes retries
+// idempotent and prevents corrupt parts from being assembled.
+app.put(
+  ["/api/assets/uploads/:uploadId/parts/:partNumber", "/api/photos/uploads/:uploadId/parts/:partNumber"],
+  resumablePartLimiter,
+  resumablePartBody,
+  (req, res) => {
+    try {
+      const result = resumableUploads.writePart(
+        req.params.uploadId,
+        req.params.partNumber,
+        req.body,
+        req.headers["x-part-sha256"]
+      );
+      res.status(result.duplicate ? 200 : 201).json({ success: true, ...result });
+    } catch (err) {
+      const status = err.message === "Upload session not found" ? 404 : 400;
+      res.status(status).json({ success: false, error: err.message });
+    }
+  }
+);
+
+// Assemble ciphertext sequentially on disk, verify all parts, then hand the completed
+// blob to the existing Walrus adapter. This uses constant memory regardless of upload size.
+app.post(["/api/assets/uploads/:uploadId/complete", "/api/photos/uploads/:uploadId/complete"], uploadLimiter, async (req, res) => {
+  const { uploadId } = req.params;
+  try {
+    const { session, assembledPath, ciphertextSha256 } = await resumableUploads.assemble(uploadId);
+    const validation = await validateCiphertextPayload(assembledPath, session.encryption);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+
+    const result = await walrus.uploadPhoto({
+      localPath: assembledPath,
+      fileName: session.originalName,
+      description: session.description,
+      tags: session.tags,
+      encryption: {
+        ...session.encryption,
+        originalName: session.originalName,
+        originalType: session.originalType,
+        originalSize: session.originalSize,
+        ciphertextSha256
+      }
+    });
+    const completed = resumableUploads.markCompleted(uploadId, result, ciphertextSha256);
+    res.json({ success: true, upload: completed, asset: result, result });
+  } catch (err) {
+    try { resumableUploads.markRetryable(uploadId); } catch {}
+    console.error(`❌ [ResumableUpload] Completion failed for ${uploadId}:`, err.message);
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Explicit cancellation immediately removes staged ciphertext and session metadata.
+app.delete(["/api/assets/uploads/:uploadId", "/api/photos/uploads/:uploadId"], (req, res) => {
+  try {
+    resumableUploads.abort(req.params.uploadId);
+    res.json({ success: true, aborted: true });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 // 2. List Assets in Bucket
 app.get(["/api/photos", "/api/assets"], async (req, res) => {
   try {
@@ -351,6 +486,9 @@ app.get(["/api/photos", "/api/assets"], async (req, res) => {
       original_name: file.original_name || file.name,
       original_type: file.original_type || getContentType(file.name),
       original_size: file.original_size || file.size,
+      encryption_mode: file.encryption_mode || "aes-gcm-v1",
+      chunk_size: file.chunk_size || null,
+      chunk_count: file.chunk_count || null,
       tags: Array.isArray(file.tags) ? file.tags : [],
       description: file.description || ""
     }));
@@ -507,6 +645,10 @@ app.get(["/api/photos/:fileId/stream", "/api/assets/:fileId/stream"], async (req
     if (matched.key) res.setHeader("x-nodus-key", matched.key);
     if (matched.original_type) res.setHeader("x-nodus-original-type", matched.original_type);
     if (matched.original_name) res.setHeader("x-nodus-original-name", encodeURIComponent(matched.original_name));
+    if (matched.encryption_mode) res.setHeader("x-nodus-encryption-mode", matched.encryption_mode);
+    if (matched.chunk_size) res.setHeader("x-nodus-chunk-size", String(matched.chunk_size));
+    if (matched.chunk_count) res.setHeader("x-nodus-chunk-count", String(matched.chunk_count));
+    if (matched.original_size) res.setHeader("x-nodus-original-size", String(matched.original_size));
 
     if (shouldDownload) {
       res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);

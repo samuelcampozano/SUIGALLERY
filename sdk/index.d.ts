@@ -14,6 +14,36 @@ export interface PutOptions {
   description?: string;
   tags?: string[];
   encrypt?: boolean;
+  resumable?: boolean;
+  resumableThresholdBytes?: number;
+  chunkSize?: number;
+  uploadId?: string;
+  key?: string;
+  iv?: string;
+  onProgress?: (progress: ResumableUploadProgress) => void;
+}
+
+export interface ResumableUploadProgress {
+  uploadId: string;
+  partNumber: number;
+  partCount: number;
+  uploadedBytes: number;
+  totalBytes: number;
+}
+
+export interface ResumableUpload {
+  uploadId: string;
+  status: "uploading" | "assembling" | "completed";
+  originalName: string;
+  originalSize: number;
+  encryptedSize: number;
+  partSize: number;
+  partCount: number;
+  receivedParts: number[];
+  missingParts: number[];
+  receivedBytes: number;
+  expiresAt: string;
+  completedAsset?: any;
 }
 
 export interface PutResult {
@@ -91,6 +121,13 @@ export declare class NodusClient {
   constructor(config?: NodusClientConfig);
   getStatus(): Promise<any>;
   put(data: Uint8Array | ArrayBuffer | string | Blob, options: PutOptions): Promise<PutResult>;
+  putResumable(data: Uint8Array | ArrayBuffer | string | Blob, options: PutOptions): Promise<PutResult & { uploadId: string; upload: ResumableUpload }>;
+  resumeResumableUpload(uploadId: string, data: Uint8Array | ArrayBuffer | string | Blob, options: PutOptions & { key: string; iv: string }): Promise<PutResult & { uploadId: string; upload: ResumableUpload }>;
+  createResumableUpload(payload: Record<string, any>): Promise<ResumableUpload>;
+  getResumableUpload(uploadId: string): Promise<ResumableUpload>;
+  uploadResumablePart(uploadId: string, partNumber: number, data: Uint8Array, checksum: string): Promise<any>;
+  completeResumableUpload(uploadId: string): Promise<any>;
+  abortResumableUpload(uploadId: string): Promise<{ success: boolean; aborted: boolean }>;
   get(fileId: string, options?: GetOptions): Promise<GetResult>;
   list(filters?: { tag?: string }): Promise<any[]>;
   search(query: string, options?: SearchOptions): Promise<any[]>;
