@@ -332,6 +332,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const zkLoginModalBackdrop = document.getElementById("zkLoginModalBackdrop");
   const googleZkLoginBtn = document.getElementById("googleZkLoginBtn");
   const connectSuiWalletBtn = document.getElementById("connectSuiWalletBtn");
+  const connectSolanaBtn = document.getElementById("connectSolanaBtn");
   const guestPasskeyBtn = document.getElementById("guestPasskeyBtn");
 
   // Account Profile Modal Elements
@@ -341,11 +342,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const modalUserName = document.getElementById("modalUserName");
   const modalUserEmail = document.getElementById("modalUserEmail");
   const modalAuthBadge = document.getElementById("modalAuthBadge");
+  const modalAddressLabel = document.getElementById("modalAddressLabel");
   const modalSuiAddress = document.getElementById("modalSuiAddress");
   const modalSigScheme = document.getElementById("modalSigScheme");
+  const modalOrgPdaRow = document.getElementById("modalOrgPdaRow");
+  const modalOrgPda = document.getElementById("modalOrgPda");
+  const copyOrgPdaBtn = document.getElementById("copyOrgPdaBtn");
   const copyAddressBtn = document.getElementById("copyAddressBtn");
   const accountSuiScanLink = document.getElementById("accountSuiScanLink");
   const accountSuiVisionLink = document.getElementById("accountSuiVisionLink");
+  const accountSolscanLink = document.getElementById("accountSolscanLink");
   const switchAccountBtn = document.getElementById("switchAccountBtn");
   const signOutBtn = document.getElementById("signOutBtn");
 
@@ -688,11 +694,33 @@ document.addEventListener("DOMContentLoaded", () => {
       if (modalSuiAddress) modalSuiAddress.textContent = state.currentUser.address || "0x...";
       if (modalSigScheme) modalSigScheme.textContent = state.currentUser.scheme || "zkLogin (ZKS)";
 
-      if (accountSuiScanLink) {
-        accountSuiScanLink.href = `https://suiscan.xyz/mainnet/account/${state.currentUser.address}`;
+      const isSolana = state.currentUser.provider?.toLowerCase().includes("solana") || state.currentUser.method === "solana_siws";
+
+      if (modalAddressLabel) {
+        modalAddressLabel.textContent = isSolana ? "Solana Public Key" : "Derived Sui Address";
       }
-      if (accountSuiVisionLink) {
-        accountSuiVisionLink.href = `https://suivision.xyz/account/${state.currentUser.address}`;
+
+      if (isSolana) {
+        if (modalOrgPdaRow) modalOrgPdaRow.classList.remove("hidden");
+        const orgPda = state.currentUser.activeOrg?.orgPda || state.currentUser.orgPda || "98KLRkKxq39uL4y2Mh2k3p8eMZWUXbBCjEvwSkkk59S";
+        if (modalOrgPda) modalOrgPda.textContent = orgPda;
+        if (accountSolscanLink) {
+          accountSolscanLink.href = `https://solscan.io/account/${state.currentUser.address}`;
+          accountSolscanLink.classList.remove("hidden");
+        }
+        if (accountSuiScanLink) accountSuiScanLink.classList.add("hidden");
+        if (accountSuiVisionLink) accountSuiVisionLink.classList.add("hidden");
+      } else {
+        if (modalOrgPdaRow) modalOrgPdaRow.classList.add("hidden");
+        if (accountSolscanLink) accountSolscanLink.classList.add("hidden");
+        if (accountSuiScanLink) {
+          accountSuiScanLink.href = `https://suiscan.xyz/mainnet/account/${state.currentUser.address}`;
+          accountSuiScanLink.classList.remove("hidden");
+        }
+        if (accountSuiVisionLink) {
+          accountSuiVisionLink.href = `https://suivision.xyz/account/${state.currentUser.address}`;
+          accountSuiVisionLink.classList.remove("hidden");
+        }
       }
     } else {
       if (loginTriggerBtn) loginTriggerBtn.classList.remove("hidden");
@@ -862,6 +890,90 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast("⚡ Signed in as Guest Explorer!", "success");
   }
 
+  // Connect Solana Wallet Handler (SIWS & Phantom / Solflare support)
+  async function handleConnectSolanaWallet() {
+    try {
+      if (window.solana && (window.solana.isPhantom || window.solana.publicKey)) {
+        showToast("Connecting to Solana Wallet...", "info");
+        const resp = await window.solana.connect();
+        const address = resp.publicKey ? resp.publicKey.toString() : window.solana.publicKey.toString();
+
+        // 1. Request SIWS Challenge from Nodus Engine
+        const challengeRes = await fetch("/api/auth/solana/challenge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address, domain: window.location.hostname || "nodus.cloud" })
+        });
+        const challenge = await challengeRes.json();
+        if (!challenge.success) throw new Error(challenge.error || "Failed to obtain SIWS challenge");
+
+        // 2. Cryptographic Ed25519 signature via wallet
+        const encodedMsg = new TextEncoder().encode(challenge.message);
+        const signed = await window.solana.signMessage(encodedMsg, "utf8");
+        const sigBytes = signed.signature || signed;
+        const sigHex = Array.from(sigBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+
+        // 3. Verify on server and load Anchor organization
+        const verifyRes = await fetch("/api/auth/solana/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address, signature: sigHex, message: challenge.message })
+        });
+        const verifyData = await verifyRes.json();
+        if (!verifyData.success) throw new Error(verifyData.error || "Cryptographic verification failed");
+
+        const session = {
+          id: `sol_${Date.now()}`,
+          method: "solana_siws",
+          provider: "Solana (Phantom)",
+          name: "Solana Pioneer",
+          email: shortenAddress(address),
+          address,
+          scheme: "Ed25519 (SIWS Challenge)",
+          organizations: verifyData.organizations || [],
+          activeOrg: verifyData.organizations?.[0] || null,
+          createdAt: new Date().toISOString()
+        };
+
+        saveAuthSession(session);
+        closeZkLoginModal();
+        showToast(`☀️ Signed in with Solana: ${shortenAddress(address)}`, "success");
+        return;
+      }
+    } catch (err) {
+      console.warn("Solana extension flow error:", err);
+      showToast(`Solana sign-in cancelled or failed: ${err.message}`, "danger");
+      return;
+    }
+
+    // Zero-Env Demo Fallback: Real on-device/server Ed25519 Keypair SIWS flow
+    try {
+      showToast("Initializing Solana identity...", "info");
+      const res = await fetch("/api/auth/solana/demo", { method: "POST" });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+
+      const session = {
+        id: `sol_demo_${Date.now()}`,
+        method: "solana_siws",
+        provider: "Solana (SIWS)",
+        name: "Solana Pioneer",
+        email: shortenAddress(data.address),
+        address: data.address,
+        scheme: "Ed25519 (SIWS Challenge)",
+        organizations: data.organizations || [],
+        activeOrg: data.activeOrg || data.organizations?.[0] || null,
+        createdAt: new Date().toISOString()
+      };
+
+      saveAuthSession(session);
+      closeZkLoginModal();
+      showToast(`☀️ Signed in with Solana: ${shortenAddress(data.address)}!`, "success");
+    } catch (err) {
+      showToast(`Error initializing Solana session: ${err.message}`, "danger");
+    }
+  }
+
   // Event Listeners for Authentication
   if (loginTriggerBtn) loginTriggerBtn.addEventListener("click", openZkLoginModal);
   if (zkLoginModalClose) zkLoginModalClose.addEventListener("click", closeZkLoginModal);
@@ -873,6 +985,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (googleZkLoginBtn) googleZkLoginBtn.addEventListener("click", () => handleGoogleZkLogin());
   if (connectSuiWalletBtn) connectSuiWalletBtn.addEventListener("click", handleConnectSuiWallet);
+  if (connectSolanaBtn) connectSolanaBtn.addEventListener("click", handleConnectSolanaWallet);
   if (guestPasskeyBtn) guestPasskeyBtn.addEventListener("click", handleGuestPasskey);
 
   if (switchAccountBtn) {
@@ -890,6 +1003,16 @@ document.addEventListener("DOMContentLoaded", () => {
     copyAddressBtn.addEventListener("click", () => {
       if (state.currentUser?.address) {
         navigator.clipboard.writeText(state.currentUser.address);
+        showToast(t("toast_copied"), "info");
+      }
+    });
+  }
+
+  if (copyOrgPdaBtn) {
+    copyOrgPdaBtn.addEventListener("click", () => {
+      const orgPda = modalOrgPda?.textContent;
+      if (orgPda && orgPda !== "--") {
+        navigator.clipboard.writeText(orgPda);
         showToast(t("toast_copied"), "info");
       }
     });

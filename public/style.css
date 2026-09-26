@@ -2434,16 +2434,22 @@ body.select-mode .photo-select-checkbox {
 
 .auth-secondary-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
   margin-bottom: 1.25rem;
+}
+
+@media (max-width: 580px) {
+  .auth-secondary-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .auth-secondary-card {
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  padding: 0.75rem 0.85rem;
+  padding: 0.75rem 0.7rem;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
@@ -2469,6 +2475,11 @@ body.select-mode .photo-select-checkbox {
   justify-content: center;
   color: var(--brand-sui);
   flex-shrink: 0;
+}
+
+.auth-card-icon.solana-icon {
+  background: linear-gradient(135deg, rgba(153, 69, 255, 0.2), rgba(20, 241, 149, 0.2));
+  color: #14f195;
 }
 
 .auth-card-info {

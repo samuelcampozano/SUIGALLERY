@@ -404,11 +404,19 @@
               </div>
             </button>
 
+            <button class="auth-secondary-card" id="connectSolanaBtn">
+              <div class="auth-card-icon solana-icon"><i data-lucide="sun"></i></div>
+              <div class="auth-card-info">
+                <span class="auth-card-title">Solana (SIWS)</span>
+                <span class="auth-card-desc">Phantom / Solflare</span>
+              </div>
+            </button>
+
             <button class="auth-secondary-card" id="guestPasskeyBtn">
               <div class="auth-card-icon"><i data-lucide="sparkles"></i></div>
               <div class="auth-card-info">
                 <span class="auth-card-title">Guest Passkey</span>
-                <span class="auth-card-desc">100% on-device testing</span>
+                <span class="auth-card-desc">100% on-device</span>
               </div>
             </button>
           </div>
@@ -467,10 +475,10 @@
           </summary>
           <div class="tech-drawer-content">
             <div class="tech-mini-item">
-              <span class="tech-mini-label">Derived Sui Address</span>
+              <span class="tech-mini-label" id="modalAddressLabel">Derived Sui Address</span>
               <div class="tech-mini-val">
                 <code id="modalSuiAddress" class="mono-code">0x...</code>
-                <button class="copy-btn" id="copyAddressBtn" title="Copy Sui Address"><i data-lucide="copy"></i></button>
+                <button class="copy-btn" id="copyAddressBtn" title="Copy Address"><i data-lucide="copy"></i></button>
               </div>
             </div>
             <div class="tech-mini-item">
@@ -479,12 +487,22 @@
                 <code id="modalSigScheme" class="mono-code">zkLogin (ZKS)</code>
               </div>
             </div>
-            <div class="tech-mini-actions" style="margin-top: 8px; display: flex; gap: 8px;">
+            <div class="tech-mini-item hidden" id="modalOrgPdaRow">
+              <span class="tech-mini-label">Solana Anchor Org PDA</span>
+              <div class="tech-mini-val">
+                <code id="modalOrgPda" class="mono-code">--</code>
+                <button class="copy-btn" id="copyOrgPdaBtn" title="Copy Org PDA"><i data-lucide="copy"></i></button>
+              </div>
+            </div>
+            <div class="tech-mini-actions" style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
               <a id="accountSuiScanLink" href="#" target="_blank" class="explorer-mini-btn">
                 <i data-lucide="compass"></i> <span>View on SuiScan</span>
               </a>
               <a id="accountSuiVisionLink" href="#" target="_blank" class="explorer-mini-btn">
                 <i data-lucide="external-link"></i> <span>View on SuiVision</span>
+              </a>
+              <a id="accountSolscanLink" href="#" target="_blank" class="explorer-mini-btn hidden">
+                <i data-lucide="sun"></i> <span>View on Solscan</span>
               </a>
             </div>
           </div>

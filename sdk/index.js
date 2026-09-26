@@ -5,6 +5,44 @@
  * and private search primitives.
  */
 
+import { PublicKey } from "@solana/web3.js";
+
+export const DEFAULT_NODUS_PROGRAM_ID = "NodUS11111111111111111111111111111111111111";
+
+/**
+ * Derives the deterministic Anchor Program Derived Address (PDA) for an Organization.
+ * @param {string} orgId
+ * @param {string} [programIdStr]
+ * @returns {{ pda: PublicKey, bump: number, pdaString: string }}
+ */
+export function deriveOrgPDA(orgId, programIdStr = DEFAULT_NODUS_PROGRAM_ID) {
+  const programId = new PublicKey(programIdStr);
+  const cleanId = orgId.toLowerCase().trim();
+  const [pda, bump] = PublicKey.findProgramAddressSync(
+    [Buffer.from("nodus_org"), Buffer.from(cleanId)],
+    programId
+  );
+  return { pda, bump, pdaString: pda.toBase58() };
+}
+
+/**
+ * Derives the deterministic Anchor Program Derived Address (PDA) for an Organization Member.
+ * @param {PublicKey|string} orgPDA
+ * @param {PublicKey|string} memberPubkey
+ * @param {string} [programIdStr]
+ * @returns {{ pda: PublicKey, bump: number, pdaString: string }}
+ */
+export function deriveMemberPDA(orgPDA, memberPubkey, programIdStr = DEFAULT_NODUS_PROGRAM_ID) {
+  const programId = new PublicKey(programIdStr);
+  const orgPub = typeof orgPDA === "string" ? new PublicKey(orgPDA) : orgPDA;
+  const memPub = typeof memberPubkey === "string" ? new PublicKey(memberPubkey) : memberPubkey;
+  const [pda, bump] = PublicKey.findProgramAddressSync(
+    [Buffer.from("nodus_member"), orgPub.toBuffer(), memPub.toBuffer()],
+    programId
+  );
+  return { pda, bump, pdaString: pda.toBase58() };
+}
+
 /**
  * Low-level WebCrypto cryptographic primitives for AES-256-GCM envelope encryption.
  */
@@ -443,6 +481,120 @@ export class NodusClient {
 
     this.searchIndex.documents.delete(fileId);
     return { success: true, deleted: true };
+  }
+
+  /**
+   * Request a Sign-In With Solana (SIWS) authentication challenge.
+   * @param {string} address - Base58 Solana public key
+   * @param {string} [domain='nodus.cloud']
+   * @returns {Promise<{ nonce: string, message: string, expiresAt: string }>}
+   */
+  async getSolanaChallenge(address, domain = "nodus.cloud") {
+    const res = await this._fetch(`${this.gatewayUrl}/api/auth/solana/challenge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address, domain })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  }
+
+  /**
+   * Verify a signed Solana challenge and authenticate the client session.
+   * @param {string} address - Base58 Solana public key
+   * @param {string} signature - Base58 encoded 64-byte Ed25519 signature
+   * @param {string} [message] - Message string that was signed
+   * @returns {Promise<object>} Authenticated session info
+   */
+  async verifySolanaAuth(address, signature, message) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/auth/solana/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address, signature, message })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+    this.userAddress = address;
+    return data;
+  }
+
+  /**
+   * List organizations for the authenticated Solana user.
+   * @param {string} [address] - Optional override address
+   * @returns {Promise<object[]>}
+   */
+  async listOrganizations(address) {
+    const targetAddr = address || this.userAddress;
+    const url = targetAddr
+      ? `${this.gatewayUrl}/api/orgs?address=${encodeURIComponent(targetAddr)}`
+      : `${this.gatewayUrl}/api/orgs`;
+    const res = await this._fetch(url, { headers: this._getHeaders() });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+    return data.organizations || [];
+  }
+
+  /**
+   * Create an organization with Anchor Org PDA.
+   * @param {object} params
+   * @param {string} params.orgId
+   * @param {string} [params.name]
+   * @param {string} params.ownerAddress
+   * @param {number} [params.storageCapBytes]
+   * @returns {Promise<object>}
+   */
+  async createOrganization(params) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/orgs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._getHeaders() },
+      body: JSON.stringify(params)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+    return data.organization;
+  }
+
+  /**
+   * Retrieve organization details and verifiable Anchor PDA proof.
+   * @param {string} orgId
+   * @returns {Promise<object>}
+   */
+  async getOrganization(orgId) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/orgs/${orgId}`, {
+      headers: this._getHeaders()
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+    return data.organization;
+  }
+
+  /**
+   * Add a member to an organization with a specified role.
+   * @param {string} orgId
+   * @param {object} params
+   * @param {string} params.memberAddress
+   * @param {string} [params.role='viewer']
+   * @param {string} params.callerAddress
+   * @returns {Promise<object>}
+   */
+  async addOrganizationMember(orgId, params) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/orgs/${orgId}/members`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._getHeaders() },
+      body: JSON.stringify(params)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+    return data.member;
+  }
+
+  deriveOrgPDA(orgId) {
+    return deriveOrgPDA(orgId);
+  }
+
+  deriveMemberPDA(orgPDA, memberAddress) {
+    return deriveMemberPDA(orgPDA, memberAddress);
   }
 
   _getHeaders(includeJson = true) {

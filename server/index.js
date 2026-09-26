@@ -16,6 +16,19 @@ import {
   sanitizeTags,
   DecryptedCacheManager
 } from "./security.js";
+import {
+  generateAuthChallenge,
+  verifySolanaSignature,
+  generateDemoSolanaSession,
+  createOrganization,
+  getOrganization,
+  listUserOrganizations,
+  addOrganizationMember,
+  removeOrganizationMember,
+  deriveOrgPDA,
+  deriveMemberPDA,
+  NODUS_SOLANA_PROGRAM_ID_STR
+} from "./solana.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -189,6 +202,130 @@ app.get("/api/status", async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// SOLANA IDENTITY & ANCHOR PDA ROUTES (PHASE 3)
+// ==========================================
+
+// Issue Sign-In With Solana (SIWS) authentication challenge
+app.post("/api/auth/solana/challenge", (req, res) => {
+  const { address, domain } = req.body;
+  if (!address) {
+    return res.status(400).json({ success: false, error: "Solana address required" });
+  }
+
+  try {
+    const challenge = generateAuthChallenge(address, domain);
+    res.json({ success: true, ...challenge });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Verify Solana Ed25519 signature
+app.post("/api/auth/solana/verify", (req, res) => {
+  const { address, signature, message } = req.body;
+  if (!address || !signature) {
+    return res.status(400).json({ success: false, error: "Address and signature are required" });
+  }
+
+  const result = verifySolanaSignature(address, signature, message);
+  if (!result.valid) {
+    return res.status(401).json({ success: false, error: result.error });
+  }
+
+  // Retrieve user's organizations
+  const userOrgs = listUserOrganizations(address);
+
+  res.json({
+    success: true,
+    address,
+    provider: "solana",
+    scheme: "ed25519",
+    verifiedAt: result.verifiedAt,
+    organizations: userOrgs
+  });
+});
+
+// Instant Ephemeral Solana Session for zero-env demoing / testing without browser extension
+app.post("/api/auth/solana/demo", (req, res) => {
+  try {
+    const session = generateDemoSolanaSession();
+    res.json({ success: true, ...session });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// List user organizations (or default demo orgs)
+app.get("/api/orgs", (req, res) => {
+  const address = req.headers["x-solana-address"] || req.query.address;
+  if (address) {
+    const orgs = listUserOrganizations(address);
+    return res.json({ success: true, organizations: orgs });
+  }
+  const defaultOrg = getOrganization("nodus-devs");
+  res.json({ success: true, organizations: defaultOrg ? [defaultOrg] : [] });
+});
+
+// Create organization with Anchor Org PDA
+app.post("/api/orgs", (req, res) => {
+  const { orgId, name, ownerAddress, storageCapBytes } = req.body;
+  if (!orgId || !ownerAddress) {
+    return res.status(400).json({ success: false, error: "orgId and ownerAddress are required" });
+  }
+
+  try {
+    const org = createOrganization({ orgId, name, ownerAddress, storageCapBytes });
+    res.json({ success: true, organization: org });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Get organization details and PDA proof
+app.get("/api/orgs/:orgId", (req, res) => {
+  const { orgId } = req.params;
+  const org = getOrganization(orgId);
+  if (!org) {
+    return res.status(404).json({ success: false, error: `Organization '${orgId}' not found` });
+  }
+  res.json({ success: true, organization: org });
+});
+
+// Add or update organization member (derives Member PDA)
+app.post("/api/orgs/:orgId/members", (req, res) => {
+  const { orgId } = req.params;
+  const { memberAddress, role, callerAddress } = req.body;
+
+  if (!memberAddress || !callerAddress) {
+    return res.status(400).json({ success: false, error: "memberAddress and callerAddress are required" });
+  }
+
+  try {
+    const member = addOrganizationMember({ orgId, memberAddress, role, callerAddress });
+    res.json({ success: true, member });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Remove organization member
+app.delete("/api/orgs/:orgId/members/:memberAddress", (req, res) => {
+  const { orgId, memberAddress } = req.params;
+  const callerAddress = req.headers["x-solana-address"] || req.query.callerAddress;
+
+  if (!callerAddress) {
+    return res.status(400).json({ success: false, error: "callerAddress is required" });
+  }
+
+  try {
+    const removed = removeOrganizationMember({ orgId, memberAddress, callerAddress });
+    res.json({ success: true, removed });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
   }
 });
 
