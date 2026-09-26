@@ -66,7 +66,7 @@ app.use(
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         imgSrc: ["'self'", "data:", "blob:"],
-        connectSrc: ["'self'"],
+        connectSrc: ["'self'", "https://*.sui.io", "https://*.solana.com", "https://*.walrus.xyz"],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: []
       }
@@ -308,7 +308,8 @@ app.post("/api/orgs/:orgId/members", (req, res) => {
     const member = addOrganizationMember({ orgId, memberAddress, role, callerAddress });
     res.json({ success: true, member });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    const status = err.message.startsWith("Unauthorized") ? 403 : 400;
+    res.status(status).json({ success: false, error: err.message });
   }
 });
 
@@ -325,7 +326,8 @@ app.delete("/api/orgs/:orgId/members/:memberAddress", (req, res) => {
     const removed = removeOrganizationMember({ orgId, memberAddress, callerAddress });
     res.json({ success: true, removed });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    const status = err.message.startsWith("Unauthorized") ? 403 : 400;
+    res.status(status).json({ success: false, error: err.message });
   }
 });
 

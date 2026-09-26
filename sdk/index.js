@@ -589,6 +589,27 @@ export class NodusClient {
     return data.member;
   }
 
+  /**
+   * Remove a member from an organization.
+   * @param {string} orgId
+   * @param {string} memberAddress
+   * @param {string} [callerAddress]
+   * @returns {Promise<boolean>}
+   */
+  async removeOrganizationMember(orgId, memberAddress, callerAddress) {
+    const caller = callerAddress || this.userAddress;
+    const res = await this._fetch(
+      `${this.gatewayUrl}/api/orgs/${orgId}/members/${encodeURIComponent(memberAddress)}?callerAddress=${encodeURIComponent(caller || "")}`,
+      {
+        method: "DELETE",
+        headers: this._getHeaders()
+      }
+    );
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+    return data.removed;
+  }
+
   deriveOrgPDA(orgId) {
     return deriveOrgPDA(orgId);
   }
@@ -601,6 +622,7 @@ export class NodusClient {
     const headers = {};
     if (includeJson) headers["Accept"] = "application/json";
     if (this.apiKey) headers["Authorization"] = `Bearer ${this.apiKey}`;
+    if (this.userAddress) headers["x-solana-address"] = this.userAddress;
     return headers;
   }
 }

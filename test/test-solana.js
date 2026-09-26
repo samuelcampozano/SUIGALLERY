@@ -205,7 +205,7 @@ async function runSolanaTests() {
         callerAddress: charlieAddress
       })
     });
-    testAssert(unauthorizedRes.status === 400, "Non-admin member cannot invite new members (RBAC guard enforced)");
+    testAssert(unauthorizedRes.status === 403 || unauthorizedRes.status === 400, "Non-admin member cannot invite new members (RBAC guard enforced)");
 
     // Alice removes Charlie
     const removeRes = await fetch(`${baseUrl}/api/orgs/${orgId}/members/${charlieAddress}`, {

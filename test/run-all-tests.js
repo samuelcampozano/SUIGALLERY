@@ -8,7 +8,8 @@ const suites = [
   { name: "Developer SDK & Private Search", file: "test/test-sdk.js" },
   { name: "Live Sui On-Chain Verification", file: "test/test-onchain.js" },
   { name: "End-to-End Crypto-Shredding", file: "test-crypto-shredding.js" },
-  { name: "Solana Identity & Anchor PDAs", file: "test/test-solana.js" }
+  { name: "Solana Identity & Anchor PDAs", file: "test/test-solana.js" },
+  { name: "Security Audit & Pen-Test", file: "test/test-audit-security.js" }
 ];
 
 async function runSuite(suite) {
