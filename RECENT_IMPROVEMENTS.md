@@ -11,7 +11,8 @@ Este documento registra as melhorias integradas na branch `dev` e as entregas pr
 | Integrado em `dev` | Uploads cifrados retomáveis | `ab0400d`, merge `440c31a` |
 | Integrado em `dev` | Publisher Walrus autenticado e direto | `b91034f`, merge `86e802f` |
 | Integrado em `dev` | Confiança e verificação de recibos do publisher | `048e49d`, merge `fadc63f` |
-| Pronto para merge em `dev` | Autenticação persistente e contexto por organização nos fluxos de assets | `5369fd8`, branch `codex/auth-tenant-foundation` |
+| Integrado em `dev` | Autenticação persistente e contexto por organização nos fluxos de assets | `4c5f5f3`, merge `7e849d0` |
+| Pronto para merge em `dev` | CORS restrito e autenticação uniforme das rotas de organizações | branch `codex/cors-uniform-auth` |
 
 ## 1. Uploads cifrados retomáveis
 
@@ -112,7 +113,7 @@ As suítes locais de segurança, API, zero-plaintext, upload retomável, publish
 
 ## 4. Fundação de autenticação e contexto por organização
 
-Entregue em 26 de setembro de 2026 na branch `codex/auth-tenant-foundation`, pelo commit `5369fd8` (`feat: enforce tenant context across asset flows`). Ainda não foi integrada à `dev`.
+Entregue em 26 de setembro de 2026 na branch `codex/auth-tenant-foundation`, pelo commit `4c5f5f3` (`feat: enforce tenant context across asset flows`) e integrado à `dev` pelo merge `7e849d0`.
 
 ### Lacunas que motivam a entrega
 
@@ -149,3 +150,13 @@ Antes de habilitar produção, um operador deve provisionar cada organização, 
 ## Próxima entrega recomendada
 
 Adicionar a interface ou API administrativa autenticada para o provisionamento de organizações e memberships, seguida de quotas/auditoria por tenant. A verificação do publisher já protege a integridade do blob; o próximo passo é operacionalizar o ciclo de vida do tenant sem conceder privilégios pelo cliente.
+
+## 5. CORS restrito e autenticação uniforme de organizações
+
+Em implementação na branch `codex/cors-uniform-auth`.
+
+- CORS deixa de aceitar qualquer origem: em produção, somente origens declaradas em `NODUS_ALLOWED_ORIGINS` podem chamar a API.
+- As rotas de organizações passam pelo mesmo middleware de tenant das rotas de assets; um header `x-solana-address` não autoriza mais acesso quando há autenticação persistente.
+- Listagem e consulta de organizações usam a membership da sessão PostgreSQL; alterações de membros exigem papel `owner` ou `admin` e o tenant ativo correspondente.
+- Criação de organização em produção fica bloqueada até existir o fluxo administrativo de pré-provisionamento, evitando criar organização sem contexto `space/bucket/Seal`.
+- O teste cobre origem autorizada, origem bloqueada e tentativa de acessar organização somente com endereço forjado.

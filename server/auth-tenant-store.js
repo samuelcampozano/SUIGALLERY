@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { Pool } from "pg";
 
 const tokenHash = (token) => crypto.createHash("sha256").update(token).digest("hex");
+const validRoles = new Set(["owner", "admin", "contributor", "viewer"]);
 
 export class AuthTenantStore {
   constructor({ databaseUrl = process.env.DATABASE_URL } = {}) {
@@ -36,5 +37,70 @@ export class AuthTenantStore {
     const result = await this.pool.query(query, [tokenHash(token)]);
     if (!result.rowCount) return null;
     return result.rows[0];
+  }
+
+  async listOrganizations(userId) {
+    const result = await this.pool.query(
+      `SELECT o.id AS "orgId", o.name, m.role, t.space_id AS "spaceId", t.bucket_id AS "bucketId",
+              t.seal_policy_id AS "sealPolicyId", t.quota_bytes AS "quotaBytes"
+         FROM organizations o
+         JOIN memberships m ON m.organization_id = o.id
+         JOIN tenant_storage_contexts t ON t.organization_id = o.id AND t.active = true
+        WHERE m.user_id = $1
+        ORDER BY o.name ASC`,
+      [userId]
+    );
+    return result.rows;
+  }
+
+  async getOrganizationForUser({ organizationId, userId }) {
+    const result = await this.pool.query(
+      `SELECT o.id AS "orgId", o.name, m.role, t.space_id AS "spaceId", t.bucket_id AS "bucketId",
+              t.seal_policy_id AS "sealPolicyId", t.quota_bytes AS "quotaBytes"
+         FROM organizations o
+         JOIN memberships m ON m.organization_id = o.id AND m.user_id = $2
+         JOIN tenant_storage_contexts t ON t.organization_id = o.id AND t.active = true
+        WHERE o.id = $1`,
+      [organizationId, userId]
+    );
+    return result.rows[0] || null;
+  }
+
+  async addMembership({ organizationId, address, role }) {
+    if (!validRoles.has(role)) throw new Error("Invalid organization role");
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const userId = crypto.randomUUID();
+      await client.query(
+        "INSERT INTO users (id, solana_address) VALUES ($1, $2) ON CONFLICT (solana_address) DO NOTHING",
+        [userId, address]
+      );
+      const user = await client.query("SELECT id FROM users WHERE solana_address = $1", [address]);
+      await client.query(
+        `INSERT INTO memberships (organization_id, user_id, role) VALUES ($1, $2, $3)
+         ON CONFLICT (organization_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+        [organizationId, user.rows[0].id, role]
+      );
+      await client.query("COMMIT");
+      return { organizationId, memberAddress: address, role };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async removeMembership({ organizationId, address }) {
+    const membership = await this.pool.query(
+      `SELECT m.user_id, m.role FROM memberships m JOIN users u ON u.id = m.user_id
+        WHERE m.organization_id = $1 AND u.solana_address = $2`,
+      [organizationId, address]
+    );
+    if (!membership.rowCount) throw new Error("Organization member not found");
+    if (membership.rows[0].role === "owner") throw new Error("Cannot remove Organization Owner");
+    await this.pool.query("DELETE FROM memberships WHERE organization_id = $1 AND user_id = $2", [organizationId, membership.rows[0].user_id]);
+    return true;
   }
 }

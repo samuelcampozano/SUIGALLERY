@@ -189,6 +189,8 @@ console.log(`Anchor Org PDA: ${org.orgPda}`);
 
 In a production tenant deployment, `verifySolanaAuth` returns a short-lived `accessToken` after the address is verified as a member of the selected pre-provisioned organization. The SDK retains that token for subsequent asset, upload, manifest, and deletion requests; do not persist it in browser local storage. Configure `POSTGRES_PASSWORD` and `DATABASE_URL` only in an untracked `.env` file, then apply `server/migrations/001_auth_tenants.sql` before enabling production mode.
 
+Set `NODUS_ALLOWED_ORIGINS` to the comma-separated HTTPS origins of the browser applications allowed to call the API. Production rejects all cross-origin browser requests when this value is absent.
+
 ---
 
 ## 🧪 API Reference
