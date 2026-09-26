@@ -6,6 +6,7 @@ import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { walrus, DEFAULT_SPACE_ID, DEFAULT_BUCKET_ID } from "./walrus-client.js";
 import { ResumableUploadManager, RESUMABLE_UPLOAD_LIMITS } from "./resumable-upload.js";
@@ -564,6 +565,48 @@ app.get("/api/assets/direct-uploads/:uploadId/manifest", (req, res) => {
   }
 });
 
+// Read one encrypted segment through the gateway. The gateway never decrypts
+// it; this proxy lets the SDK stream directly from the authenticated publisher
+// without exposing publisher topology or credentials to an application.
+app.get("/api/assets/:assetId/direct-segments/:segmentIndex", async (req, res) => {
+  try {
+    const manifest = directUploads.manifestByAssetId(req.params.assetId);
+    const index = Number(req.params.segmentIndex);
+    const segment = manifest.segments.find((entry) => entry.index === index);
+    if (!segment) return res.status(404).json({ success: false, error: "Direct segment not found" });
+
+    const headers = {};
+    if (req.headers.range) headers.Range = req.headers.range;
+    const publisherResponse = await fetch(authenticatedPublisher.readUrl(segment.blobId), { headers });
+    if (!publisherResponse.ok) {
+      return res.status(502).json({ success: false, error: `Publisher read failed: HTTP ${publisherResponse.status}` });
+    }
+
+    const passthroughHeaders = ["content-type", "content-length", "content-range", "accept-ranges", "etag"];
+    for (const name of passthroughHeaders) {
+      const value = publisherResponse.headers.get(name);
+      if (value) res.setHeader(name, value);
+    }
+    res.status(publisherResponse.status);
+    if (!publisherResponse.body) return res.end();
+    Readable.fromWeb(publisherResponse.body).on("error", (error) => res.destroy(error)).pipe(res);
+  } catch (err) {
+    const status = err.message === "Upload session not found" ? 404 : 400;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+// A manifest is intentionally public encryption metadata only: no data key,
+// plaintext, or publisher credential is included.
+app.get("/api/assets/:assetId/direct-manifest", (req, res) => {
+  try {
+    res.json({ success: true, manifest: directUploads.manifestByAssetId(req.params.assetId) });
+  } catch (err) {
+    const status = err.message === "Upload session not found" ? 404 : 400;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
 app.delete("/api/assets/direct-uploads/:uploadId", (req, res) => {
   try {
     directUploads.abort(req.params.uploadId);
@@ -589,7 +632,6 @@ app.get(["/api/photos", "/api/assets"], async (req, res) => {
       download_url: `/api/photos/${file.id}/stream?download=true`,
       encrypted: Boolean(file.encrypted),
       iv: file.iv || null,
-      key: file.key || null,
       original_name: file.original_name || file.name,
       original_type: file.original_type || getContentType(file.name),
       original_size: file.original_size || file.size,
@@ -604,9 +646,7 @@ app.get(["/api/photos", "/api/assets"], async (req, res) => {
     // on Walrus; they are not Console/MCP file records.
     photos.push(...directUploads.listAssets().map((asset) => ({
       ...asset,
-      blob_id: null,
-      stream_url: null,
-      download_url: null
+      blob_id: null
     })));
 
     // Sort newest first
@@ -643,10 +683,9 @@ app.post(["/api/photos/upload", "/api/assets/upload"], uploadLimiter, upload.any
     } catch {
       encryption = null;
     }
-  } else if (req.body.iv && req.body.key) {
+  } else if (req.body.iv) {
     encryption = {
       iv: req.body.iv,
-      key: req.body.key,
       originalName: req.body.originalName || originalName,
       originalType: req.body.originalType || req.file.mimetype,
       originalSize: Number(req.body.originalSize) || req.file.size
@@ -654,6 +693,11 @@ app.post(["/api/photos/upload", "/api/assets/upload"], uploadLimiter, upload.any
   }
 
   console.log(`📸 [API] Received upload request for ${originalName} (${req.file.size} bytes, encrypted: ${Boolean(encryption)})`);
+
+  if (req.body.key || (encryption && Object.prototype.hasOwnProperty.call(encryption, "key"))) {
+    try { if (fs.existsSync(localFilePath)) fs.unlinkSync(localFilePath); } catch {}
+    return res.status(400).json({ success: false, error: "Raw data keys must not be sent to the server" });
+  }
 
   try {
     // Phase 0 Zero-Knowledge Enforcement:
@@ -758,7 +802,6 @@ app.get(["/api/photos/:fileId/stream", "/api/assets/:fileId/stream"], async (req
     res.setHeader("Content-Type", contentType);
     res.setHeader("x-nodus-encrypted", matched.encrypted ? "true" : "false");
     if (matched.iv) res.setHeader("x-nodus-iv", matched.iv);
-    if (matched.key) res.setHeader("x-nodus-key", matched.key);
     if (matched.original_type) res.setHeader("x-nodus-original-type", matched.original_type);
     if (matched.original_name) res.setHeader("x-nodus-original-name", encodeURIComponent(matched.original_name));
     if (matched.encryption_mode) res.setHeader("x-nodus-encryption-mode", matched.encryption_mode);

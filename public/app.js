@@ -672,13 +672,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // In-memory cache for decrypted Object URLs to prevent duplicate on-device operations
   const decryptedMediaCache = new Map();
+  // Encryption keys remain in this browser process only. They are deliberately
+  // absent from the gateway response, asset catalog, and storage metadata.
+  const assetKeyCache = new Map();
 
   async function getOrDecryptPhotoUrl(photo) {
     if (decryptedMediaCache.has(photo.id)) {
       return decryptedMediaCache.get(photo.id);
     }
 
-    if (!photo.encrypted || !photo.key || !photo.iv) {
+    const keyHex = assetKeyCache.get(photo.id);
+    if (!photo.encrypted || !keyHex || !photo.iv) {
       return photo.stream_url;
     }
 
@@ -692,7 +696,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const chunkCount = Number(photo.chunk_count);
         const originalSize = Number(photo.original_size);
         if (!chunkSize || !chunkCount || !originalSize) throw new Error("Missing resumable encryption metadata");
-        const key = await NodusCrypto.importKeyHex(photo.key, ["decrypt"]);
+        const key = await NodusCrypto.importKeyHex(keyHex, ["decrypt"]);
         const ciphertext = new Uint8Array(ciphertextBuffer);
         const outputParts = [];
         let offset = 0;
@@ -708,7 +712,7 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         blob = await NodusCrypto.decryptAsset(
           ciphertextBuffer,
-          photo.key,
+          keyHex,
           photo.iv,
           photo.original_type || photo.content_type
         );
@@ -1317,7 +1321,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const isImage = cat.category === "image";
         const isSelected = state.selectedIds.has(p.id);
         const cachedUrl = decryptedMediaCache.get(p.id);
-        const initialSrc = cachedUrl || (p.encrypted && p.key ? "" : p.stream_url);
+        const initialSrc = cachedUrl || (p.encrypted && assetKeyCache.has(p.id) ? "" : p.stream_url);
         const safeName = escapeHtml(p.original_name || p.name);
         const safeId = escapeHtml(p.id);
 
@@ -1355,7 +1359,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Asynchronously decrypt and stream thumbnails on-device only for images
     filtered.forEach((p) => {
       const cat = getAssetCategory(p);
-      if (cat.category === "image" && p.encrypted && p.key && p.iv && !decryptedMediaCache.has(p.id)) {
+      if (cat.category === "image" && p.encrypted && assetKeyCache.has(p.id) && p.iv && !decryptedMediaCache.has(p.id)) {
         getOrDecryptPhotoUrl(p).then((url) => {
           const imgEl = document.getElementById(`thumb-${p.id}`);
           if (imgEl && url) imgEl.src = url;
@@ -1513,7 +1517,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const cat = getAssetCategory(photo);
 
-    if (photo.encrypted && photo.key && photo.iv) {
+    if (photo.encrypted && assetKeyCache.has(photo.id) && photo.iv) {
       if (decryptedMediaCache.has(photo.id)) {
         const decryptedUrl = decryptedMediaCache.get(photo.id);
         if (cat.category === "image") {
@@ -1771,7 +1775,6 @@ document.addEventListener("DOMContentLoaded", () => {
         tags: ["nodus", "resumable"],
         encryption: {
           mode: "chunked-aes-gcm-v1",
-          key: keyHex,
           iv: ivHex,
           chunkSize: RESUMABLE_CHUNK_SIZE,
           chunkCount,
@@ -1808,7 +1811,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const completeRes = await fetch(`/api/assets/uploads/${uploadId}/complete`, { method: "POST" });
       const completeData = await completeRes.json();
       if (!completeRes.ok || !completeData.success) throw new Error(completeData.error || "Could not complete resumable upload");
-      return completeData;
+      return { ...completeData, clientKey: keyHex };
     } catch (error) {
       error.uploadId = uploadId;
       throw error;
@@ -1904,7 +1907,10 @@ document.addEventListener("DOMContentLoaded", () => {
           });
 
           lastUploadedBlobId = data.asset?.blob_id || data.asset?.blobId || null;
-          if (data.asset?.id) decryptedMediaCache.set(data.asset.id, task.previewUrl);
+          if (data.asset?.id) {
+            decryptedMediaCache.set(data.asset.id, task.previewUrl);
+            assetKeyCache.set(data.asset.id, data.clientKey);
+          }
           task.stage = 3;
           task.progress = 100;
           dockStep2.className = "dock-step completed";
@@ -1952,7 +1958,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const formData = new FormData();
       formData.append("photo", encryptedPayload.ciphertextBlob, task.file.name);
-      formData.append("key", encryptedPayload.keyHex);
       formData.append("iv", encryptedPayload.ivHex);
       formData.append("originalName", encryptedPayload.originalName);
       formData.append("originalType", encryptedPayload.originalType);
@@ -1973,6 +1978,7 @@ document.addEventListener("DOMContentLoaded", () => {
           // Cache raw object URL for immediate in-session display without re-downloading ciphertext
           if (data.photo?.id) {
             decryptedMediaCache.set(data.photo.id, task.previewUrl);
+            assetKeyCache.set(data.photo.id, encryptedPayload.keyHex);
           }
 
           // Advance to Step 3: Anchored in Bucket

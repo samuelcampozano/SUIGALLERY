@@ -51,8 +51,11 @@ export class ResumableUploadManager {
     if (!Number.isSafeInteger(normalizedPartSize) || normalizedPartSize < MiB || normalizedPartSize > MAX_PART_SIZE) {
       throw new Error(`partSize must be between ${MiB} and ${MAX_PART_SIZE} bytes`);
     }
-    if (!encryption || typeof encryption !== "object" || !encryption.iv || !encryption.key) {
+    if (!encryption || typeof encryption !== "object" || !encryption.iv) {
       throw new Error("A client-side encryption envelope is required for resumable uploads");
+    }
+    if (Object.prototype.hasOwnProperty.call(encryption, "key")) {
+      throw new Error("Raw data keys must not be sent to the server");
     }
 
     const uploadId = crypto.randomUUID();
@@ -238,7 +241,14 @@ export class ResumableUploadManager {
   readSession(uploadId) {
     const metadataPath = path.join(this.sessionDir(uploadId), "session.json");
     if (!fs.existsSync(metadataPath)) throw new Error("Upload session not found");
-    return JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+    const session = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+    // One-way migration for sessions created by the legacy uploader. The key
+    // belongs on the originating device, not in durable gateway state.
+    if (session.encryption && Object.prototype.hasOwnProperty.call(session.encryption, "key")) {
+      delete session.encryption.key;
+      writeJsonAtomic(metadataPath, session);
+    }
+    return session;
   }
 
   writeSession(session) {

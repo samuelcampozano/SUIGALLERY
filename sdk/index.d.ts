@@ -147,6 +147,8 @@ export declare class NodusClient {
   apiKey: string | null;
   userAddress?: string;
   searchIndex: NodusSearchIndex;
+  /** Ephemeral device-local decryption keys, never sent to the gateway. */
+  keyCache: Map<string, string>;
 
   constructor(config?: NodusClientConfig);
   getStatus(): Promise<any>;
@@ -165,6 +167,8 @@ export declare class NodusClient {
   authorizeDirectSegment(uploadId: string, segmentIndex: number, sendObjectTo?: string): Promise<any>;
   completeDirectSegment(uploadId: string, segmentIndex: number, payload: any): Promise<DirectUpload>;
   finalizeDirectUpload(uploadId: string): Promise<{ upload: DirectUpload; asset: any; manifest: any }>;
+  getDirectManifest(assetId: string): Promise<any>;
+  stream(fileId: string, options?: GetOptions): Promise<ReadableStream<Uint8Array>>;
   get(fileId: string, options?: GetOptions): Promise<GetResult>;
   list(filters?: { tag?: string }): Promise<any[]>;
   search(query: string, options?: SearchOptions): Promise<any[]>;

@@ -78,6 +78,15 @@ export class AuthenticatedPublisher {
     };
   }
 
+  /** Returns a certified blob read endpoint without disclosing publisher secrets. */
+  readUrl(blobId) {
+    this.assertConfigured();
+    if (!/^[A-Za-z0-9_-]{16,256}$/.test(blobId || "")) {
+      throw new Error("Invalid publisher blob ID");
+    }
+    return new URL(`/v1/blobs/${encodeURIComponent(blobId)}`, `${this.url}/`).toString();
+  }
+
   verifyReceipt(receipt, expected) {
     if (!receipt || typeof receipt !== "object" || !receipt.payload || typeof receipt.signature !== "string") throw new Error("A signed publisher receipt is required");
     const payload = receipt.payload;

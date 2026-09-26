@@ -41,7 +41,6 @@ class WalrusClientManager {
     );
     const cipher = crypto.createCipheriv("aes-256-gcm", demoKey, demoIv);
     this.demoCiphertext = Buffer.concat([cipher.update(rawPng), cipher.final(), cipher.getAuthTag()]);
-    this.demoKeyHex = demoKey.toString("hex");
     this.demoIvHex = demoIv.toString("hex");
 
     this.mockFiles = [
@@ -56,7 +55,6 @@ class WalrusClientManager {
         description: "Decentralized memory secured by Walrus Protocol & Sui Move threshold policy",
         encrypted: true,
         iv: this.demoIvHex,
-        key: this.demoKeyHex,
         original_name: "Welcome_to_Nodus.png",
         original_type: "image/png",
         original_size: rawPng.length
@@ -258,7 +256,7 @@ class WalrusClientManager {
         fs.writeFileSync(storagePath, crypto.randomBytes(64));
       }
 
-      const isEncrypted = Boolean(encryption && (encryption.iv || encryption.key));
+      const isEncrypted = Boolean(encryption && encryption.iv);
       const newFile = {
         id: fileId,
         name: fileName,
@@ -270,7 +268,6 @@ class WalrusClientManager {
         description: description || "",
         encrypted: isEncrypted,
         iv: encryption.iv || null,
-        key: encryption.key || null,
         original_name: encryption.originalName || fileName,
         original_type: encryption.originalType || "image/png",
         original_size: encryption.originalSize || stat.size,
@@ -320,7 +317,7 @@ class WalrusClientManager {
         fs.writeFileSync(storagePath, crypto.randomBytes(64));
       }
 
-      const isEncrypted = Boolean(encryption && (encryption.iv || encryption.key));
+      const isEncrypted = Boolean(encryption && encryption.iv);
       const newFile = {
         id: fileId,
         name: fileName,
@@ -332,7 +329,6 @@ class WalrusClientManager {
         description: description || "",
         encrypted: isEncrypted,
         iv: encryption.iv || null,
-        key: encryption.key || null,
         original_name: encryption.originalName || fileName,
         original_type: encryption.originalType || "image/png",
         original_size: encryption.originalSize || stat.size,

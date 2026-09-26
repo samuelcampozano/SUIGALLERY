@@ -44,7 +44,6 @@ async function run() {
     const secondPart = crypto.randomBytes(partSize);
     const encryption = {
       mode: "chunked-aes-gcm-v1",
-      key: crypto.randomBytes(32).toString("hex"),
       iv: crypto.randomBytes(12).toString("hex"),
       chunkSize: MiB,
       chunkCount: 2
@@ -66,6 +65,7 @@ async function run() {
     }));
     assert(create.response.status === 201 && create.body.success, "Creates a resumable encrypted upload session");
     assert(create.body.upload.partCount === 2 && create.body.upload.missingParts.length === 2, "Returns resumable state with both parts missing");
+    assert(!JSON.stringify(create.body).includes("key"), "Session response contains no raw encryption key");
     uploadId = create.body.upload.uploadId;
 
     // Completion is deliberately rejected here; suppress only the server's expected error log

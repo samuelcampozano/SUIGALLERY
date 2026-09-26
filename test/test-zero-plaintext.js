@@ -78,7 +78,6 @@ async function runZeroPlaintextTests() {
     const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2);
     const bodyParts = [
       `--${boundary}\r\nContent-Disposition: form-data; name="iv"\r\n\r\n${ivHex}\r\n`,
-      `--${boundary}\r\nContent-Disposition: form-data; name="key"\r\n\r\n${keyHex}\r\n`,
       `--${boundary}\r\nContent-Disposition: form-data; name="originalName"\r\n\r\nconfidential_document.png\r\n`,
       `--${boundary}\r\nContent-Disposition: form-data; name="originalType"\r\n\r\nimage/png\r\n`,
       `--${boundary}\r\nContent-Disposition: form-data; name="originalSize"\r\n\r\n${canaryPlaintext.length}\r\n`,
@@ -153,7 +152,6 @@ async function runZeroPlaintextTests() {
     const badBoundary = "----WebKitFormBoundaryBad" + Math.random().toString(36).substring(2);
     const badPart1 = Buffer.from(
       `--${badBoundary}\r\nContent-Disposition: form-data; name="iv"\r\n\r\n${ivHex}\r\n` +
-      `--${badBoundary}\r\nContent-Disposition: form-data; name="key"\r\n\r\n${keyHex}\r\n` +
       `--${badBoundary}\r\nContent-Disposition: form-data; name="photo"; filename="unencrypted.png"\r\nContent-Type: image/png\r\n\r\n`,
       "utf-8"
     );
@@ -182,6 +180,7 @@ async function runZeroPlaintextTests() {
     const streamRes = await fetch(`${baseUrl}/api/photos/${fileId}/stream`);
     assert(streamRes.status === 200, "Ciphertext stream endpoint returns HTTP 200");
     assert(streamRes.headers.get("x-nodus-encrypted") === "true", "Response header confirms x-nodus-encrypted: true");
+    assert(streamRes.headers.get("x-nodus-key") === null, "Ciphertext stream never exposes the raw data key");
 
     const fetchedCiphertext = Buffer.from(await streamRes.arrayBuffer());
     assert(fetchedCiphertext.equals(ciphertext), "Fetched stream matches original uploaded ciphertext bit-for-bit");

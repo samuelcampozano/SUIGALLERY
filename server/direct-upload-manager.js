@@ -60,6 +60,9 @@ export class DirectUploadManager {
     if (!encryption?.iv || !Number.isSafeInteger(chunkSize) || chunkSize < MiB) {
       throw new Error("A chunked client-side encryption envelope is required");
     }
+    if (Object.prototype.hasOwnProperty.call(encryption, "key")) {
+      throw new Error("Raw data keys must not be sent to the server");
+    }
     if (normalizedSegmentSize % chunkSize !== 0) {
       throw new Error("segmentSize must be an exact multiple of encryption.chunkSize");
     }
@@ -198,6 +201,8 @@ export class DirectUploadManager {
       description: session.description,
       created_at: new Date().toISOString(),
       manifest_url: `/api/assets/direct-uploads/${session.uploadId}/manifest`,
+      stream_url: `/api/assets/direct_${session.uploadId}/direct-manifest`,
+      download_url: `/api/assets/direct_${session.uploadId}/direct-manifest`,
       status: "active"
     };
     session.status = "completed";
@@ -212,6 +217,13 @@ export class DirectUploadManager {
     const session = this.read(uploadId);
     if (session.status !== "completed") throw new Error("Upload is not finalized");
     return this.buildManifest(session);
+  }
+
+  manifestByAssetId(assetId) {
+    if (typeof assetId !== "string" || !assetId.startsWith("direct_")) {
+      throw new Error("Asset is not a direct publisher asset");
+    }
+    return this.manifest(assetId.slice("direct_".length));
   }
 
   listAssets() {
@@ -293,6 +305,7 @@ export class DirectUploadManager {
       originalName: session.originalName,
       originalType: session.originalType,
       originalSize: session.originalSize,
+      segmentSize: session.segmentSize,
       encryption: {
         mode: "chunked-aes-gcm-v2",
         chunkSize: session.encryption.chunkSize,
@@ -303,7 +316,10 @@ export class DirectUploadManager {
         index: segment.index,
         plainStart: segment.plainStart,
         plainEnd: segment.plainEnd,
+        plainSize: segment.plainSize,
         ciphertextSize: segment.ciphertextSize,
+        chunkStart: segment.chunkStart,
+        chunkCount: segment.chunkCount,
         blobId: segment.blobId,
         ciphertextSha256: segment.ciphertextSha256,
         verificationState: segment.verificationState

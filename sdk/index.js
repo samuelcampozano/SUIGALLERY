@@ -295,6 +295,9 @@ export class NodusClient {
     this.apiKey = config.apiKey || null;
     this._fetch = config.fetch || globalThis.fetch.bind(globalThis);
     this.searchIndex = new NodusSearchIndex();
+    // Ephemeral device-local mapping. It is never serialized into an upload,
+    // session, catalog entry, or HTTP header.
+    this.keyCache = new Map();
   }
 
   /**
@@ -377,7 +380,6 @@ export class NodusClient {
 
     if (encrypt) {
       formData.append("encrypted", "true");
-      formData.append("key", keyHex);
       formData.append("iv", ivHex);
     }
 
@@ -410,6 +412,7 @@ export class NodusClient {
         record.name = name;
       }
       this.searchIndex.indexDocument(record);
+      if (encrypt && record.id) this.keyCache.set(record.id, keyHex);
     }
 
     return {
@@ -431,7 +434,7 @@ export class NodusClient {
    * in memory at once when the input is a Blob/File.
    *
    * To resume after an interrupted process, retain `error.uploadId`,
-   * `error.encryption.key`, and `error.encryption.iv`, then call
+   * the locally retained encryption key and IV, then call
    * resumeResumableUpload(uploadId, file, { key, iv }).
    */
   async putResumable(data, options = {}) {
@@ -480,7 +483,6 @@ export class NodusClient {
         tags,
         encryption: {
           mode: "chunked-aes-gcm-v1",
-          key: keyHex,
           iv: ivHex,
           chunkSize,
           chunkCount,
@@ -515,6 +517,7 @@ export class NodusClient {
       const completed = await this.completeResumableUpload(upload.uploadId);
       const record = completed.asset || completed.result;
       if (record) this._indexRecord(record, { name, type, description, tags });
+      if (record?.id || record?.fileId) this.keyCache.set(record.id || record.fileId, keyHex);
       return {
         success: true,
         uploadId: upload.uploadId,
@@ -628,6 +631,7 @@ export class NodusClient {
       const completed = await this.finalizeDirectUpload(upload.uploadId);
       const record = completed.asset;
       if (record) this._indexRecord(record, { name, type, description, tags });
+      if (record?.id) this.keyCache.set(record.id, keyHex);
       return {
         success: true,
         uploadId: upload.uploadId,
@@ -701,6 +705,104 @@ export class NodusClient {
     const body = await res.json();
     if (!res.ok || !body.success) throw new Error(body.error || `Unable to finalize direct upload: HTTP ${res.status}`);
     return body;
+  }
+
+  async getDirectManifest(assetId) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/${encodeURIComponent(assetId)}/direct-manifest`, {
+      headers: this._getHeaders()
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to read direct asset manifest: HTTP ${res.status}`);
+    return body.manifest;
+  }
+
+  /**
+   * Streams an authenticated-publisher asset and decrypts each AES-GCM chunk
+   * as it arrives. No complete ciphertext segment or plaintext file is kept in
+   * memory. For non-direct legacy assets, use get().
+   */
+  async stream(fileId, options = {}) {
+    if (!fileId?.startsWith("direct_")) {
+      throw new Error("Streaming is currently available for direct publisher assets only");
+    }
+    const manifest = await this.getDirectManifest(fileId);
+    const keyHex = options.key || this.keyCache.get(fileId);
+    const ivHex = options.iv || manifest.encryption?.iv;
+    if (!keyHex || !ivHex) {
+      throw new Error(`Asset ${fileId} is encrypted; provide its device-local key to stream it`);
+    }
+    const chunkSize = Number(manifest.encryption?.chunkSize);
+    if (!Number.isSafeInteger(chunkSize) || chunkSize < 1) {
+      throw new Error(`Asset ${fileId} has invalid chunk encryption metadata`);
+    }
+
+    return new ReadableStream({
+      start: async (controller) => {
+        try {
+          for (const segment of manifest.segments) {
+            const response = await this._fetch(
+              `${this.gatewayUrl}/api/assets/${encodeURIComponent(fileId)}/direct-segments/${segment.index}`,
+              { headers: this._getHeaders() }
+            );
+            if (!response.ok || !response.body) {
+              throw new Error(`Failed to read direct segment ${segment.index}: HTTP ${response.status}`);
+            }
+            const reader = response.body.getReader();
+            let pending = new Uint8Array();
+            let plainOffset = 0;
+            let chunkOffset = 0;
+            const consume = async () => {
+              while (chunkOffset < segment.chunkCount) {
+                const plainLength = Math.min(chunkSize, segment.plainSize - plainOffset);
+                const ciphertextLength = plainLength + 16;
+                if (pending.byteLength < ciphertextLength) return;
+                const ciphertext = pending.slice(0, ciphertextLength);
+                pending = pending.slice(ciphertextLength);
+                const plaintext = await NodusCrypto.decryptChunk(ciphertext, keyHex, ivHex, segment.chunkStart + chunkOffset);
+                controller.enqueue(plaintext);
+                plainOffset += plaintext.byteLength;
+                chunkOffset++;
+              }
+            };
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              const combined = new Uint8Array(pending.byteLength + value.byteLength);
+              combined.set(pending);
+              combined.set(value, pending.byteLength);
+              pending = combined;
+              await consume();
+            }
+            await consume();
+            if (chunkOffset !== segment.chunkCount || pending.byteLength !== 0 || plainOffset !== segment.plainSize) {
+              throw new Error(`Ciphertext length mismatch for direct segment ${segment.index}`);
+            }
+          }
+          controller.close();
+        } catch (error) {
+          controller.error(error);
+        }
+      }
+    });
+  }
+
+  async _readStreamFully(stream) {
+    const reader = stream.getReader();
+    const chunks = [];
+    let length = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      length += value.byteLength;
+    }
+    const data = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) {
+      data.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return data;
   }
 
   async _encryptDirectSegment(data, segment, keyHex, ivHex, chunkSize) {
@@ -802,6 +904,18 @@ export class NodusClient {
   async get(fileId, options = {}) {
     if (!fileId) throw new Error("fileId is required");
 
+    if (fileId.startsWith("direct_")) {
+      const manifest = await this.getDirectManifest(fileId);
+      const data = await this._readStreamFully(await this.stream(fileId, options));
+      return {
+        data,
+        name: manifest.originalName || fileId,
+        type: manifest.originalType || "application/octet-stream",
+        size: data.byteLength,
+        encrypted: true
+      };
+    }
+
     const res = await this._fetch(`${this.gatewayUrl}/api/photos/${fileId}/stream`, {
       headers: this._getHeaders()
     });
@@ -812,7 +926,7 @@ export class NodusClient {
 
     const isEncrypted = res.headers.get("x-nodus-encrypted") === "true";
     const ivHex = options.iv || res.headers.get("x-nodus-iv");
-    const keyHex = options.key || res.headers.get("x-nodus-key");
+    const keyHex = options.key || this.keyCache.get(fileId);
     const encryptionMode = res.headers.get("x-nodus-encryption-mode") || "aes-gcm-v1";
     const chunkSize = Number(res.headers.get("x-nodus-chunk-size"));
     const chunkCount = Number(res.headers.get("x-nodus-chunk-count"));
