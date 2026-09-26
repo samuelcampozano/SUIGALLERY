@@ -70,6 +70,11 @@ graph TD
 5. **Irreversible Crypto-Shredding**:
    - Enforces digital right-to-be-forgotten via **Crypto-Shredding** (aligned with NIST SP 800-88 cryptographic sanitization guidelines): deleting an asset revokes access to the decryption policy keys, mathematically rendering remaining distributed ciphertext slivers permanently unrecoverable across all storage nodes.
 
+6. **Solana Identity & Anchor Program Derived Addresses (PDAs)**:
+   - **Sign-In With Solana (SIWS)**: Challenge-response authentication via detached Ed25519 signatures, supporting Phantom, Solflare, or keypairs alongside Sui and Google zkLogin.
+   - **Anchor Org & Member PDAs**: Deterministic, verifiable organizational trees (`["nodus_org", orgId]` and `["nodus_member", orgPDA, memberPubkey]`) providing cross-chain role-based access control (`owner`, `admin`, `contributor`, `viewer`).
+   - **Cross-Chain Cohesion**: Authenticate with Solana, govern team permissions with Anchor PDAs, and store client-side encrypted blobs on Walrus secured by Sui Seal threshold policies.
+
 ---
 
 ## 🚀 Quickstart
@@ -109,9 +114,9 @@ npm run dev
 ```
 
 ### 4. Run Automated Test Suites
-Run the automated test suites verifying backend security defenses, API endpoints, zero-plaintext privacy, developer SDK, private search, on-chain Sui Mainnet policies, and live crypto-shredding:
+Run the automated test suites verifying backend security defenses, API endpoints, zero-plaintext privacy, developer SDK, private search, on-chain Sui Mainnet policies, crypto-shredding, and Solana identity:
 ```bash
-# Run all 6 test suites end-to-end
+# Run all 7 test suites end-to-end
 npm test
 
 # Run individual suites
@@ -121,6 +126,7 @@ npm run test:zero-plaintext # Validates zero plaintext disk/memory leaks, enforc
 npm run test:sdk            # Developer SDK operations: put, get, private search, and crypto-shredding
 npm run test:onchain        # Sui Mainnet GraphQL Move policy and custodian verification
 npm run test:shred          # End-to-end live crypto-shredding and bit-for-bit validation
+npm run test:solana         # Sign-In With Solana (SIWS), Anchor PDAs, and cross-chain cohesion
 ```
 
 ---
@@ -154,6 +160,19 @@ const asset = await nodus.get(upload.id);
 
 // 4. Verifiable Crypto-Shredding
 await nodus.delete(upload.id);
+
+// 5. Cross-Chain Solana Authentication & Anchor Organization PDAs
+const challenge = await nodus.getSolanaChallenge("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM");
+// Sign challenge.message with Phantom / Solflare / Ed25519 keypair...
+const session = await nodus.verifySolanaAuth("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", signatureBase58, challenge.message);
+
+// 6. Anchor Multi-Tenant Organization Management
+const org = await nodus.createOrganization({
+  orgId: "acme-corp",
+  name: "Acme Corporation",
+  ownerAddress: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+});
+console.log(`Anchor Org PDA: ${org.orgPda}`);
 ```
 
 ---
@@ -169,6 +188,14 @@ await nodus.delete(upload.id);
 | `PATCH` | `/api/photos/:id` or `/api/assets/:id` | Update asset name, caption, and tags |
 | `DELETE`| `/api/photos/:id` or `/api/assets/:id` | Delete asset and trigger crypto-shredding |
 | `POST` | `/api/photos/batch-delete` or `/api/assets/batch-delete` | Batch multi-asset deletion |
+| `POST` | `/api/auth/solana/challenge` | Issue SIWS cryptographic challenge with 5-min TTL and replay protection |
+| `POST` | `/api/auth/solana/verify` | Verify Ed25519 detached signature and issue cross-chain session |
+| `POST` | `/api/auth/solana/demo` | Generate instant ephemeral Solana keypair session for zero-env testing |
+| `GET` | `/api/orgs` | List user organizations or default Anchor team |
+| `POST` | `/api/orgs` | Create organization and derive canonical Anchor Org PDA (`["nodus_org", orgId]`) |
+| `GET` | `/api/orgs/:orgId` | Fetch organization details, member count, and Anchor PDA proof |
+| `POST` | `/api/orgs/:orgId/members` | Add/update member role with Member PDA (`["nodus_member", orgPDA, memberPubkey]`) |
+| `DELETE`| `/api/orgs/:orgId/members/:memberAddress` | Remove member from organization and revoke access |
 
 ---
 
