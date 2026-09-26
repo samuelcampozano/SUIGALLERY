@@ -84,7 +84,9 @@ async function requireTenant(req, res, next) {
     if (process.env.NODE_ENV === "production") return res.status(503).json({ success: false, error: "Tenant authentication is not configured" });
     return next();
   }
-  const token = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  const authorization = typeof req.headers.authorization === "string" ? req.headers.authorization.trim() : "";
+  const authorizationParts = authorization.split(/\s+/);
+  const token = authorizationParts[0]?.toLowerCase() === "bearer" ? authorizationParts.slice(1).join(" ") : "";
   if (!token) return res.status(401).json({ success: false, error: "Bearer token required" });
   try {
     const context = await authTenantStore.resolve(token);
