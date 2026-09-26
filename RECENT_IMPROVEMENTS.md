@@ -2,7 +2,7 @@
 
 Atualizado em 26 de setembro de 2026.
 
-Este documento registra as melhorias recentes que compõem a branch `dev` e a entrega `publisher-trust-hardening`, atualmente pronta para merge na `dev`.
+Este documento registra as melhorias recentes que compõem a branch `dev` e as próximas fundações em preparação.
 
 ## Visão geral
 
@@ -10,7 +10,8 @@ Este documento registra as melhorias recentes que compõem a branch `dev` e a en
 | --- | --- | --- |
 | Integrado em `dev` | Uploads cifrados retomáveis | `ab0400d`, merge `440c31a` |
 | Integrado em `dev` | Publisher Walrus autenticado e direto | `b91034f`, merge `86e802f` |
-| Pronto para merge | Confiança e verificação de recibos do publisher | `048e49d` (`codex/publisher-trust-hardening`) |
+| Integrado em `dev` | Confiança e verificação de recibos do publisher | `048e49d`, merge `fadc63f` |
+| Planejado - sem código | Autenticação persistente e isolamento por organização | branch `codex/auth-tenant-foundation`, criada em 26/09/2026 |
 
 ## 1. Uploads cifrados retomáveis
 
@@ -67,7 +68,7 @@ NODUS_PUBLISHER_TOKEN_TTL_SECONDS=600
 
 ## 3. Confiança do publisher e verificação de recibos
 
-Pronto para merge na `dev` pelo commit `048e49d`, branch `codex/publisher-trust-hardening`.
+Integrado na `dev` pelo commit `048e49d` e merge `fadc63f`.
 
 ### Problema resolvido
 
@@ -108,6 +109,25 @@ NODUS_PUBLISHER_RECEIPT_SECRET=<segredo-com-no-minimo-32-bytes>
 ## Validação atual
 
 As suítes locais de segurança, API, zero-plaintext, upload retomável, publisher direto, SDK, crypto-shredding, Solana/RBAC e auditoria passaram. A verificação on-chain da Sui depende de conectividade com `graphql.mainnet.sui.io` e pode falhar quando o endpoint externo estiver indisponível.
+
+## 4. Fundação de autenticação e contexto por organização
+
+Planejada em 26 de setembro de 2026 na branch `codex/auth-tenant-foundation`. Esta seção é um registro de escopo; **nenhuma implementação foi feita ainda**.
+
+### Lacunas que motivam a entrega
+
+- A sessão Solana atual é mantida em memória e expira quando o processo reinicia.
+- O endereço informado por header não substitui um token persistente e verificável.
+- Assets, uploads retomáveis, uploads diretos, streams e manifestos não aplicam uma autorização uniforme por organização.
+- `space`, `bucket` e política Seal ainda são IDs globais no cliente Walrus, sem contexto obrigatório por tenant.
+
+### Escopo aprovado para a próxima implementação
+
+- PostgreSQL para usuários, sessões, organizações, memberships, contextos de storage e auditoria.
+- Contextos pré-provisionados por organização: `spaceId`, `bucketId`, `sealPolicyId` e quota.
+- Tokens de acesso assinados, expiração, revogação persistida e middleware de autenticação.
+- Resolução obrigatória de `AuthContext` e `TenantContext` antes de acessar assets ou uploads.
+- Adaptação do cliente Walrus para receber o contexto do tenant por operação, sem fallback global no modo de produção.
 
 ## Próxima entrega recomendada
 
