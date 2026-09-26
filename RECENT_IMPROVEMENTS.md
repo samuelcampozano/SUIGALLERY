@@ -11,7 +11,7 @@ Este documento registra as melhorias recentes que compõem a branch `dev` e as p
 | Integrado em `dev` | Uploads cifrados retomáveis | `ab0400d`, merge `440c31a` |
 | Integrado em `dev` | Publisher Walrus autenticado e direto | `b91034f`, merge `86e802f` |
 | Integrado em `dev` | Confiança e verificação de recibos do publisher | `048e49d`, merge `fadc63f` |
-| Planejado - sem código | Autenticação persistente e isolamento por organização | branch `codex/auth-tenant-foundation`, criada em 26/09/2026 |
+| Em implementação | Autenticação persistente e isolamento por organização | branch `codex/auth-tenant-foundation` |
 
 ## 1. Uploads cifrados retomáveis
 
@@ -112,7 +112,7 @@ As suítes locais de segurança, API, zero-plaintext, upload retomável, publish
 
 ## 4. Fundação de autenticação e contexto por organização
 
-Planejada em 26 de setembro de 2026 na branch `codex/auth-tenant-foundation`. Esta seção é um registro de escopo; **nenhuma implementação foi feita ainda**.
+Implementação iniciada em 26 de setembro de 2026 na branch `codex/auth-tenant-foundation`.
 
 ### Lacunas que motivam a entrega
 
@@ -121,14 +121,22 @@ Planejada em 26 de setembro de 2026 na branch `codex/auth-tenant-foundation`. Es
 - Assets, uploads retomáveis, uploads diretos, streams e manifestos não aplicam uma autorização uniforme por organização.
 - `space`, `bucket` e política Seal ainda são IDs globais no cliente Walrus, sem contexto obrigatório por tenant.
 
-### Escopo aprovado para a próxima implementação
+### Entregue nesta etapa
 
-- PostgreSQL para usuários, sessões, organizações, memberships, contextos de storage e auditoria.
-- Contextos pré-provisionados por organização: `spaceId`, `bucketId`, `sealPolicyId` e quota.
-- Tokens de acesso assinados, expiração, revogação persistida e middleware de autenticação.
-- Resolução obrigatória de `AuthContext` e `TenantContext` antes de acessar assets ou uploads.
-- Adaptação do cliente Walrus para receber o contexto do tenant por operação, sem fallback global no modo de produção.
+- Migração PostgreSQL para usuários, sessões revogáveis, organizações, memberships e contextos de storage pré-provisionados.
+- Token aleatório de 256 bits, armazenado somente como hash SHA-256, com expiração persistida; o token é devolvido após a verificação SIWS para a organização selecionada.
+- Middleware único de tenant nas rotas de assets, upload, upload retomável, upload direto, segmentos, finalização, manifestos, metadados e remoções. Em produção, a ausência de `DATABASE_URL` bloqueia essas rotas.
+- Cada sessão retomável e cada sessão de publisher direto registra `organizationId`; todas as leituras, partes, autorizações, recibos, finalização e cancelamentos confirmam a organização ativa.
+- O adaptador Walrus recebe `bucketId` e política Seal do contexto por operação. Listagem, stream, atualização e remoção deixam de usar o bucket global quando a sessão autenticada existe.
+- Cache de stream passa a ser indexado por organização e asset, evitando colisão entre buckets distintos.
+- SDK recebe e reutiliza `accessToken` em memória após `verifySolanaAuth(..., organizationId)`.
+- Docker Compose sobe PostgreSQL e aplica a migração na criação inicial do volume; o serviço Nodus espera a verificação de saúde do banco.
+- Teste de isolamento confirma que uma organização não lê, autoriza ou cancela a sessão de upload da outra.
+
+### Dependência operacional
+
+Antes de habilitar produção, um operador deve provisionar cada organização, seu contexto `space/bucket/Seal` e suas memberships no PostgreSQL. O login não cria memberships automaticamente, pois isso permitiria escalada de acesso.
 
 ## Próxima entrega recomendada
 
-Implementar autenticação e isolamento por organização nas rotas de assets e de uploads diretos. A verificação do publisher protege a integridade do blob, mas a autorização por usuário/tenant ainda deve ser aplicada antes de liberar sessões e manifestos.
+Adicionar a interface ou API administrativa autenticada para o provisionamento de organizações e memberships, seguida de quotas/auditoria por tenant. A verificação do publisher já protege a integridade do blob; o próximo passo é operacionalizar o ciclo de vida do tenant sem conceder privilégios pelo cliente.

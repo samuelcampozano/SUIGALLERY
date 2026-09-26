@@ -37,7 +37,7 @@ export class ResumableUploadManager {
     fs.mkdirSync(this.rootDir, { recursive: true, mode: 0o700 });
   }
 
-  create({ originalName, originalType, originalSize, encryptedSize, partSize, description = "", tags = [], encryption }) {
+  create({ originalName, originalType, originalSize, encryptedSize, partSize, description = "", tags = [], encryption, organizationId = null }) {
     const normalizedOriginalSize = Number(originalSize);
     const normalizedEncryptedSize = Number(encryptedSize);
     const normalizedPartSize = Number(partSize) || DEFAULT_PART_SIZE;
@@ -63,6 +63,7 @@ export class ResumableUploadManager {
     const now = new Date().toISOString();
     const session = {
       uploadId,
+      organizationId,
       status: "uploading",
       originalName: String(originalName || "asset.bin").slice(0, 255),
       originalType: String(originalType || "application/octet-stream").slice(0, 255),
@@ -83,8 +84,9 @@ export class ResumableUploadManager {
     return this.publicSession(session);
   }
 
-  get(uploadId) {
+  get(uploadId, organizationId = null) {
     const session = this.readSession(uploadId);
+    this.assertOrganization(session, organizationId);
     if (this.isExpired(session) && session.status !== "completed") {
       this.abort(uploadId);
       throw new Error("Upload session expired");
@@ -92,12 +94,15 @@ export class ResumableUploadManager {
     return this.publicSession(session);
   }
 
-  getInternal(uploadId) {
-    return this.readSession(uploadId);
+  getInternal(uploadId, organizationId = null) {
+    const session = this.readSession(uploadId);
+    this.assertOrganization(session, organizationId);
+    return session;
   }
 
-  writePart(uploadId, partNumber, body, declaredHash) {
+  writePart(uploadId, partNumber, body, declaredHash, organizationId = null) {
     const session = this.readSession(uploadId);
+    this.assertOrganization(session, organizationId);
     if (session.status !== "uploading") throw new Error(`Upload is not writable in '${session.status}' state`);
     if (this.isExpired(session)) {
       this.abort(uploadId);
@@ -137,8 +142,9 @@ export class ResumableUploadManager {
     return { accepted: true, duplicate: false, partNumber: index, receivedBytes: body.length };
   }
 
-  async assemble(uploadId) {
+  async assemble(uploadId, organizationId = null) {
     const session = this.readSession(uploadId);
+    this.assertOrganization(session, organizationId);
     if (session.status !== "uploading") throw new Error(`Upload is not completable in '${session.status}' state`);
     const missingParts = this.missingParts(session);
     if (missingParts.length > 0) throw new Error(`Cannot complete upload; ${missingParts.length} part(s) missing`);
@@ -178,8 +184,9 @@ export class ResumableUploadManager {
     return { session, assembledPath, ciphertextSha256: hash.digest("hex"), byteLength };
   }
 
-  markCompleted(uploadId, asset, ciphertextSha256) {
+  markCompleted(uploadId, asset, ciphertextSha256, organizationId = null) {
     const session = this.readSession(uploadId);
+    this.assertOrganization(session, organizationId);
     session.status = "completed";
     session.completedAsset = asset;
     session.ciphertextSha256 = ciphertextSha256;
@@ -190,8 +197,9 @@ export class ResumableUploadManager {
     return this.publicSession(session);
   }
 
-  markRetryable(uploadId) {
+  markRetryable(uploadId, organizationId = null) {
     const session = this.readSession(uploadId);
+    this.assertOrganization(session, organizationId);
     if (session.status === "completed") return this.publicSession(session);
     session.status = "uploading";
     session.updatedAt = new Date().toISOString();
@@ -203,8 +211,9 @@ export class ResumableUploadManager {
     return this.publicSession(session);
   }
 
-  abort(uploadId) {
+  abort(uploadId, organizationId = null) {
     const sessionDir = this.sessionDir(uploadId);
+    if (organizationId && fs.existsSync(sessionDir)) this.assertOrganization(this.readSession(uploadId), organizationId);
     if (fs.existsSync(sessionDir)) fs.rmSync(sessionDir, { recursive: true, force: true });
     return true;
   }
@@ -269,6 +278,14 @@ export class ResumableUploadManager {
 
   isExpired(session) {
     return new Date(session.expiresAt).getTime() <= Date.now();
+  }
+
+  assertOrganization(session, organizationId) {
+    // Older development sessions do not contain a tenant. They remain usable only
+    // without a tenant argument; authenticated callers can never claim them.
+    if (organizationId && session.organizationId !== organizationId) {
+      throw new Error("Upload session does not belong to the active organization");
+    }
   }
 
   publicSession(session) {

@@ -176,7 +176,7 @@ await nodus.delete(upload.id);
 // 5. Cross-Chain Solana Authentication & Anchor Organization PDAs
 const challenge = await nodus.getSolanaChallenge("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM");
 // Sign challenge.message with Phantom / Solflare / Ed25519 keypair...
-const session = await nodus.verifySolanaAuth("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", signatureBase58, challenge.message);
+const session = await nodus.verifySolanaAuth("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", signatureBase58, challenge.message, "acme-corp");
 
 // 6. Anchor Multi-Tenant Organization Management
 const org = await nodus.createOrganization({
@@ -186,6 +186,8 @@ const org = await nodus.createOrganization({
 });
 console.log(`Anchor Org PDA: ${org.orgPda}`);
 ```
+
+In a production tenant deployment, `verifySolanaAuth` returns a short-lived `accessToken` after the address is verified as a member of the selected pre-provisioned organization. The SDK retains that token for subsequent asset, upload, manifest, and deletion requests; do not persist it in browser local storage. Configure `DATABASE_URL` and apply `server/migrations/001_auth_tenants.sql` before enabling production mode.
 
 ---
 

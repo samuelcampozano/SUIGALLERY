@@ -243,7 +243,9 @@ class WalrusClientManager {
     }
   }
 
-  async uploadPhoto({ localPath, fileName, description = "", tags = ["photo", "nodus"], encryption = {} }) {
+  async uploadPhoto({ localPath, fileName, description = "", tags = ["photo", "nodus"], encryption = {}, tenant = null }) {
+    const bucketId = tenant?.bucketId || DEFAULT_BUCKET_ID;
+    const sealPolicyId = tenant?.sealPolicyId || DEFAULT_SEAL_POLICY_ID;
     if (this.isMockMode()) {
       const stat = fs.existsSync(localPath) ? fs.statSync(localPath) : { size: 65536 };
       const fileId = "sandbox_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
@@ -285,16 +287,16 @@ class WalrusClientManager {
 
     try {
       const client = await this.getClient();
-      const bucket = await this.getBucketDetails();
-      const sealPolicyId = bucket?.seal_policy_id || DEFAULT_SEAL_POLICY_ID;
+      const bucket = await this.getBucketDetails(bucketId);
+      const effectiveSealPolicyId = sealPolicyId || bucket?.seal_policy_id;
 
       console.log(`🔒 [WalrusClient] Encrypting & Uploading ${fileName} (Seal Policy: ${sealPolicyId.slice(0, 10)}...)`);
 
       const res = await client.callTool({
         name: "upload_file",
         arguments: {
-          bucketId: DEFAULT_BUCKET_ID,
-          sealPolicyId,
+          bucketId,
+          sealPolicyId: effectiveSealPolicyId,
           localPath,
           name: fileName,
           description,
@@ -346,7 +348,9 @@ class WalrusClientManager {
     }
   }
 
-  async downloadAndDecryptPhoto({ fileId, destPath }) {
+  async downloadAndDecryptPhoto({ fileId, destPath, tenant = null }) {
+    const bucketId = tenant?.bucketId || DEFAULT_BUCKET_ID;
+    const sealPolicyId = tenant?.sealPolicyId || DEFAULT_SEAL_POLICY_ID;
     if (this.isMockMode()) {
       const file = this.mockFiles.find((f) => f.id === fileId);
       if (!file) {
@@ -366,15 +370,13 @@ class WalrusClientManager {
     }
 
     const client = await this.getClient();
-    const bucket = await this.getBucketDetails();
-    const sealPolicyId = bucket?.seal_policy_id || DEFAULT_SEAL_POLICY_ID;
 
     console.log(`🔓 [WalrusClient] Fetching & Decrypting file ${fileId} to ${destPath}`);
 
     const res = await client.callTool({
       name: "download_file",
       arguments: {
-        bucketId: DEFAULT_BUCKET_ID,
+        bucketId,
         fileId,
         sealPolicyId,
         destPath
@@ -384,7 +386,8 @@ class WalrusClientManager {
     return this.parseMcpResponse(res);
   }
 
-  async deletePhoto(fileId) {
+  async deletePhoto(fileId, tenant = null) {
+    const bucketId = tenant?.bucketId || DEFAULT_BUCKET_ID;
     if (this.isMockMode()) {
       const idx = this.mockFiles.findIndex((f) => f.id === fileId);
       if (idx !== -1) {
@@ -404,7 +407,7 @@ class WalrusClientManager {
     const res = await client.callTool({
       name: "delete_file",
       arguments: {
-        bucketId: DEFAULT_BUCKET_ID,
+        bucketId,
         fileId
       }
     });
@@ -412,7 +415,7 @@ class WalrusClientManager {
     return this.parseMcpResponse(res);
   }
 
-  async updatePhoto({ fileId, name, description, tags }) {
+  async updatePhoto({ fileId, name, description, tags, tenant = null }) {
     if (this.isMockMode()) {
       const file = this.mockFiles.find((f) => f.id === fileId);
       if (file) {
@@ -426,7 +429,7 @@ class WalrusClientManager {
     const client = await this.getClient();
     console.log(`✏️ [WalrusClient] Updating metadata for file ${fileId}`);
 
-    const args = { fileId };
+    const args = { fileId, bucketId: tenant?.bucketId || DEFAULT_BUCKET_ID };
     if (name !== undefined) args.name = name;
     if (description !== undefined) args.description = description;
     if (tags !== undefined) args.tags = tags;
