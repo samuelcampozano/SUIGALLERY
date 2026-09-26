@@ -229,7 +229,20 @@ console.log(`Anchor Org PDA: ${org.orgPda}`);
 
 The gateway supports encrypted multipart sessions for files from 1 byte up to 500 GiB. The SDK automatically chooses this protocol above 20 MiB, using 8 MiB chunks by default. Each part is encrypted independently with AES-256-GCM, checksum-verified by the gateway, persisted to a session directory, and can be retried without re-uploading prior parts. A session expires after 24 hours if it is not completed.
 
-The current gateway assembles ciphertext sequentially on local disk before passing it to the Walrus adapter, so RAM use remains bounded by one part. The next infrastructure milestone is replacing local staging with direct authenticated publisher uploads for production-scale throughput.
+The legacy resumable route assembles ciphertext sequentially on local disk before passing it to the Walrus adapter. For production-scale workloads, use the direct authenticated publisher flow. The gateway becomes a control plane: it issues a short-lived, one-time JWT per encrypted segment and stores only session/manifest metadata. Ciphertext is sent from the browser directly to the configured Walrus publisher and never passes through the Nodus server.
+
+```js
+const upload = await nodus.put(largeVideoFile, {
+  name: "archive.mp4",
+  type: "video/mp4",
+  directPublisher: true,
+  chunkSize: 8 * 1024 * 1024,
+  segmentSize: 64 * 1024 * 1024,
+  epochs: 2
+});
+```
+
+Each segment becomes one Walrus blob; Nodus returns a logical asset plus an ordered manifest. This is required for files larger than a single Walrus blob. The AES key stays with the client and is never sent to the control plane or stored in the manifest. Configure `NODUS_PUBLISHER_URL` and `NODUS_PUBLISHER_JWT_SECRET` before enabling this option outside tests.
 
 ---
 

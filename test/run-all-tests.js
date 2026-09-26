@@ -7,6 +7,7 @@ const suites = [
   { name: "Zero-Plaintext & Client Encryption", file: "test/test-zero-plaintext.js" },
   { name: "Resumable Encrypted Uploads", file: "test/test-resumable-upload.js" },
   { name: "Resumable Upload HTTP API", file: "test/test-resumable-api.js" },
+  { name: "Direct Authenticated Publisher", file: "test/test-direct-publisher.js" },
   { name: "Developer SDK & Private Search", file: "test/test-sdk.js" },
   { name: "Live Sui On-Chain Verification", file: "test/test-onchain.js" },
   { name: "End-to-End Crypto-Shredding", file: "test-crypto-shredding.js" },

@@ -10,6 +10,7 @@ import { PublicKey } from "@solana/web3.js";
 export const DEFAULT_NODUS_PROGRAM_ID = "NodUS11111111111111111111111111111111111111";
 export const DEFAULT_RESUMABLE_THRESHOLD_BYTES = 20 * 1024 * 1024;
 export const DEFAULT_RESUMABLE_CHUNK_SIZE = 8 * 1024 * 1024;
+export const DEFAULT_DIRECT_PUBLISHER_SEGMENT_SIZE = 64 * 1024 * 1024;
 
 /**
  * Derives the deterministic Anchor Program Derived Address (PDA) for an Organization.
@@ -329,6 +330,9 @@ export class NodusClient {
     const encrypt = options.encrypt !== false;
 
     const sourceSize = this._sourceSize(data);
+    if (options.directPublisher === true) {
+      return this.putDirectPublisher(data, { ...options, name, type, description, tags, encrypt });
+    }
     const resumableThreshold = options.resumableThresholdBytes || DEFAULT_RESUMABLE_THRESHOLD_BYTES;
     if (options.resumable !== false && (options.resumable === true || sourceSize > resumableThreshold)) {
       return this.putResumable(data, { ...options, name, type, description, tags, encrypt });
@@ -533,6 +537,198 @@ export class NodusClient {
 
   async resumeResumableUpload(uploadId, data, options = {}) {
     return this.putResumable(data, { ...options, uploadId, resumable: true });
+  }
+
+  /**
+   * Publishes encrypted segments directly from the client to an authenticated
+   * Walrus publisher. The Nodus gateway only issues one-time authorizations and
+   * stores the manifest; it never receives the ciphertext.
+   *
+   * This is opt-in while a project migrates from the local-staging protocol:
+   * `put(file, { directPublisher: true })`.
+   */
+  async putDirectPublisher(data, options = {}) {
+    if (options.encrypt === false) throw new Error("Direct publisher uploads require client-side encryption");
+    const originalSize = this._sourceSize(data);
+    if (originalSize < 1) throw new Error("Cannot upload an empty asset");
+    const chunkSize = Number(options.chunkSize || DEFAULT_RESUMABLE_CHUNK_SIZE);
+    const segmentSize = Number(options.segmentSize || DEFAULT_DIRECT_PUBLISHER_SEGMENT_SIZE);
+    if (!Number.isSafeInteger(chunkSize) || chunkSize < 1024 * 1024 || chunkSize > 32 * 1024 * 1024) {
+      throw new Error("chunkSize must be between 1 MiB and 32 MiB");
+    }
+    if (!Number.isSafeInteger(segmentSize) || segmentSize < 1024 * 1024 || segmentSize > 1024 * 1024 * 1024 || segmentSize % chunkSize !== 0) {
+      throw new Error("segmentSize must be between 1 MiB and 1 GiB and divisible by chunkSize");
+    }
+
+    const name = options.name || `asset_${Date.now()}.bin`;
+    const type = options.type || "application/octet-stream";
+    const description = options.description || "Uploaded via Nodus SDK";
+    const tags = options.tags || ["nodus-sdk"];
+    let upload;
+    let keyHex = options.key || null;
+    let ivHex = options.iv || null;
+
+    if (options.uploadId) {
+      if (!keyHex || !ivHex) throw new Error("Resuming a direct upload requires the original key and IV");
+      upload = await this.getDirectUpload(options.uploadId);
+      if (upload.originalSize !== originalSize || upload.segmentSize !== segmentSize) {
+        throw new Error("Source file or segment size does not match the existing direct upload session");
+      }
+    } else {
+      const key = await NodusCrypto.generateDataKey();
+      keyHex = keyHex || await NodusCrypto.exportKeyHex(key);
+      const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
+      ivHex = ivHex || Array.from(iv).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      upload = await this.createDirectUpload({
+        originalName: name,
+        originalType: type,
+        originalSize,
+        segmentSize,
+        description,
+        tags,
+        epochs: Number(options.epochs || 1),
+        encryption: {
+          mode: "chunked-aes-gcm-v2",
+          iv: ivHex,
+          chunkSize,
+          originalName: name,
+          originalType: type,
+          originalSize
+        }
+      });
+    }
+
+    try {
+      for (const segment of upload.segments) {
+        if (segment.status === "completed") continue;
+        const { ciphertext, ciphertextSha256 } = await this._encryptDirectSegment(data, segment, keyHex, ivHex, chunkSize);
+        const authorization = await this.authorizeDirectSegment(upload.uploadId, segment.index, options.sendObjectTo);
+        const published = await this._fetch(authorization.uploadUrl, {
+          method: authorization.method || "PUT",
+          headers: authorization.headers,
+          body: ciphertext
+        });
+        const publisherResponse = await this._readPublisherResponse(published);
+        if (!published.ok) {
+          throw new Error(publisherResponse?.error || publisherResponse?.message || `Publisher rejected segment ${segment.index}: HTTP ${published.status}`);
+        }
+        const blobId = this._publisherBlobId(publisherResponse);
+        if (!blobId) throw new Error(`Publisher did not return a blob ID for segment ${segment.index}`);
+        upload = await this.completeDirectSegment(upload.uploadId, segment.index, { blobId, ciphertextSha256, publisherResponse });
+        if (typeof options.onProgress === "function") {
+          options.onProgress({
+            uploadId: upload.uploadId,
+            segmentIndex: segment.index,
+            segmentCount: upload.segmentCount,
+            uploadedBytes: segment.plainEnd,
+            totalBytes: originalSize
+          });
+        }
+      }
+      const completed = await this.finalizeDirectUpload(upload.uploadId);
+      const record = completed.asset;
+      if (record) this._indexRecord(record, { name, type, description, tags });
+      return {
+        success: true,
+        uploadId: upload.uploadId,
+        id: record?.id,
+        blob_id: null,
+        name,
+        size: originalSize,
+        encrypted: true,
+        key: keyHex,
+        iv: ivHex,
+        record,
+        upload: completed.upload,
+        manifest: completed.manifest
+      };
+    } catch (error) {
+      error.uploadId = upload.uploadId;
+      error.encryption = { key: keyHex, iv: ivHex, chunkSize, segmentSize };
+      throw error;
+    }
+  }
+
+  async resumeDirectPublisherUpload(uploadId, data, options = {}) {
+    return this.putDirectPublisher(data, { ...options, uploadId, directPublisher: true });
+  }
+
+  async createDirectUpload(payload) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/direct-uploads`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._getHeaders() },
+      body: JSON.stringify(payload)
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to create direct upload: HTTP ${res.status}`);
+    return body.upload;
+  }
+
+  async getDirectUpload(uploadId) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/direct-uploads/${encodeURIComponent(uploadId)}`, { headers: this._getHeaders() });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to read direct upload: HTTP ${res.status}`);
+    return body.upload;
+  }
+
+  async authorizeDirectSegment(uploadId, segmentIndex, sendObjectTo = null) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/direct-uploads/${encodeURIComponent(uploadId)}/segments/${segmentIndex}/authorize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._getHeaders() },
+      body: JSON.stringify(sendObjectTo ? { sendObjectTo } : {})
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to authorize segment ${segmentIndex}: HTTP ${res.status}`);
+    return body.authorization;
+  }
+
+  async completeDirectSegment(uploadId, segmentIndex, payload) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/direct-uploads/${encodeURIComponent(uploadId)}/segments/${segmentIndex}/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._getHeaders() },
+      body: JSON.stringify(payload)
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to complete segment ${segmentIndex}: HTTP ${res.status}`);
+    return body.upload;
+  }
+
+  async finalizeDirectUpload(uploadId) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/direct-uploads/${encodeURIComponent(uploadId)}/finalize`, {
+      method: "POST",
+      headers: this._getHeaders()
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to finalize direct upload: HTTP ${res.status}`);
+    return body;
+  }
+
+  async _encryptDirectSegment(data, segment, keyHex, ivHex, chunkSize) {
+    // The client keeps one segment, never the complete file, in memory. For a
+    // production 500 GiB profile, replace this bounded buffer with a browser
+    // ReadableStream once the selected publisher accepts chunked request bodies.
+    const ciphertext = new Uint8Array(segment.ciphertextSize);
+    let offset = 0;
+    for (let chunkOffset = 0; chunkOffset < segment.chunkCount; chunkOffset++) {
+      const start = segment.plainStart + (chunkOffset * chunkSize);
+      const end = Math.min(start + chunkSize, segment.plainEnd);
+      const plaintext = await this._readSourceChunk(data, start, end);
+      const encrypted = await NodusCrypto.encryptChunk(plaintext, keyHex, ivHex, segment.chunkStart + chunkOffset);
+      ciphertext.set(encrypted, offset);
+      offset += encrypted.byteLength;
+    }
+    if (offset !== ciphertext.byteLength) throw new Error("Encrypted segment size mismatch");
+    return { ciphertext, ciphertextSha256: await NodusCrypto.sha256Hex(ciphertext) };
+  }
+
+  async _readPublisherResponse(response) {
+    const text = await response.text();
+    if (!text) return {};
+    try { return JSON.parse(text); } catch { return { message: text.slice(0, 512) }; }
+  }
+
+  _publisherBlobId(response) {
+    return response?.newlyCreated?.blobObject?.blobId || response?.alreadyCertified?.blobId || response?.blobId || response?.blob_id || null;
   }
 
   async createResumableUpload(payload) {

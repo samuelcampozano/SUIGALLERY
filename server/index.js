@@ -9,6 +9,8 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { walrus, DEFAULT_SPACE_ID, DEFAULT_BUCKET_ID } from "./walrus-client.js";
 import { ResumableUploadManager, RESUMABLE_UPLOAD_LIMITS } from "./resumable-upload.js";
+import { DirectUploadManager, DIRECT_UPLOAD_MAX_SEGMENT_SIZE } from "./direct-upload-manager.js";
+import { AuthenticatedPublisher } from "./authenticated-publisher.js";
 import {
   validateMagicBytes,
   validateCiphertextPayload,
@@ -36,12 +38,15 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const tempStorageDir = path.join(rootDir, "temp_storage");
 const resumableUploadDir = path.join(tempStorageDir, "resumable_uploads");
+const directUploadDir = path.join(tempStorageDir, "direct_uploads");
 
 // Ensure temp_storage directory exists
 if (!fs.existsSync(tempStorageDir)) {
   fs.mkdirSync(tempStorageDir, { recursive: true });
 }
 const resumableUploads = new ResumableUploadManager({ rootDir: resumableUploadDir });
+const directUploads = new DirectUploadManager({ rootDir: directUploadDir });
+const authenticatedPublisher = new AuthenticatedPublisher();
 
 // Initialize Decrypted Cache Lifecycle Manager (10-minute TTL)
 const cacheManager = new DecryptedCacheManager({ ttlMs: 10 * 60 * 1000 });
@@ -53,6 +58,7 @@ cacheManager.cleanupOrphanedFiles(tempStorageDir);
 const pruneInterval = setInterval(() => {
   cacheManager.prune();
   resumableUploads.pruneExpired();
+  directUploads.pruneExpired();
 }, 5 * 60 * 1000);
 if (typeof pruneInterval.unref === "function") {
   pruneInterval.unref();
@@ -217,6 +223,10 @@ app.get("/api/status", async (req, res) => {
         visibility: bucket?.visibility || "private",
         seal_policy_id: bucket?.seal_policy_id || "active",
         file_count: bucket?.file_count || 0
+      },
+      direct_publisher: {
+        configured: authenticatedPublisher.isConfigured(),
+        max_segment_bytes: DIRECT_UPLOAD_MAX_SEGMENT_SIZE
       }
     });
   } catch (err) {
@@ -466,6 +476,98 @@ app.delete(["/api/assets/uploads/:uploadId", "/api/photos/uploads/:uploadId"], (
   }
 });
 
+// ==========================================
+// DIRECT AUTHENTICATED PUBLISHER UPLOADS
+// ==========================================
+// These endpoints are control-plane only: ciphertext flows from the browser
+// directly to the Walrus publisher and never enters this Express process.
+app.post("/api/assets/direct-uploads", uploadLimiter, (req, res) => {
+  const { originalName, originalType, originalSize, segmentSize, description, tags, encryption, epochs } = req.body || {};
+  try {
+    const parsedTags = Array.isArray(tags) ? tags : typeof tags === "string" ? tags.split(",").map((tag) => tag.trim()) : [];
+    const upload = directUploads.create({
+      originalName: sanitizeString(originalName, 128),
+      originalType: sanitizeString(originalType, 255),
+      originalSize,
+      segmentSize,
+      description: sanitizeString(description, 512),
+      tags: sanitizeTags(parsedTags),
+      encryption,
+      epochs
+    });
+    res.status(201).json({ success: true, upload, publisherConfigured: authenticatedPublisher.isConfigured() });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/assets/direct-uploads/:uploadId", (req, res) => {
+  try {
+    res.json({ success: true, upload: directUploads.get(req.params.uploadId) });
+  } catch (err) {
+    res.status(err.message === "Upload session not found" ? 404 : 400).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/assets/direct-uploads/:uploadId/segments/:segmentIndex/authorize", uploadLimiter, (req, res) => {
+  try {
+    const { session, segment } = directUploads.authorizeSegment(req.params.uploadId, req.params.segmentIndex);
+    const authorization = authenticatedPublisher.authorize({
+      uploadId: session.uploadId,
+      segment,
+      epochs: session.epochs,
+      sendObjectTo: req.body?.sendObjectTo || null
+    });
+    res.json({ success: true, authorization });
+  } catch (err) {
+    const status = err.message === "Authenticated publisher is not configured" ? 503 : err.message === "Upload session not found" ? 404 : 400;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/assets/direct-uploads/:uploadId/segments/:segmentIndex/complete", uploadLimiter, (req, res) => {
+  try {
+    const suppliedBlobId = req.body?.blobId || req.body?.blob_id;
+    const receiptBlobId = req.body?.publisherResponse?.newlyCreated?.blobObject?.blobId || req.body?.publisherResponse?.alreadyCertified?.blobId || req.body?.publisherResponse?.blobId || req.body?.publisherResponse?.blob_id;
+    if (suppliedBlobId && receiptBlobId && suppliedBlobId !== receiptBlobId) throw new Error("Publisher receipt does not match blob ID");
+    const upload = directUploads.completeSegment(req.params.uploadId, req.params.segmentIndex, {
+      blobId: suppliedBlobId || receiptBlobId,
+      ciphertextSha256: req.body?.ciphertextSha256,
+      publisherResponse: req.body?.publisherResponse,
+      verified: process.env.NODE_ENV === "test" && process.env.NODUS_DIRECT_PUBLISHER_TRUST_RECEIPT === "true"
+    });
+    res.json({ success: true, upload });
+  } catch (err) {
+    res.status(err.message === "Upload session not found" ? 404 : 400).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/assets/direct-uploads/:uploadId/finalize", uploadLimiter, (req, res) => {
+  try {
+    const result = directUploads.finalize(req.params.uploadId);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(err.message === "Upload session not found" ? 404 : 400).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/assets/direct-uploads/:uploadId/manifest", (req, res) => {
+  try {
+    res.json({ success: true, manifest: directUploads.manifest(req.params.uploadId) });
+  } catch (err) {
+    res.status(err.message === "Upload session not found" ? 404 : 400).json({ success: false, error: err.message });
+  }
+});
+
+app.delete("/api/assets/direct-uploads/:uploadId", (req, res) => {
+  try {
+    directUploads.abort(req.params.uploadId);
+    res.json({ success: true, aborted: true });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 // 2. List Assets in Bucket
 app.get(["/api/photos", "/api/assets"], async (req, res) => {
   try {
@@ -492,6 +594,15 @@ app.get(["/api/photos", "/api/assets"], async (req, res) => {
       tags: Array.isArray(file.tags) ? file.tags : [],
       description: file.description || ""
     }));
+
+    // Logical large files are manifests whose ciphertext segments live directly
+    // on Walrus; they are not Console/MCP file records.
+    photos.push(...directUploads.listAssets().map((asset) => ({
+      ...asset,
+      blob_id: null,
+      stream_url: null,
+      download_url: null
+    })));
 
     // Sort newest first
     photos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
