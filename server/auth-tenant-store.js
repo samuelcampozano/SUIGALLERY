@@ -7,7 +7,72 @@ const validRoles = new Set(["owner", "admin", "contributor", "viewer"]);
 export class AuthTenantStore {
   constructor({ databaseUrl = process.env.DATABASE_URL } = {}) {
     if (!databaseUrl) throw new Error("DATABASE_URL is required for authenticated tenant mode");
-    this.pool = new Pool({ connectionString: databaseUrl });
+    const isSsl = databaseUrl.includes("render.com") || databaseUrl.includes("sslmode=require") || process.env.NODE_ENV === "production";
+    this.pool = new Pool({
+      connectionString: databaseUrl,
+      ssl: isSsl ? { rejectUnauthorized: false } : false
+    });
+  }
+
+  /**
+   * Initializes PostgreSQL tables, indexes, and seeds default tenant context if missing.
+   */
+  async init() {
+    const client = await this.pool.connect();
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id UUID PRIMARY KEY,
+          solana_address TEXT UNIQUE NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS organizations (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS memberships (
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'contributor', 'viewer')),
+          PRIMARY KEY (organization_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS tenant_storage_contexts (
+          organization_id TEXT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+          space_id TEXT NOT NULL,
+          bucket_id TEXT NOT NULL,
+          seal_policy_id TEXT NOT NULL,
+          quota_bytes BIGINT NOT NULL CHECK (quota_bytes >= 0),
+          active BOOLEAN NOT NULL DEFAULT true
+        );
+
+        CREATE TABLE IF NOT EXISTS sessions (
+          id UUID PRIMARY KEY,
+          user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          token_hash TEXT NOT NULL UNIQUE,
+          expires_at TIMESTAMPTZ NOT NULL,
+          revoked_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        CREATE INDEX IF NOT EXISTS sessions_active_idx ON sessions (token_hash, expires_at) WHERE revoked_at IS NULL;
+
+        INSERT INTO organizations (id, name) VALUES ('default', 'Default Organization') ON CONFLICT (id) DO NOTHING;
+        INSERT INTO tenant_storage_contexts (organization_id, space_id, bucket_id, seal_policy_id, quota_bytes, active)
+        VALUES ('default', '443d9a48-7835-437f-9bb4-2716833aee06', 'ec7acd16-05b1-4fa2-b368-94700eb29f5e', '0x9c1baccb244e45342ac150a0123a4802e8e834f25c00210e50c81081354eee44', 10737418240, true)
+        ON CONFLICT (organization_id) DO NOTHING;
+      `);
+      console.log("🐘 [AuthTenantStore] PostgreSQL database schema verified and seeded.");
+    } catch (err) {
+      console.error("❌ [AuthTenantStore] Migration error:", err.message);
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   async createSession({ address, organizationId, ttlSeconds = 3600 }) {
@@ -17,7 +82,11 @@ export class AuthTenantStore {
       const userId = crypto.randomUUID();
       await client.query("INSERT INTO users (id, solana_address) VALUES ($1, $2) ON CONFLICT (solana_address) DO NOTHING", [userId, address]);
       const user = await client.query("SELECT id FROM users WHERE solana_address = $1", [address]);
-      const member = await client.query("SELECT role FROM memberships WHERE organization_id = $1 AND user_id = $2", [organizationId, user.rows[0].id]);
+      let member = await client.query("SELECT role FROM memberships WHERE organization_id = $1 AND user_id = $2", [organizationId, user.rows[0].id]);
+      if (!member.rowCount && (organizationId === "default" || organizationId === "nodus")) {
+        await client.query("INSERT INTO memberships (organization_id, user_id, role) VALUES ($1, $2, 'contributor') ON CONFLICT DO NOTHING", [organizationId, user.rows[0].id]);
+        member = await client.query("SELECT role FROM memberships WHERE organization_id = $1 AND user_id = $2", [organizationId, user.rows[0].id]);
+      }
       const tenant = await client.query("SELECT space_id, bucket_id, seal_policy_id, quota_bytes FROM tenant_storage_contexts WHERE organization_id = $1 AND active = true", [organizationId]);
       if (!member.rowCount || !tenant.rowCount) throw new Error("No active membership or storage context for organization");
       const token = crypto.randomBytes(32).toString("base64url");
