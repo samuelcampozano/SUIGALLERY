@@ -14,6 +14,7 @@ import { ResumableUploadManager, RESUMABLE_UPLOAD_LIMITS } from "./resumable-upl
 import { DirectUploadManager, DIRECT_UPLOAD_MAX_SEGMENT_SIZE } from "./direct-upload-manager.js";
 import { AuthenticatedPublisher } from "./authenticated-publisher.js";
 import { AuthTenantStore } from "./auth-tenant-store.js";
+import { TenantProvisioner } from "./tenant-provisioner.js";
 import {
   validateMagicBytes,
   validateCiphertextPayload,
@@ -53,6 +54,7 @@ if (!fs.existsSync(tempStorageDir)) {
 const resumableUploads = new ResumableUploadManager({ rootDir: resumableUploadDir });
 const authenticatedPublisher = new AuthenticatedPublisher();
 const authTenantStore = process.env.DATABASE_URL ? new AuthTenantStore() : null;
+const tenantProvisioner = new TenantProvisioner();
 const directUploads = new DirectUploadManager({
   rootDir: authTenantStore ? null : directUploadDir,
   stateStore: authTenantStore ? {
@@ -188,6 +190,19 @@ function requireTenantEnvelopeStore(req, res, next) {
   if (!authTenantStore || !req.auth || !req.tenant) {
     return res.status(503).json({ success: false, error: "Persistent tenant authentication is required for key envelopes" });
   }
+  return next();
+}
+
+function requireProvisioningAdmin(req, res, next) {
+  const configured = process.env.NODUS_PROVISIONING_ADMIN_TOKEN;
+  if (!configured) return res.status(503).json({ success: false, error: "Tenant provisioning administration is not configured" });
+  const provided = typeof req.headers.authorization === "string" ? req.headers.authorization.replace(/^Bearer\s+/i, "") : "";
+  const expectedBytes = Buffer.from(configured);
+  const providedBytes = Buffer.from(provided);
+  if (expectedBytes.length !== providedBytes.length || !crypto.timingSafeEqual(expectedBytes, providedBytes)) {
+    return res.status(401).json({ success: false, error: "Provisioning administrator token required" });
+  }
+  if (!authTenantStore) return res.status(503).json({ success: false, error: "Persistent tenant store is required for provisioning" });
   return next();
 }
 
@@ -464,6 +479,67 @@ app.post("/api/auth/solana/demo", (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// ==========================================
+// TENANT PROVISIONING ADMINISTRATION
+// ==========================================
+// This plane is intentionally separate from organization RBAC: an organization
+// cannot create itself or select a storage context without an operator token.
+async function runTenantProvisioning(operation, storage = null) {
+  try {
+    const context = await tenantProvisioner.provision({
+      organizationId: operation.organizationId,
+      name: operation.name,
+      quotaBytes: operation.quotaBytes,
+      idempotencyKey: operation.id,
+      storage
+    });
+    return await authTenantStore.completeTenantProvisioning({ operationId: operation.id, storageContext: context });
+  } catch (error) {
+    await authTenantStore.failTenantProvisioning({ operationId: operation.id, error: error.message });
+    throw error;
+  }
+}
+
+app.get("/api/admin/tenants", requireProvisioningAdmin, async (req, res) => {
+  try { return res.json({ success: true, tenants: await authTenantStore.listTenantProvisioning({ status: req.query.status || null, limit: req.query.limit }) }); }
+  catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+
+app.post("/api/admin/tenants", requireProvisioningAdmin, async (req, res) => {
+  const { organizationId, name, ownerAddress, quotaBytes, storage } = req.body || {};
+  if (!isValidSolanaAddress(ownerAddress)) return res.status(400).json({ success: false, error: "ownerAddress must be a valid Solana address" });
+  const idempotencyKey = TenantProvisioner.idempotencyKey(req.headers["idempotency-key"] || req.body?.idempotencyKey);
+  try {
+    const started = await authTenantStore.beginTenantProvisioning({ idempotencyKey, organizationId, name, ownerAddress, quotaBytes });
+    if (started.duplicate) return res.status(200).json({ success: true, duplicate: true, tenant: started.operation });
+    const tenant = await runTenantProvisioning(started.operation, storage || null);
+    return res.status(201).json({ success: true, duplicate: false, tenant });
+  } catch (error) { return res.status(502).json({ success: false, error: error.message, idempotencyKey }); }
+});
+
+app.get("/api/admin/tenants/:operationId", requireProvisioningAdmin, async (req, res) => {
+  try {
+    const tenant = await authTenantStore.getTenantProvisioning(req.params.operationId);
+    if (!tenant) return res.status(404).json({ success: false, error: "Provisioning operation not found" });
+    return res.json({ success: true, tenant, events: await authTenantStore.listTenantProvisioningEvents(tenant.id) });
+  } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+
+app.post("/api/admin/tenants/:operationId/retry", requireProvisioningAdmin, async (req, res) => {
+  try {
+    const pending = await authTenantStore.retryTenantProvisioning(req.params.operationId);
+    const tenant = await runTenantProvisioning(pending, req.body?.storage || null);
+    return res.json({ success: true, tenant });
+  } catch (error) { return res.status(502).json({ success: false, error: error.message }); }
+});
+
+app.patch("/api/admin/tenants/:operationId", requireProvisioningAdmin, async (req, res) => {
+  try {
+    const tenant = await authTenantStore.setTenantLifecycle({ operationId: req.params.operationId, status: req.body?.status, quotaBytes: req.body?.quotaBytes });
+    return res.json({ success: true, tenant });
+  } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
 });
 
 // List only organizations that the authenticated principal can access.

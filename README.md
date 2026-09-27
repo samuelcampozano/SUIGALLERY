@@ -187,9 +187,13 @@ const org = await nodus.createOrganization({
 console.log(`Anchor Org PDA: ${org.orgPda}`);
 ```
 
-In a production tenant deployment, `verifySolanaAuth` returns a short-lived `accessToken` after the address is verified as a member of the selected pre-provisioned organization. The SDK retains that token for subsequent asset, upload, manifest, and deletion requests; do not persist it in browser local storage. Configure `POSTGRES_PASSWORD` and `DATABASE_URL` only in an untracked `.env` file, then apply migrations `001_auth_tenants.sql` through `005_upload_payloads.sql` before enabling tenant uploads. The control plane reserves quota before an upload, binds it to the authenticated user and organization, and converts the reservation to used storage only after finalization.
+In a production tenant deployment, `verifySolanaAuth` returns a short-lived `accessToken` after the address is verified as a member of the selected pre-provisioned organization. The SDK retains that token for subsequent asset, upload, manifest, and deletion requests; do not persist it in browser local storage. Configure `POSTGRES_PASSWORD` and `DATABASE_URL` only in an untracked `.env` file, then apply migrations `001_auth_tenants.sql` through `006_tenant_provisioning.sql` before enabling tenant uploads. The control plane reserves quota before an upload, binds it to the authenticated user and organization, and converts the reservation to used storage only after finalization.
 
 The API refuses tenant endpoints when no tenant store is configured. A local-only compatibility bypass requires `NODUS_ALLOW_INSECURE_DEV_AUTH=true`; never set it outside a disposable development environment.
+
+Tenant organizations are provisioned by the separate operator plane, never by a browser session. Set `NODUS_PROVISIONING_ADMIN_TOKEN` in the secret manager and follow [the provisioning runbook](docs/TENANT_PROVISIONING_RUNBOOK.md). When a managed storage account is available, configure `NODUS_TENANT_PROVISIONER_URL` and its token; otherwise an operator must supply the existing `spaceId`, `bucketId`, and `sealPolicyId` to the protected provisioning API.
+
+Tenant organizations are provisioned by the separate operator plane, never by a browser session. Set `NODUS_PROVISIONING_ADMIN_TOKEN` in the secret manager and follow [the provisioning runbook](docs/TENANT_PROVISIONING_RUNBOOK.md). When a managed storage account is available, configure `NODUS_TENANT_PROVISIONER_URL` and its token; otherwise an operator must supply the existing `spaceId`, `bucketId`, and `sealPolicyId` to the protected provisioning API.
 
 Set `NODUS_ALLOWED_ORIGINS` to the comma-separated HTTPS origins of the browser applications allowed to call the API. Production rejects all cross-origin browser requests when this value is absent.
 

@@ -18,6 +18,18 @@ Este documento registra as melhorias integradas na branch `dev` e as entregas pr
 | Pronto para merge em `dev` | Escala do publisher direto e persistência de payloads | `9eefc10` |
 | Pronto para merge em `dev` | Streaming verificado, ranges e controles de upload | `687d440` |
 | Pronto para merge em `dev` | M0 zero-custody: bloqueio de chaves brutas e fail-closed por envelopes | `5fa4a70` |
+| Pronto para merge em `dev` | Provisionamento administrativo e ciclo de vida de tenants | branch `codex/tenant-provisioning-admin` |
+
+## 13. Provisionamento administrativo de tenants
+
+Entregue na branch `codex/tenant-provisioning-admin`, pendente de merge na `dev`.
+
+- O plano administrativo protegido por `NODUS_PROVISIONING_ADMIN_TOKEN` cria organização, owner e contexto de storage sem conceder esse poder a uma sessão de usuário.
+- O tenant começa inativo: somente após receber IDs válidos de `space`, `bucket` e política Seal ele passa para `active` e pode emitir sessões SIWS.
+- O provisionador pode receber um contexto já criado ou chamar um endpoint HTTPS interno configurado por `NODUS_TENANT_PROVISIONER_URL`; em produção, o serviço não inventa IDs de storage.
+- As operações têm idempotency key, estado persistido, tentativas, erro recuperável e histórico de eventos. Retry não duplica organização nem membership do owner.
+- Operadores podem suspender, reativar, ajustar quota ou encerrar logicamente um tenant. Suspensão e encerramento revogam sessões imediatamente; encerramento não apaga dados sem o fluxo explícito de crypto-shredding.
+- O runbook em `docs/TENANT_PROVISIONING_RUNBOOK.md` documenta configuração, criação, retry, suspensão e recuperação de falhas parciais.
 
 ## 9. Catálogo persistente de assets por tenant
 

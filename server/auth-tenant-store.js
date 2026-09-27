@@ -225,6 +225,19 @@ export class AuthTenantStore {
         );
         CREATE INDEX IF NOT EXISTS asset_audit_events_asset_idx ON asset_audit_events (organization_id, asset_id, created_at DESC);
 
+        CREATE TABLE IF NOT EXISTS tenant_provisioning_operations (
+          id UUID PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, organization_id TEXT NOT NULL UNIQUE,
+          owner_address TEXT NOT NULL, requested_name TEXT NOT NULL, requested_quota_bytes BIGINT NOT NULL CHECK (requested_quota_bytes >= 0),
+          storage_context JSONB, status TEXT NOT NULL CHECK (status IN ('provisioning', 'active', 'suspended', 'failed', 'closed')),
+          attempt_count INTEGER NOT NULL DEFAULT 0, last_error TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), activated_at TIMESTAMPTZ, suspended_at TIMESTAMPTZ, closed_at TIMESTAMPTZ
+        );
+        CREATE INDEX IF NOT EXISTS tenant_provisioning_operations_status_idx ON tenant_provisioning_operations (status, updated_at DESC);
+        CREATE TABLE IF NOT EXISTS tenant_provisioning_events (
+          id UUID PRIMARY KEY, operation_id UUID NOT NULL REFERENCES tenant_provisioning_operations(id) ON DELETE CASCADE,
+          event_type TEXT NOT NULL, details JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
       `);
       console.log("🐘 [AuthTenantStore] PostgreSQL database schema verified.");
     } catch (err) {
@@ -253,6 +266,114 @@ export class AuthTenantStore {
       return { token, expiresAt: expiresAt.toISOString(), userId: user.rows[0].id, role: member.rows[0].role, tenant: tenant.rows[0] };
     } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
   }
+
+  async beginTenantProvisioning({ idempotencyKey, organizationId, name, ownerAddress, quotaBytes }) {
+    if (!/^[a-z0-9][a-z0-9-]{2,62}$/i.test(organizationId || "")) throw new Error("organizationId must contain 3-63 letters, numbers, or hyphens");
+    if (typeof name !== "string" || !name.trim() || name.trim().length > 160) throw new Error("Organization name is required");
+    const quota = Number(quotaBytes);
+    if (!Number.isSafeInteger(quota) || quota < 1) throw new Error("quotaBytes must be a positive integer");
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const existing = await client.query("SELECT * FROM tenant_provisioning_operations WHERE idempotency_key=$1 OR organization_id=$2 FOR UPDATE", [idempotencyKey, organizationId]);
+      if (existing.rowCount) {
+        const operation = existing.rows.find((row) => row.idempotency_key === idempotencyKey) || existing.rows[0];
+        if (operation.organization_id !== organizationId) throw new Error("Idempotency key belongs to a different organization");
+        await client.query("COMMIT");
+        return { operation: this.provisioningRow(operation), duplicate: true };
+      }
+      const operationId = crypto.randomUUID();
+      const ownerId = crypto.randomUUID();
+      await client.query("INSERT INTO users (id, solana_address) VALUES ($1,$2) ON CONFLICT (solana_address) DO NOTHING", [ownerId, ownerAddress]);
+      const owner = await client.query("SELECT id FROM users WHERE solana_address=$1", [ownerAddress]);
+      await client.query("INSERT INTO organizations (id,name) VALUES ($1,$2)", [organizationId, name.trim()]);
+      await client.query("INSERT INTO memberships (organization_id,user_id,role) VALUES ($1,$2,'owner')", [organizationId, owner.rows[0].id]);
+      await client.query("INSERT INTO tenant_storage_contexts (organization_id,space_id,bucket_id,seal_policy_id,quota_bytes,active) VALUES ($1,'pending','pending','pending',$2,false)", [organizationId, quota]);
+      const result = await client.query(
+        `INSERT INTO tenant_provisioning_operations (id,idempotency_key,organization_id,owner_address,requested_name,requested_quota_bytes,status,attempt_count)
+         VALUES ($1,$2,$3,$4,$5,$6,'provisioning',1) RETURNING *`, [operationId, idempotencyKey, organizationId, ownerAddress, name.trim(), quota]
+      );
+      await this.provisioningEvent(client, operationId, "tenant.provisioning_started", { organizationId, ownerAddress, quotaBytes: quota });
+      await client.query("COMMIT");
+      return { operation: this.provisioningRow(result.rows[0]), duplicate: false };
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  }
+
+  async completeTenantProvisioning({ operationId, storageContext }) {
+    const context = this.normalizeStorageContext(storageContext);
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query("SELECT * FROM tenant_provisioning_operations WHERE id=$1 FOR UPDATE", [operationId]);
+      if (!result.rowCount) throw new Error("Provisioning operation not found");
+      const operation = result.rows[0];
+      if (operation.status === "closed") throw new Error("Closed tenant cannot be provisioned");
+      await client.query(`UPDATE tenant_storage_contexts SET space_id=$2,bucket_id=$3,seal_policy_id=$4,active=true WHERE organization_id=$1`, [operation.organization_id, context.spaceId, context.bucketId, context.sealPolicyId]);
+      const completed = await client.query(`UPDATE tenant_provisioning_operations SET storage_context=$2::jsonb,status='active',last_error=NULL,updated_at=now(),activated_at=now() WHERE id=$1 RETURNING *`, [operationId, JSON.stringify(context)]);
+      await client.query("INSERT INTO tenant_storage_usage (organization_id) VALUES ($1) ON CONFLICT (organization_id) DO NOTHING", [operation.organization_id]);
+      await this.provisioningEvent(client, operationId, "tenant.provisioned", { storageContext: context });
+      await client.query("COMMIT");
+      return this.provisioningRow(completed.rows[0]);
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  }
+
+  async failTenantProvisioning({ operationId, error }) {
+    const result = await this.pool.query(`UPDATE tenant_provisioning_operations SET status='failed',last_error=$2,updated_at=now() WHERE id=$1 RETURNING *`, [operationId, String(error).slice(0, 1000)]);
+    if (result.rowCount) await this.provisioningEvent(this.pool, operationId, "tenant.provisioning_failed", { error: result.rows[0].last_error });
+    return result.rowCount ? this.provisioningRow(result.rows[0]) : null;
+  }
+
+  async retryTenantProvisioning(operationId) {
+    const result = await this.pool.query(`UPDATE tenant_provisioning_operations SET status='provisioning',attempt_count=attempt_count+1,last_error=NULL,updated_at=now()
+      WHERE id=$1 AND status IN ('failed','provisioning') RETURNING *`, [operationId]);
+    if (!result.rowCount) throw new Error("Only a failed or incomplete provisioning operation can be retried");
+    await this.provisioningEvent(this.pool, operationId, "tenant.provisioning_retried", { attempt: result.rows[0].attempt_count });
+    return this.provisioningRow(result.rows[0]);
+  }
+
+  async getTenantProvisioning(operationId) {
+    const result = await this.pool.query("SELECT * FROM tenant_provisioning_operations WHERE id=$1", [operationId]);
+    return result.rowCount ? this.provisioningRow(result.rows[0]) : null;
+  }
+
+  async listTenantProvisioning({ status = null, limit = 100 }) {
+    const result = await this.pool.query(`SELECT * FROM tenant_provisioning_operations WHERE ($1::text IS NULL OR status=$1) ORDER BY updated_at DESC LIMIT $2`, [status, Math.max(1, Math.min(Number(limit) || 100, 200))]);
+    return result.rows.map((row) => this.provisioningRow(row));
+  }
+
+  async setTenantLifecycle({ operationId, status, quotaBytes = undefined }) {
+    if (!['active', 'suspended', 'closed'].includes(status)) throw new Error("Invalid tenant lifecycle status");
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const found = await client.query("SELECT * FROM tenant_provisioning_operations WHERE id=$1 FOR UPDATE", [operationId]);
+      if (!found.rowCount) throw new Error("Provisioning operation not found");
+      const operation = found.rows[0];
+      if (operation.status === "closed") throw new Error("Closed tenants cannot be reactivated; create a new tenant after completing the retention workflow");
+      const quota = quotaBytes === undefined ? Number(operation.requested_quota_bytes) : Number(quotaBytes);
+      if (!Number.isSafeInteger(quota) || quota < 1) throw new Error("quotaBytes must be a positive integer");
+      const active = status === 'active';
+      await client.query("UPDATE tenant_storage_contexts SET active=$2,quota_bytes=$3 WHERE organization_id=$1", [operation.organization_id, active, quota]);
+      if (!active) await client.query("UPDATE sessions SET revoked_at=now() WHERE organization_id=$1 AND revoked_at IS NULL", [operation.organization_id]);
+      const field = status === 'suspended' ? 'suspended_at' : status === 'closed' ? 'closed_at' : 'activated_at';
+      const updated = await client.query(`UPDATE tenant_provisioning_operations SET status=$2,requested_quota_bytes=$3,${field}=now(),updated_at=now() WHERE id=$1 RETURNING *`, [operationId, status, quota]);
+      await this.provisioningEvent(client, operationId, `tenant.${status}`, { quotaBytes: quota });
+      await client.query("COMMIT");
+      return this.provisioningRow(updated.rows[0]);
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  }
+
+  async listTenantProvisioningEvents(operationId) {
+    const result = await this.pool.query("SELECT event_type AS \"eventType\",details,created_at AS \"createdAt\" FROM tenant_provisioning_events WHERE operation_id=$1 ORDER BY created_at ASC", [operationId]);
+    return result.rows;
+  }
+
+  normalizeStorageContext(value) {
+    const read = (key) => { const item = value?.[key]; if (typeof item !== 'string' || !item.trim() || item.length > 512) throw new Error(`storage.${key} is required`); return item.trim(); };
+    return { spaceId: read('spaceId'), bucketId: read('bucketId'), sealPolicyId: read('sealPolicyId') };
+  }
+  provisioningRow(row) { return { id: row.id, organizationId: row.organization_id, ownerAddress: row.owner_address, name: row.requested_name, quotaBytes: Number(row.requested_quota_bytes), storageContext: row.storage_context, status: row.status, attemptCount: row.attempt_count, lastError: row.last_error, createdAt: row.created_at, updatedAt: row.updated_at }; }
+  async provisioningEvent(client, operationId, eventType, details) { await client.query("INSERT INTO tenant_provisioning_events (id,operation_id,event_type,details) VALUES ($1,$2,$3,$4::jsonb)", [crypto.randomUUID(), operationId, eventType, JSON.stringify(details)]); }
 
   async resolve(token) {
     const query = `SELECT s.id, u.id AS user_id, u.solana_address, m.role, t.organization_id, t.space_id, t.bucket_id, t.seal_policy_id, t.quota_bytes
