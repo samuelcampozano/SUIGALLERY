@@ -17,6 +17,7 @@ Este documento registra as melhorias integradas na branch `dev` e as entregas pr
 | Pronto para merge em `dev` | Control plane seguro para uploads e reserva de quota | `fac592b` |
 | Pronto para merge em `dev` | Escala do publisher direto e persistência de payloads | `9eefc10` |
 | Pronto para merge em `dev` | Streaming verificado, ranges e controles de upload | `687d440` |
+| Pronto para merge em `dev` | M0 zero-custody: bloqueio de chaves brutas e fail-closed por envelopes | `5fa4a70` |
 
 ## 9. Catálogo persistente de assets por tenant
 
@@ -257,3 +258,24 @@ Entregue na branch `codex/upload-auth-foundation` pelos commits `9eefc10` (`feat
 - Persistência e recuperação de sessão direta pelo estado canônico do banco.
 - Hash do manifesto, hash por chunk e descriptografia de intervalos plaintext.
 - Pausa, retomada, cancelamento e comprovação de que referências de recuperação não contêm chave bruta.
+
+## 12. M0 - Zero-custody reforçado nos limites de upload
+
+Entregue na branch `codex/m0-zero-custody-hardening` pelo commit `5fa4a70` (`feat: harden M0 zero-custody upload boundaries`), pendente de merge na `dev`.
+
+- Um middleware comum bloqueia `key`, `keyHex`, chaves privadas e recovery keys em JSON, estruturas aninhadas, query strings e headers HTTP antes que atinjam os handlers legados. Campos multipart recebem a mesma validação após o parsing do Multer.
+- JWKs públicos P-256 continuam aceitos para identidade ECDH, mas qualquer JWK com o membro privado `d` é rejeitado pelo gateway.
+- O SDK agora exige uma identidade de dispositivo para qualquer upload de tenant autenticado. Se o envelope do dono/membros não puder ser persistido, a chave local é removida e o SDK pede a exclusão do ciphertext recém-criado, evitando assets irrecuperáveis sem envelope.
+- O novo teste M0 usa um canário de chave para confirmar que uploads simples, retomáveis e diretos, além de headers e query strings, retornam erro sem ecoar o valor em headers, respostas ou logs.
+- A recuperação foi validada simulando a reabertura do cliente: o recovery kit cifrado abre a identidade de recovery e desembrulha o envelope correspondente; uma troca do `assetId` no AAD invalida a operação.
+- O README passou a declarar explicitamente o limite de revogação: cópias já decifradas, exportadas ou capturadas pelo destinatário não podem ser apagadas remotamente.
+- [`SECURITY_REVIEW_M0.md`](SECURITY_REVIEW_M0.md) registra a revisão técnica de ECDH, envelopes, AAD, recovery e rotação. Uma auditoria externa independente ainda é necessária para o sign-off formal do M0.
+
+### Validação
+
+- `npm run test:m0-zero-custody`
+- `npm run test:web-zero-custody`
+- `npm run test:resumable`
+- `npm run test:direct-publisher`
+- `npm run test:sdk`
+- `npm test`: todas as suítes locais passaram; a consulta live à Sui Mainnet depende do endpoint GraphQL externo e falhou por conectividade. A integração PostgreSQL de envelopes exige `DATABASE_URL` e ficou ignorada neste ambiente.

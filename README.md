@@ -270,7 +270,7 @@ await nodus.protectAssetKey(upload.id, { organizationId: "acme-corp" });
 const keyHex = await nodus.recoverAssetKey(upload.id, { recoveryKit, passphrase: "a long recovery passphrase" });
 ```
 
-Store the encrypted `recoveryKit` with the user (download, password manager, or another trusted vault), never in the Nodus gateway. Removing a member blocks future envelope fan-out; re-encrypt existing assets when immediate revocation is required.
+Store the encrypted `recoveryKit` with the user (download, password manager, or another trusted vault), never in the Nodus gateway. Removing a member blocks future envelope fan-out; re-encrypt existing assets when immediate revocation is required. **Revocation cannot delete a plaintext copy that a recipient has already decrypted, downloaded, exported, or screen-captured.** It prevents future recovery through Nodus only after the old ciphertext is re-encrypted and its old envelopes are destroyed.
 
 ---
 

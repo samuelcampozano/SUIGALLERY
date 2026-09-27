@@ -6,6 +6,7 @@ const suites = [
   { name: "REST API Integration", file: "test/test-api.js" },
   { name: "CORS & Uniform Organization Auth", file: "test/test-cors-uniform-auth.js" },
   { name: "Zero-Plaintext & Client Encryption", file: "test/test-zero-plaintext.js" },
+  { name: "M0 Zero-Custody Upload Boundaries", file: "test/test-m0-zero-custody.js" },
   { name: "Resumable Encrypted Uploads", file: "test/test-resumable-upload.js" },
   { name: "Resumable Upload HTTP API", file: "test/test-resumable-api.js" },
   { name: "Client-Side Key Envelopes & Recovery", file: "test/test-key-envelopes.js" },

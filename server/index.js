@@ -192,8 +192,46 @@ function requireTenantEnvelopeStore(req, res, next) {
 }
 
 function containsRawKeyMaterial(value) {
-  if (!value || typeof value !== "object") return false;
-  return ["key", "keyHex", "privateKey", "recoveryPrivateKey"].some((field) => Object.prototype.hasOwnProperty.call(value, field));
+  const forbiddenFields = new Set([
+    "key",
+    "keyhex",
+    "privatekey",
+    "private_key",
+    "recoverykey",
+    "recovery_key",
+    "recoveryprivatekey",
+    "recovery_private_key"
+  ]);
+  const seen = new Set();
+
+  const inspect = (candidate) => {
+    if (!candidate || typeof candidate !== "object") return false;
+    if (seen.has(candidate)) return false;
+    seen.add(candidate);
+    if (Array.isArray(candidate)) return candidate.some(inspect);
+
+    // A JWK public key is allowed for ECDH identities. A JWK containing `d`
+    // is private key material and must never reach the gateway.
+    if (typeof candidate.kty === "string" && Object.prototype.hasOwnProperty.call(candidate, "d")) return true;
+
+    return Object.entries(candidate).some(([field, nested]) =>
+      forbiddenFields.has(String(field).replace(/[-_]/g, "").toLowerCase()) || inspect(nested)
+    );
+  };
+
+  return inspect(value);
+}
+
+function rejectRawKeyMaterial(req, res, next) {
+  const forbiddenHeaderNames = new Set([
+    "key", "keyhex", "privatekey", "private-key", "recoverykey", "recovery-key",
+    "x-key", "x-keyhex", "x-private-key", "x-recovery-key", "x-nodus-key"
+  ]);
+  const hasForbiddenHeader = Object.keys(req.headers || {}).some((header) => forbiddenHeaderNames.has(header.toLowerCase()));
+  if (hasForbiddenHeader || containsRawKeyMaterial(req.query) || containsRawKeyMaterial(req.body)) {
+    return res.status(400).json({ success: false, error: "Raw data keys must not be sent to the server" });
+  }
+  return next();
 }
 
 // 1. Security Headers (Helmet + Custom Content Security Policy)
@@ -218,6 +256,9 @@ app.use(
 // 2. Cross-Origin Resource Sharing
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "2mb" }));
+// Block raw data/private/recovery keys before they can reach legacy API
+// handlers. Multipart fields are validated again after Multer parses them.
+app.use("/api/", rejectRawKeyMaterial);
 
 // 3. Rate Limiters
 const apiLimiter = rateLimit({

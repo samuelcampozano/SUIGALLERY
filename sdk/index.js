@@ -539,7 +539,7 @@ export class NodusClient {
       this.searchIndex.indexDocument(record);
       if (encrypt && record.id) {
         this.keyCache.set(record.id, keyHex);
-        await this._protectUploadedAsset(record.id, options);
+        await this._protectOrDiscardUploadedAsset(record.id, options);
       }
     }
 
@@ -651,7 +651,7 @@ export class NodusClient {
       if (record?.id || record?.fileId) {
         const assetId = record.id || record.fileId;
         this.keyCache.set(assetId, keyHex);
-        await this._protectUploadedAsset(assetId, options);
+        await this._protectOrDiscardUploadedAsset(assetId, options);
       }
       return {
         success: true,
@@ -788,7 +788,7 @@ export class NodusClient {
       if (record) this._indexRecord(record, { name, type, description, tags });
       if (record?.id) {
         this.keyCache.set(record.id, keyHex);
-        await this._protectUploadedAsset(record.id, options);
+        await this._protectOrDiscardUploadedAsset(record.id, options);
       }
       return {
         success: true,
@@ -1524,11 +1524,28 @@ export class NodusClient {
   }
 
   async _protectUploadedAsset(assetId, options) {
+    const organizationId = options?.organizationId || this.organizationId || null;
     if (!this.keyIdentity || !this.userAddress) {
-      if (options?.organizationId) throw new Error("Organization assets require an authenticated device encryption identity");
+      if (organizationId) throw new Error("Organization assets require an authenticated device encryption identity");
       return null;
     }
-    return this.protectAssetKey(assetId, { organizationId: options?.organizationId || this.organizationId || null });
+    return this.protectAssetKey(assetId, { organizationId });
+  }
+
+  /**
+   * An encrypted asset is not considered successfully uploaded for a tenant
+   * until its owner/member envelopes are persisted. If that last client-side
+   * step fails, destroy the newly created ciphertext instead of leaving an
+   * unrecoverable asset behind.
+   */
+  async _protectOrDiscardUploadedAsset(assetId, options) {
+    try {
+      return await this._protectUploadedAsset(assetId, options);
+    } catch (error) {
+      this.keyCache.delete(assetId);
+      await this.delete(assetId).catch(() => {});
+      throw new Error(`Asset envelope protection failed; the uploaded ciphertext was discarded: ${error.message}`);
+    }
   }
 
   /**
