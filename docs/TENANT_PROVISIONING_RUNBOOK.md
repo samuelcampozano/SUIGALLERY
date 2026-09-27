@@ -67,6 +67,12 @@ curl -X PATCH -H "Authorization: Bearer $NODUS_PROVISIONING_ADMIN_TOKEN" -H "Con
 
 `active` reativa o contexto; o usuario deve autenticar novamente. `closed` tambem revoga sessoes, mas **nao apaga ciphertext, envelopes ou dados**. Exclusao definitiva exige o procedimento de crypto-shredding, backup e aprovacao de retencao/LGPD.
 
+## Convites e aceite de membros
+
+Um owner ou admin autenticado cria o convite em `POST /api/orgs/:orgId/invitations`, com `recipientAddress`, papel `viewer`, `contributor` ou `admin` e `ttlSeconds`. A resposta traz `acceptanceToken` uma unica vez; entregue-o por canal seguro e nao o registre em logs.
+
+O destinatario solicita o desafio normal em `/api/auth/solana/challenge`, assina a mensagem com o endereco convidado e envia `token`, `address`, `signature` e `message` a `POST /api/org-invitations/accept`. O token e consumido somente apos a assinatura valida; a resposta traz o bearer token da nova membership. Owner/admin pode consultar e revogar convites pendentes em `/api/orgs/:orgId/invitations`.
+
 ## Recuperacao de falha parcial
 
 1. Consulte os eventos da operacao e o log do provisionador.

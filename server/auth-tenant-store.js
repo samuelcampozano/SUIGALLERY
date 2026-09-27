@@ -237,6 +237,15 @@ export class AuthTenantStore {
           id UUID PRIMARY KEY, operation_id UUID NOT NULL REFERENCES tenant_provisioning_operations(id) ON DELETE CASCADE,
           event_type TEXT NOT NULL, details JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
+        CREATE TABLE IF NOT EXISTS organization_invitations (
+          id UUID PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          invited_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT, recipient_address TEXT NOT NULL,
+          role TEXT NOT NULL CHECK (role IN ('admin','contributor','viewer')), token_hash TEXT NOT NULL UNIQUE,
+          status TEXT NOT NULL CHECK (status IN ('pending','accepted','revoked','expired')) DEFAULT 'pending',
+          expires_at TIMESTAMPTZ NOT NULL, accepted_at TIMESTAMPTZ, accepted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(), revoked_at TIMESTAMPTZ
+        );
+        CREATE INDEX IF NOT EXISTS organization_invitations_recipient_idx ON organization_invitations (recipient_address, status, expires_at);
 
       `);
       console.log("🐘 [AuthTenantStore] PostgreSQL database schema verified.");
@@ -735,6 +744,61 @@ export class AuthTenantStore {
     } finally {
       client.release();
     }
+  }
+
+  async createInvitation({ organizationId, invitedBy, recipientAddress, role = "viewer", ttlSeconds = 7 * 24 * 60 * 60 }) {
+    if (!['admin', 'contributor', 'viewer'].includes(role)) throw new Error("Invitation role must be admin, contributor, or viewer");
+    const ttl = Number(ttlSeconds);
+    if (!Number.isSafeInteger(ttl) || ttl < 300 || ttl > 30 * 24 * 60 * 60) throw new Error("Invitation expiry must be between 5 minutes and 30 days");
+    const token = crypto.randomBytes(32).toString("base64url");
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("UPDATE organization_invitations SET status='expired' WHERE organization_id=$1 AND recipient_address=$2 AND status='pending' AND expires_at <= now()", [organizationId, recipientAddress]);
+      const member = await client.query(`SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.organization_id=$1 AND u.solana_address=$2`, [organizationId, recipientAddress]);
+      if (member.rowCount) throw new Error("Recipient is already an organization member");
+      await client.query("UPDATE organization_invitations SET status='revoked',revoked_at=now() WHERE organization_id=$1 AND recipient_address=$2 AND status='pending'", [organizationId, recipientAddress]);
+      const expiresAt = new Date(Date.now() + ttl * 1000);
+      const result = await client.query(`INSERT INTO organization_invitations (id,organization_id,invited_by,recipient_address,role,token_hash,expires_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,organization_id AS "organizationId",recipient_address AS "recipientAddress",role,status,expires_at AS "expiresAt",created_at AS "createdAt"`, [crypto.randomUUID(), organizationId, invitedBy, recipientAddress, role, tokenHash(token), expiresAt]);
+      await client.query("COMMIT");
+      return { invitation: result.rows[0], token };
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  }
+
+  async listInvitations({ organizationId }) {
+    await this.pool.query("UPDATE organization_invitations SET status='expired' WHERE organization_id=$1 AND status='pending' AND expires_at <= now()", [organizationId]);
+    const result = await this.pool.query(`SELECT i.id,i.recipient_address AS "recipientAddress",i.role,i.status,i.expires_at AS "expiresAt",i.created_at AS "createdAt",u.solana_address AS "invitedBy"
+      FROM organization_invitations i JOIN users u ON u.id=i.invited_by WHERE i.organization_id=$1 ORDER BY i.created_at DESC`, [organizationId]);
+    return result.rows;
+  }
+
+  async revokeInvitation({ organizationId, invitationId }) {
+    const result = await this.pool.query(`UPDATE organization_invitations SET status='revoked',revoked_at=now() WHERE id=$1 AND organization_id=$2 AND status='pending' RETURNING id`, [invitationId, organizationId]);
+    if (!result.rowCount) throw new Error("Pending invitation not found");
+  }
+
+  async acceptInvitation({ token, address }) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const found = await client.query("SELECT * FROM organization_invitations WHERE token_hash=$1 FOR UPDATE", [tokenHash(token)]);
+      if (!found.rowCount) throw new Error("Invitation is invalid or has already been used");
+      const invitation = found.rows[0];
+      if (invitation.status !== 'pending' || new Date(invitation.expires_at).getTime() <= Date.now()) {
+        if (invitation.status === 'pending') await client.query("UPDATE organization_invitations SET status='expired' WHERE id=$1", [invitation.id]);
+        throw new Error("Invitation has expired or is no longer active");
+      }
+      if (invitation.recipient_address !== address) throw new Error("Invitation belongs to a different Solana address");
+      const userId = crypto.randomUUID();
+      await client.query("INSERT INTO users (id,solana_address) VALUES ($1,$2) ON CONFLICT (solana_address) DO NOTHING", [userId, address]);
+      const user = await client.query("SELECT id FROM users WHERE solana_address=$1", [address]);
+      await client.query(`INSERT INTO memberships (organization_id,user_id,role) VALUES ($1,$2,$3)
+        ON CONFLICT (organization_id,user_id) DO UPDATE SET role=EXCLUDED.role`, [invitation.organization_id, user.rows[0].id, invitation.role]);
+      await client.query("UPDATE organization_invitations SET status='accepted',accepted_at=now(),accepted_by=$2 WHERE id=$1", [invitation.id, user.rows[0].id]);
+      await client.query("COMMIT");
+      return { organizationId: invitation.organization_id, role: invitation.role, userId: user.rows[0].id, invitationId: invitation.id };
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
   }
 
   async listPendingKeyRotations({ organizationId, ownerUserId }) {

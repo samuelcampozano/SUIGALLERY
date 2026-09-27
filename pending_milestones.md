@@ -66,11 +66,11 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 - [x] Criar API ou painel administrativo autenticado para provisionar organizacao, owner e membership inicial.
 - [x] Automatizar a criacao/vinculo de `space`, `bucket` e politica Seal por organizacao.
 - [x] Permitir alterar quota, ativar, suspender e encerrar organizacoes com auditoria.
-- [ ] Criar fluxo de convite e aceite de membros.
+- [x] Criar fluxo de convite e aceite de membros (pendente de execução da suíte PostgreSQL em ambiente real).
 - [x] Registrar e tratar erros de provisionamento parcial, com retry seguro.
 - [x] Documentar runbook de criacao, suspensao, exclusao e recuperacao de tenant.
 
-**Criterio de saida:** pendente da suite PostgreSQL e do fluxo de convite/aceite. Um operador ja pode provisionar uma organizacao completa por API e o owner pode entrar sem intervencao manual no banco apos a ativacao do contexto de storage.
+**Criterio de saida:** pendente da suite PostgreSQL em ambiente real. Um operador ja pode provisionar uma organizacao completa por API, convidar um membro e o owner/destinatario pode entrar sem intervencao manual no banco apos a ativacao do contexto de storage.
 
 ## M3 - API comercial para desenvolvedores
 
