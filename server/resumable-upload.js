@@ -37,7 +37,7 @@ export class ResumableUploadManager {
     fs.mkdirSync(this.rootDir, { recursive: true, mode: 0o700 });
   }
 
-  create({ originalName, originalType, originalSize, encryptedSize, partSize, description = "", tags = [], encryption, organizationId = null }) {
+  create({ originalName, originalType, originalSize, encryptedSize, partSize, description = "", tags = [], encryption, organizationId = null, userId = null, assetId = null, quotaReservationId = null, uploadId = crypto.randomUUID() }) {
     const normalizedOriginalSize = Number(originalSize);
     const normalizedEncryptedSize = Number(encryptedSize);
     const normalizedPartSize = Number(partSize) || DEFAULT_PART_SIZE;
@@ -54,11 +54,11 @@ export class ResumableUploadManager {
     if (!encryption || typeof encryption !== "object" || !encryption.iv) {
       throw new Error("A client-side encryption envelope is required for resumable uploads");
     }
-    if (Object.prototype.hasOwnProperty.call(encryption, "key")) {
+    if (Object.prototype.hasOwnProperty.call(encryption, "key") || Object.prototype.hasOwnProperty.call(encryption, "keyHex")) {
       throw new Error("Raw data keys must not be sent to the server");
     }
 
-    const uploadId = crypto.randomUUID();
+    if (!isUploadId(uploadId)) throw new Error("Invalid upload ID");
     const partCount = Math.ceil(normalizedEncryptedSize / normalizedPartSize);
     const sessionDir = this.sessionDir(uploadId);
     fs.mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
@@ -67,6 +67,9 @@ export class ResumableUploadManager {
     const session = {
       uploadId,
       organizationId,
+      userId,
+      assetId,
+      quotaReservationId,
       status: "uploading",
       originalName: String(originalName || "asset.bin").slice(0, 255),
       originalType: String(originalType || "application/octet-stream").slice(0, 255),
@@ -87,9 +90,9 @@ export class ResumableUploadManager {
     return this.publicSession(session);
   }
 
-  get(uploadId, organizationId = null) {
+  get(uploadId, context = null) {
     const session = this.readSession(uploadId);
-    this.assertOrganization(session, organizationId);
+    this.assertAccess(session, context);
     if (this.isExpired(session) && session.status !== "completed") {
       this.abort(uploadId);
       throw new Error("Upload session expired");
@@ -97,15 +100,15 @@ export class ResumableUploadManager {
     return this.publicSession(session);
   }
 
-  getInternal(uploadId, organizationId = null) {
+  getInternal(uploadId, context = null) {
     const session = this.readSession(uploadId);
-    this.assertOrganization(session, organizationId);
+    this.assertAccess(session, context);
     return session;
   }
 
-  writePart(uploadId, partNumber, body, declaredHash, organizationId = null) {
+  writePart(uploadId, partNumber, body, declaredHash, context = null) {
     const session = this.readSession(uploadId);
-    this.assertOrganization(session, organizationId);
+    this.assertAccess(session, context);
     if (session.status !== "uploading") throw new Error(`Upload is not writable in '${session.status}' state`);
     if (this.isExpired(session)) {
       this.abort(uploadId);
@@ -145,9 +148,9 @@ export class ResumableUploadManager {
     return { accepted: true, duplicate: false, partNumber: index, receivedBytes: body.length };
   }
 
-  async assemble(uploadId, organizationId = null) {
+  async assemble(uploadId, context = null) {
     const session = this.readSession(uploadId);
-    this.assertOrganization(session, organizationId);
+    this.assertAccess(session, context);
     if (session.status !== "uploading") throw new Error(`Upload is not completable in '${session.status}' state`);
     const missingParts = this.missingParts(session);
     if (missingParts.length > 0) throw new Error(`Cannot complete upload; ${missingParts.length} part(s) missing`);
@@ -187,9 +190,10 @@ export class ResumableUploadManager {
     return { session, assembledPath, ciphertextSha256: hash.digest("hex"), byteLength };
   }
 
-  markCompleted(uploadId, asset, ciphertextSha256, organizationId = null) {
+  markCompleted(uploadId, asset, ciphertextSha256, context = null) {
     const session = this.readSession(uploadId);
-    this.assertOrganization(session, organizationId);
+    this.assertAccess(session, context);
+    if (session.status === "completed") return this.publicSession(session);
     session.status = "completed";
     session.completedAsset = asset;
     session.ciphertextSha256 = ciphertextSha256;
@@ -200,9 +204,9 @@ export class ResumableUploadManager {
     return this.publicSession(session);
   }
 
-  markRetryable(uploadId, organizationId = null) {
+  markRetryable(uploadId, context = null) {
     const session = this.readSession(uploadId);
-    this.assertOrganization(session, organizationId);
+    this.assertAccess(session, context);
     if (session.status === "completed") return this.publicSession(session);
     session.status = "uploading";
     session.updatedAt = new Date().toISOString();
@@ -214,9 +218,9 @@ export class ResumableUploadManager {
     return this.publicSession(session);
   }
 
-  abort(uploadId, organizationId = null) {
+  abort(uploadId, context = null) {
     const sessionDir = this.sessionDir(uploadId);
-    if (organizationId && fs.existsSync(sessionDir)) this.assertOrganization(this.readSession(uploadId), organizationId);
+    if (context && fs.existsSync(sessionDir)) this.assertAccess(this.readSession(uploadId), context);
     if (fs.existsSync(sessionDir)) fs.rmSync(sessionDir, { recursive: true, force: true });
     return true;
   }
@@ -253,8 +257,9 @@ export class ResumableUploadManager {
     const session = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
     // One-way migration for sessions created by the legacy uploader. The key
     // belongs on the originating device, not in durable gateway state.
-    if (session.encryption && Object.prototype.hasOwnProperty.call(session.encryption, "key")) {
+    if (session.encryption && (Object.prototype.hasOwnProperty.call(session.encryption, "key") || Object.prototype.hasOwnProperty.call(session.encryption, "keyHex"))) {
       delete session.encryption.key;
+      delete session.encryption.keyHex;
       writeJsonAtomic(metadataPath, session);
     }
     return session;
@@ -290,11 +295,15 @@ export class ResumableUploadManager {
     return new Date(session.expiresAt).getTime() <= Date.now();
   }
 
-  assertOrganization(session, organizationId) {
+  assertAccess(session, context) {
+    const normalized = typeof context === "string" ? { organizationId: context } : (context || {});
     // Older development sessions do not contain a tenant. They remain usable only
     // without a tenant argument; authenticated callers can never claim them.
-    if (organizationId && session.organizationId !== organizationId) {
+    if (normalized.organizationId && session.organizationId !== normalized.organizationId) {
       throw new Error("Upload session does not belong to the active organization");
+    }
+    if (normalized.userId && session.userId && session.userId !== normalized.userId && !normalized.canManage) {
+      throw new Error("Upload session does not belong to the authenticated user");
     }
   }
 
@@ -303,6 +312,7 @@ export class ResumableUploadManager {
     const missing = session.status === "completed" ? [] : this.missingParts(session);
     return {
       uploadId: session.uploadId,
+      assetId: session.assetId || null,
       status: session.status,
       originalName: session.originalName,
       originalSize: session.originalSize,

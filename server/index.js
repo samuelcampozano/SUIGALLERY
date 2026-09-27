@@ -4,6 +4,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import { Readable } from "node:stream";
@@ -50,9 +51,18 @@ if (!fs.existsSync(tempStorageDir)) {
   fs.mkdirSync(tempStorageDir, { recursive: true });
 }
 const resumableUploads = new ResumableUploadManager({ rootDir: resumableUploadDir });
-const directUploads = new DirectUploadManager({ rootDir: directUploadDir });
 const authenticatedPublisher = new AuthenticatedPublisher();
 const authTenantStore = process.env.DATABASE_URL ? new AuthTenantStore() : null;
+const directUploads = new DirectUploadManager({
+  rootDir: authTenantStore ? null : directUploadDir,
+  stateStore: authTenantStore ? {
+    load: (uploadId) => authTenantStore.loadUploadPayload(uploadId),
+    save: (session) => authTenantStore.saveUploadPayload({ uploadId: session.uploadId, organizationId: session.organizationId, payload: session }),
+    list: (organizationId) => authTenantStore.listUploadPayloads({ uploadKind: "direct", organizationId }),
+    findByAssetId: (assetId, organizationId) => authTenantStore.loadDirectUploadPayloadByAssetId({ assetId, organizationId }),
+    remove: (uploadId) => authTenantStore.removeUploadPayload(uploadId)
+  } : null
+});
 if (authTenantStore) {
   authTenantStore.init().catch((err) => {
     console.error("❌ [Server] Failed to initialize PostgreSQL tenant store:", err.message);
@@ -80,9 +90,11 @@ const corsOptions = {
 };
 
 async function requireTenant(req, res, next) {
-  // Development keeps legacy demos usable; production must never fall back to a global bucket.
+  // A bypass is intentionally opt-in and exists only for deterministic local tests.
   if (!authTenantStore) {
-    if (process.env.NODE_ENV === "production") return res.status(503).json({ success: false, error: "Tenant authentication is not configured" });
+    if (process.env.NODE_ENV !== "test" && process.env.NODUS_ALLOW_INSECURE_DEV_AUTH !== "true") {
+      return res.status(503).json({ success: false, error: "Tenant authentication is not configured" });
+    }
     return next();
   }
   const authorization = typeof req.headers.authorization === "string" ? req.headers.authorization.trim() : "";
@@ -98,6 +110,38 @@ async function requireTenant(req, res, next) {
   } catch (error) { return next(error); }
 }
 
+const uploadWriteRoles = new Set(["owner", "admin", "contributor"]);
+
+function requireUploadWrite(req, res, next) {
+  if (!authTenantStore) return next(); // requireTenant has already allowed only explicit test/dev bypasses.
+  if (!req.auth || !uploadWriteRoles.has(req.auth.role)) {
+    return res.status(403).json({ success: false, error: "Your organization role cannot upload or modify uploads" });
+  }
+  return next();
+}
+
+function uploadAccessContext(req) {
+  return {
+    organizationId: req.tenant?.organizationId || null,
+    userId: req.auth?.userId || null,
+    canManage: ["owner", "admin"].includes(req.auth?.role)
+  };
+}
+
+async function assertPersistentUploadAccess(req, uploadId, { completedOnly = false } = {}) {
+  if (!authTenantStore) return null;
+  const session = await authTenantStore.getUploadSessionForAccess({ uploadId, ...uploadAccessContext(req) });
+  if (completedOnly && session.status !== "completed") throw new Error("Upload is not finalized");
+  return session;
+}
+
+function directCiphertextSize(originalSize, chunkSize) {
+  const size = Number(originalSize);
+  const chunk = Number(chunkSize);
+  if (!Number.isSafeInteger(size) || !Number.isSafeInteger(chunk) || size < 1 || chunk < 1) return NaN;
+  return size + (Math.ceil(size / chunk) * 16);
+}
+
 // Initialize Decrypted Cache Lifecycle Manager (10-minute TTL)
 const cacheManager = new DecryptedCacheManager({ ttlMs: 10 * 60 * 1000 });
 
@@ -108,10 +152,34 @@ cacheManager.cleanupOrphanedFiles(tempStorageDir);
 const pruneInterval = setInterval(() => {
   cacheManager.prune();
   resumableUploads.pruneExpired();
-  directUploads.pruneExpired();
+  if (authTenantStore) {
+    authTenantStore.pruneExpiredUploadSessions()
+      .then(() => directUploads.pruneExpired())
+      .then(() => cleanupOrphanedPublisherBlobs())
+      .catch((error) => console.error("❌ [Server] Upload session cleanup failed:", error.message));
+  } else {
+    directUploads.pruneExpired().catch((error) => console.error("❌ [Server] Direct upload cleanup failed:", error.message));
+  }
 }, 5 * 60 * 1000);
 if (typeof pruneInterval.unref === "function") {
   pruneInterval.unref();
+}
+
+async function cleanupOrphanedPublisherBlobs() {
+  if (!authTenantStore || !authenticatedPublisher.isConfigured()) return 0;
+  const orphans = await authTenantStore.listPendingOrphanedPublisherBlobs();
+  let cleaned = 0;
+  for (const orphan of orphans) {
+    try {
+      const response = await fetch(authenticatedPublisher.deleteUrl(orphan.blobId), { method: "DELETE" });
+      if (!response.ok && response.status !== 404) continue;
+      await authTenantStore.markOrphanedPublisherBlobCleaned(orphan.blobId);
+      cleaned++;
+    } catch {
+      // Keep the tombstone pending for a later sweep.
+    }
+  }
+  return cleaned;
 }
 
 const app = express();
@@ -489,7 +557,7 @@ app.delete("/api/orgs/:orgId/members/:memberAddress", requireTenant, async (req,
 
 // Create an upload session. The client supplies ciphertext size because each AES-GCM
 // chunk carries its own authentication tag and can be safely retried independently.
-app.post(["/api/assets/uploads", "/api/photos/uploads"], requireTenant, uploadLimiter, (req, res) => {
+app.post(["/api/assets/uploads", "/api/photos/uploads"], requireTenant, requireUploadWrite, uploadLimiter, async (req, res) => {
   const {
     originalName,
     originalType,
@@ -505,12 +573,22 @@ app.post(["/api/assets/uploads", "/api/photos/uploads"], requireTenant, uploadLi
     return res.status(400).json({ success: false, error: "Raw data keys must not be sent to the server" });
   }
 
+  let reservation = null;
   try {
     const parsedTags = Array.isArray(tags)
       ? tags
       : typeof tags === "string"
         ? tags.split(",").map((tag) => tag.trim())
         : [];
+    const uploadId = crypto.randomUUID();
+    const assetId = `staged_${uploadId}`;
+    const expiresAt = new Date(Date.now() + (24 * 60 * 60 * 1000)).toISOString();
+    if (authTenantStore) {
+      reservation = await authTenantStore.reserveUpload({
+        uploadId, assetId, organizationId: req.tenant.organizationId, userId: req.auth.userId,
+        uploadKind: "resumable", reservedBytes: encryptedSize, expiresAt, originalName, originalSize
+      });
+    }
     const session = resumableUploads.create({
       originalName: sanitizeString(originalName, 128),
       originalType: sanitizeString(originalType, 255),
@@ -520,18 +598,26 @@ app.post(["/api/assets/uploads", "/api/photos/uploads"], requireTenant, uploadLi
       description: sanitizeString(description, 512),
       tags: sanitizeTags(parsedTags),
       encryption,
-      organizationId: req.tenant?.organizationId
+      organizationId: req.tenant?.organizationId,
+      userId: req.auth?.userId || null,
+      assetId,
+      quotaReservationId: reservation?.reservationId || null,
+      uploadId
     });
     res.status(201).json({ success: true, upload: session });
   } catch (err) {
+    if (reservation && authTenantStore) {
+      try { await authTenantStore.abortUpload({ uploadId: reservation.uploadId, ...uploadAccessContext(req), reason: "failed" }); } catch {}
+    }
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
 // Query received parts after an interrupted browser session or network failure.
-app.get(["/api/assets/uploads/:uploadId", "/api/photos/uploads/:uploadId"], requireTenant, (req, res) => {
+app.get(["/api/assets/uploads/:uploadId", "/api/photos/uploads/:uploadId"], requireTenant, async (req, res) => {
   try {
-    const session = resumableUploads.get(req.params.uploadId, req.tenant?.organizationId);
+    await assertPersistentUploadAccess(req, req.params.uploadId);
+    const session = resumableUploads.get(req.params.uploadId, uploadAccessContext(req));
     res.json({ success: true, upload: session });
   } catch (err) {
     const status = err.message === "Upload session not found" ? 404 : 400;
@@ -543,16 +629,17 @@ app.get(["/api/assets/uploads/:uploadId", "/api/photos/uploads/:uploadId"], requ
 // idempotent and prevents corrupt parts from being assembled.
 app.put(
   ["/api/assets/uploads/:uploadId/parts/:partNumber", "/api/photos/uploads/:uploadId/parts/:partNumber"],
-  requireTenant, resumablePartLimiter,
+  requireTenant, requireUploadWrite, resumablePartLimiter,
   resumablePartBody,
-  (req, res) => {
+  async (req, res) => {
     try {
+      await assertPersistentUploadAccess(req, req.params.uploadId);
       const result = resumableUploads.writePart(
         req.params.uploadId,
         req.params.partNumber,
         req.body,
         req.headers["x-part-sha256"],
-        req.tenant?.organizationId
+        uploadAccessContext(req)
       );
       res.status(result.duplicate ? 200 : 201).json({ success: true, ...result });
     } catch (err) {
@@ -564,10 +651,16 @@ app.put(
 
 // Assemble ciphertext sequentially on disk, verify all parts, then hand the completed
 // blob to the existing Walrus adapter. This uses constant memory regardless of upload size.
-app.post(["/api/assets/uploads/:uploadId/complete", "/api/photos/uploads/:uploadId/complete"], requireTenant, uploadLimiter, async (req, res) => {
+app.post(["/api/assets/uploads/:uploadId/complete", "/api/photos/uploads/:uploadId/complete"], requireTenant, requireUploadWrite, uploadLimiter, async (req, res) => {
   const { uploadId } = req.params;
   try {
-    const { session, assembledPath, ciphertextSha256 } = await resumableUploads.assemble(uploadId, req.tenant?.organizationId);
+    await assertPersistentUploadAccess(req, uploadId);
+    const existing = resumableUploads.getInternal(uploadId, uploadAccessContext(req));
+    if (existing.status === "completed") {
+      if (authTenantStore) await authTenantStore.completeUpload({ uploadId, ...uploadAccessContext(req), providerAssetId: existing.completedAsset?.id });
+      return res.json({ success: true, upload: resumableUploads.get(uploadId, uploadAccessContext(req)), asset: existing.completedAsset, result: existing.completedAsset });
+    }
+    const { session, assembledPath, ciphertextSha256 } = await resumableUploads.assemble(uploadId, uploadAccessContext(req));
     const validation = await validateCiphertextPayload(assembledPath, session.encryption);
     if (!validation.valid) {
       throw new Error(validation.error);
@@ -587,24 +680,31 @@ app.post(["/api/assets/uploads/:uploadId/complete", "/api/photos/uploads/:upload
       },
       tenant: req.tenant
     });
-    const completed = resumableUploads.markCompleted(uploadId, result, ciphertextSha256, req.tenant?.organizationId);
-    if (authTenantStore) await authTenantStore.registerAsset({
-      organizationId: req.tenant.organizationId, actorUserId: req.auth.userId, assetId: result.id,
-      name: session.originalName, contentType: session.originalType, byteSize: session.originalSize,
-      description: session.description, tags: session.tags, storageKind: "walrus", folderId: req.body?.folderId || null
-    });
+    const completed = resumableUploads.markCompleted(uploadId, result, ciphertextSha256, uploadAccessContext(req));
+    if (authTenantStore) {
+      await authTenantStore.completeUpload({ uploadId, ...uploadAccessContext(req), providerAssetId: result.id });
+      await authTenantStore.registerAsset({
+        organizationId: req.tenant.organizationId, actorUserId: req.auth.userId, assetId: result.id,
+        name: session.originalName, contentType: session.originalType, byteSize: session.originalSize,
+        description: session.description, tags: session.tags, storageKind: "walrus", folderId: req.body?.folderId || null
+      });
+    }
     res.json({ success: true, upload: completed, asset: result, result });
   } catch (err) {
-    try { resumableUploads.markRetryable(uploadId, req.tenant?.organizationId); } catch {}
+    try { resumableUploads.markRetryable(uploadId, uploadAccessContext(req)); } catch {}
     console.error(`❌ [ResumableUpload] Completion failed for ${uploadId}:`, err.message);
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
 // Explicit cancellation immediately removes staged ciphertext and session metadata.
-app.delete(["/api/assets/uploads/:uploadId", "/api/photos/uploads/:uploadId"], requireTenant, (req, res) => {
+app.delete(["/api/assets/uploads/:uploadId", "/api/photos/uploads/:uploadId"], requireTenant, requireUploadWrite, async (req, res) => {
   try {
-    resumableUploads.abort(req.params.uploadId, req.tenant?.organizationId);
+    if (authTenantStore) {
+      const aborted = await authTenantStore.abortUpload({ uploadId: req.params.uploadId, ...uploadAccessContext(req) });
+      if (aborted.alreadyCompleted) throw new Error("Completed upload cannot be aborted");
+    }
+    resumableUploads.abort(req.params.uploadId, uploadAccessContext(req));
     res.json({ success: true, aborted: true });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -616,14 +716,25 @@ app.delete(["/api/assets/uploads/:uploadId", "/api/photos/uploads/:uploadId"], r
 // ==========================================
 // These endpoints are control-plane only: ciphertext flows from the browser
 // directly to the Walrus publisher and never enters this Express process.
-app.post("/api/assets/direct-uploads", requireTenant, uploadLimiter, (req, res) => {
+app.post("/api/assets/direct-uploads", requireTenant, requireUploadWrite, uploadLimiter, async (req, res) => {
   const { originalName, originalType, originalSize, segmentSize, description, tags, encryption, epochs } = req.body || {};
   if (containsRawKeyMaterial(encryption)) {
     return res.status(400).json({ success: false, error: "Raw data keys must not be sent to the server" });
   }
+  let reservation = null;
   try {
     const parsedTags = Array.isArray(tags) ? tags : typeof tags === "string" ? tags.split(",").map((tag) => tag.trim()) : [];
-    const upload = directUploads.create({
+    const uploadId = crypto.randomUUID();
+    const assetId = `direct_${uploadId}`;
+    const expiresAt = new Date(Date.now() + (24 * 60 * 60 * 1000)).toISOString();
+    if (authTenantStore) {
+      reservation = await authTenantStore.reserveUpload({
+        uploadId, assetId, organizationId: req.tenant.organizationId, userId: req.auth.userId,
+        uploadKind: "direct", reservedBytes: directCiphertextSize(originalSize, encryption?.chunkSize),
+        expiresAt, originalName, originalSize
+      });
+    }
+    const upload = await directUploads.create({
       originalName: sanitizeString(originalName, 128),
       originalType: sanitizeString(originalType, 255),
       originalSize,
@@ -632,26 +743,35 @@ app.post("/api/assets/direct-uploads", requireTenant, uploadLimiter, (req, res) 
       tags: sanitizeTags(parsedTags),
       encryption,
       epochs,
-      tenant: req.tenant
+      tenant: req.tenant,
+      userId: req.auth?.userId || null,
+      assetId,
+      quotaReservationId: reservation?.reservationId || null,
+      uploadId
     });
     res.status(201).json({ success: true, upload, publisherConfigured: authenticatedPublisher.isConfigured() });
   } catch (err) {
+    if (reservation && authTenantStore) {
+      try { await authTenantStore.abortUpload({ uploadId: reservation.uploadId, ...uploadAccessContext(req), reason: "failed" }); } catch {}
+    }
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
-app.get("/api/assets/direct-uploads/:uploadId", requireTenant, (req, res) => {
+app.get("/api/assets/direct-uploads/:uploadId", requireTenant, async (req, res) => {
   try {
-    res.json({ success: true, upload: directUploads.get(req.params.uploadId, req.tenant?.organizationId) });
+    await assertPersistentUploadAccess(req, req.params.uploadId);
+    res.json({ success: true, upload: await directUploads.get(req.params.uploadId, uploadAccessContext(req)) });
   } catch (err) {
     res.status(err.message === "Upload session not found" ? 404 : 400).json({ success: false, error: err.message });
   }
 });
 
-app.post("/api/assets/direct-uploads/:uploadId/segments/:segmentIndex/authorize", requireTenant, uploadLimiter, (req, res) => {
+app.post("/api/assets/direct-uploads/:uploadId/segments/:segmentIndex/authorize", requireTenant, requireUploadWrite, uploadLimiter, async (req, res) => {
   try {
     authenticatedPublisher.assertConfigured();
-    const { session, segment } = directUploads.authorizeSegment(req.params.uploadId, req.params.segmentIndex, req.tenant?.organizationId);
+    await assertPersistentUploadAccess(req, req.params.uploadId);
+    const { session, segment } = await directUploads.authorizeSegment(req.params.uploadId, req.params.segmentIndex, uploadAccessContext(req));
     const ciphertextSha256 = req.body?.ciphertextSha256;
     const authorization = authenticatedPublisher.authorize({
       uploadId: session.uploadId,
@@ -660,7 +780,7 @@ app.post("/api/assets/direct-uploads/:uploadId/segments/:segmentIndex/authorize"
       ciphertextSha256,
       sendObjectTo: req.body?.sendObjectTo || null
     });
-    directUploads.saveAuthorization(session.uploadId, segment.index, authorization, req.tenant?.organizationId);
+    await directUploads.saveAuthorization(session.uploadId, segment.index, authorization, uploadAccessContext(req));
     res.json({ success: true, authorization });
   } catch (err) {
     const status = err.message === "Authenticated publisher is not configured" ? 503 : err.message === "Upload session not found" ? 404 : 400;
@@ -668,41 +788,47 @@ app.post("/api/assets/direct-uploads/:uploadId/segments/:segmentIndex/authorize"
   }
 });
 
-app.post("/api/assets/direct-uploads/:uploadId/segments/:segmentIndex/complete", requireTenant, uploadLimiter, (req, res) => {
+app.post("/api/assets/direct-uploads/:uploadId/segments/:segmentIndex/complete", requireTenant, requireUploadWrite, uploadLimiter, async (req, res) => {
   try {
     authenticatedPublisher.assertConfigured();
-    const context = directUploads.completionContext(req.params.uploadId, req.params.segmentIndex, req.tenant?.organizationId);
+    await assertPersistentUploadAccess(req, req.params.uploadId);
+    const context = await directUploads.completionContext(req.params.uploadId, req.params.segmentIndex, uploadAccessContext(req));
     const receipt = authenticatedPublisher.verifyReceipt(req.body?.receipt, context);
-    const upload = directUploads.completeSegment(req.params.uploadId, req.params.segmentIndex, {
+    const upload = await directUploads.completeSegment(req.params.uploadId, req.params.segmentIndex, {
       blobId: receipt.blobId,
       ciphertextSha256: req.body?.ciphertextSha256,
       publisherResponse: req.body?.publisherResponse,
       receipt,
       verified: true
-    }, req.tenant?.organizationId);
+    }, uploadAccessContext(req));
     res.json({ success: true, upload });
   } catch (err) {
     res.status(err.message === "Upload session not found" ? 404 : 400).json({ success: false, error: err.message });
   }
 });
 
-app.post("/api/assets/direct-uploads/:uploadId/finalize", requireTenant, uploadLimiter, async (req, res) => {
+app.post("/api/assets/direct-uploads/:uploadId/finalize", requireTenant, requireUploadWrite, uploadLimiter, async (req, res) => {
   try {
-    const result = directUploads.finalize(req.params.uploadId, req.tenant?.organizationId);
-    if (authTenantStore) await authTenantStore.registerAsset({
-      organizationId: req.tenant.organizationId, actorUserId: req.auth.userId, assetId: result.asset.id,
-      name: result.asset.name, contentType: result.asset.original_type, byteSize: result.asset.original_size,
-      description: result.asset.description, tags: result.asset.tags, storageKind: "direct", folderId: req.body?.folderId || null
-    });
+    await assertPersistentUploadAccess(req, req.params.uploadId);
+    const result = await directUploads.finalize(req.params.uploadId, uploadAccessContext(req));
+    if (authTenantStore) {
+      await authTenantStore.completeUpload({ uploadId: req.params.uploadId, ...uploadAccessContext(req), providerAssetId: result.asset.id });
+      await authTenantStore.registerAsset({
+        organizationId: req.tenant.organizationId, actorUserId: req.auth.userId, assetId: result.asset.id,
+        name: result.asset.name, contentType: result.asset.original_type, byteSize: result.asset.original_size,
+        description: result.asset.description, tags: result.asset.tags, storageKind: "direct", folderId: req.body?.folderId || null
+      });
+    }
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(err.message === "Upload session not found" ? 404 : 400).json({ success: false, error: err.message });
   }
 });
 
-app.get("/api/assets/direct-uploads/:uploadId/manifest", requireTenant, (req, res) => {
+app.get("/api/assets/direct-uploads/:uploadId/manifest", requireTenant, async (req, res) => {
   try {
-    res.json({ success: true, manifest: directUploads.manifest(req.params.uploadId, req.tenant?.organizationId) });
+    await assertPersistentUploadAccess(req, req.params.uploadId, { completedOnly: true });
+    res.json({ success: true, manifest: await directUploads.manifest(req.params.uploadId, uploadAccessContext(req)) });
   } catch (err) {
     res.status(err.message === "Upload session not found" ? 404 : 400).json({ success: false, error: err.message });
   }
@@ -810,7 +936,7 @@ app.get("/api/assets/:assetId/key-envelopes", requireTenant, requireTenantEnvelo
 // without exposing publisher topology or credentials to an application.
 app.get("/api/assets/:assetId/direct-segments/:segmentIndex", requireTenant, async (req, res) => {
   try {
-    const manifest = directUploads.manifestByAssetId(req.params.assetId, req.tenant?.organizationId);
+    const manifest = await directUploads.manifestByAssetId(req.params.assetId, uploadAccessContext(req));
     const index = Number(req.params.segmentIndex);
     const segment = manifest.segments.find((entry) => entry.index === index);
     if (!segment) return res.status(404).json({ success: false, error: "Direct segment not found" });
@@ -838,19 +964,24 @@ app.get("/api/assets/:assetId/direct-segments/:segmentIndex", requireTenant, asy
 
 // A manifest is intentionally public encryption metadata only: no data key,
 // plaintext, or publisher credential is included.
-app.get("/api/assets/:assetId/direct-manifest", requireTenant, (req, res) => {
+app.get("/api/assets/:assetId/direct-manifest", requireTenant, async (req, res) => {
   try {
-    res.json({ success: true, manifest: directUploads.manifestByAssetId(req.params.assetId, req.tenant?.organizationId) });
+    res.json({ success: true, manifest: await directUploads.manifestByAssetId(req.params.assetId, uploadAccessContext(req)) });
   } catch (err) {
     const status = err.message === "Upload session not found" ? 404 : 400;
     res.status(status).json({ success: false, error: err.message });
   }
 });
 
-app.delete("/api/assets/direct-uploads/:uploadId", requireTenant, async (req, res, next) => {
+app.delete("/api/assets/direct-uploads/:uploadId", requireTenant, requireUploadWrite, async (req, res, next) => {
   try {
-    directUploads.abort(req.params.uploadId, req.tenant?.organizationId);
-    if (authTenantStore) await authTenantStore.deleteKeyEnvelopeAsset({ organizationId: req.tenant.organizationId, assetId: `direct_${req.params.uploadId}` });
+    const upload = await directUploads.get(req.params.uploadId, uploadAccessContext(req));
+    if (authTenantStore) {
+      const aborted = await authTenantStore.abortUpload({ uploadId: req.params.uploadId, ...uploadAccessContext(req) });
+      if (aborted.alreadyCompleted) throw new Error("Completed upload cannot be aborted");
+    }
+    await directUploads.abort(req.params.uploadId, uploadAccessContext(req));
+    if (authTenantStore) await authTenantStore.deleteKeyEnvelopeAsset({ organizationId: req.tenant.organizationId, assetId: upload.assetId || `direct_${req.params.uploadId}` });
     res.json({ success: true, aborted: true });
   } catch (error) {
     return next(error);
@@ -921,7 +1052,7 @@ app.get(["/api/photos", "/api/assets"], requireTenant, async (req, res) => {
 
     // Logical large files are manifests whose ciphertext segments live directly
     // on Walrus; they are not Console/MCP file records.
-    photos.push(...directUploads.listAssets(req.tenant?.organizationId).map((asset) => ({
+    photos.push(...(await directUploads.listAssets(req.tenant?.organizationId)).map((asset) => ({
       ...asset,
       blob_id: null
     })));
@@ -941,7 +1072,7 @@ app.get(["/api/photos", "/api/assets"], requireTenant, async (req, res) => {
 });
 
 // 3. Upload Asset (Zero-Knowledge Ciphertext Ingestion)
-app.post(["/api/photos/upload", "/api/assets/upload"], requireTenant, uploadLimiter, upload.any(), async (req, res) => {
+app.post(["/api/photos/upload", "/api/assets/upload"], requireTenant, requireUploadWrite, uploadLimiter, upload.any(), async (req, res) => {
   const uploadedFile = req.file || (req.files && req.files[0]);
   if (!uploadedFile) {
     return res.status(400).json({ success: false, error: "No asset file uploaded" });
@@ -951,6 +1082,7 @@ app.post(["/api/photos/upload", "/api/assets/upload"], requireTenant, uploadLimi
   const localFilePath = req.file.path;
   const originalName = req.body.originalName || req.body.original_name || req.file.originalname;
   const description = req.body.description || "Uploaded via Nodus";
+  let uploadRecord = null;
 
   // Extract client-side encryption metadata
   let encryption = null;
@@ -1013,6 +1145,21 @@ app.post(["/api/photos/upload", "/api/assets/upload"], requireTenant, uploadLimi
     }
     const combinedTags = Array.from(new Set(["nodus", ext, ...userTags].filter(Boolean)));
 
+    if (authTenantStore) {
+      const uploadId = crypto.randomUUID();
+      uploadRecord = await authTenantStore.reserveUpload({
+        uploadId,
+        assetId: `single_${uploadId}`,
+        organizationId: req.tenant.organizationId,
+        userId: req.auth.userId,
+        uploadKind: "single",
+        reservedBytes: req.file.size,
+        expiresAt: new Date(Date.now() + (24 * 60 * 60 * 1000)).toISOString(),
+        originalName: sanitizedName,
+        originalSize: Number(encryption?.originalSize) || req.file.size
+      });
+    }
+
     const result = await walrus.uploadPhoto({
       localPath: localFilePath,
       fileName: sanitizedName,
@@ -1020,12 +1167,15 @@ app.post(["/api/photos/upload", "/api/assets/upload"], requireTenant, uploadLimi
       tags: combinedTags,
       encryption: encryption || undefined, tenant: req.tenant
     });
-    if (authTenantStore) await authTenantStore.registerAsset({
-      organizationId: req.tenant.organizationId, actorUserId: req.auth.userId, assetId: result.id,
-      name: sanitizedName, contentType: encryption?.originalType || req.file.mimetype || "application/octet-stream",
-      byteSize: Number(encryption?.originalSize) || req.file.size, description: sanitizedDesc, tags: combinedTags,
-      storageKind: "walrus", folderId: req.body.folderId || null
-    });
+    if (uploadRecord && authTenantStore) {
+      await authTenantStore.completeUpload({ uploadId: uploadRecord.uploadId, ...uploadAccessContext(req), providerAssetId: result.id });
+      await authTenantStore.registerAsset({
+        organizationId: req.tenant.organizationId, actorUserId: req.auth.userId, assetId: result.id,
+        name: sanitizedName, contentType: encryption?.originalType || req.file.mimetype || "application/octet-stream",
+        byteSize: Number(encryption?.originalSize) || req.file.size, description: sanitizedDesc, tags: combinedTags,
+        storageKind: "walrus", folderId: req.body.folderId || null
+      });
+    }
 
     // Clean up temp upload file
     try {
@@ -1041,6 +1191,11 @@ app.post(["/api/photos/upload", "/api/assets/upload"], requireTenant, uploadLimi
       result
     });
   } catch (err) {
+    // A failed provider write must not hold quota until the TTL sweep. This is
+    // intentionally best-effort because the original upload error is more useful.
+    if (uploadRecord && authTenantStore) {
+      try { await authTenantStore.abortUpload({ uploadId: uploadRecord.uploadId, ...uploadAccessContext(req), reason: "failed" }); } catch {}
+    }
     try {
       if (fs.existsSync(localFilePath)) {
         fs.unlinkSync(localFilePath);

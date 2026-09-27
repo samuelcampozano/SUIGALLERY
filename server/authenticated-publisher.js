@@ -87,6 +87,10 @@ export class AuthenticatedPublisher {
     return new URL(`/v1/blobs/${encodeURIComponent(blobId)}`, `${this.url}/`).toString();
   }
 
+  deleteUrl(blobId) {
+    return this.readUrl(blobId);
+  }
+
   verifyReceipt(receipt, expected) {
     if (!receipt || typeof receipt !== "object" || !receipt.payload || typeof receipt.signature !== "string") throw new Error("A signed publisher receipt is required");
     const payload = receipt.payload;
