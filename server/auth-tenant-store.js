@@ -252,6 +252,12 @@ export class AuthTenantStore {
           created_at TIMESTAMPTZ NOT NULL DEFAULT now(), rotated_from UUID REFERENCES organization_api_keys(id) ON DELETE SET NULL
         );
         CREATE TABLE IF NOT EXISTS api_key_audit_events (id UUID PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, api_key_id UUID REFERENCES organization_api_keys(id) ON DELETE SET NULL, actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL, event_type TEXT NOT NULL, details JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+        CREATE TABLE IF NOT EXISTS public_idempotency_records (
+          id UUID PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, actor_key TEXT NOT NULL, operation TEXT NOT NULL, idempotency_key TEXT NOT NULL,
+          request_hash TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('in_progress','completed')) DEFAULT 'in_progress', response_status INTEGER, response_body JSONB,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(), completed_at TIMESTAMPTZ
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS public_idempotency_unique_idx ON public_idempotency_records (organization_id,actor_key,operation,idempotency_key);
 
       `);
       console.log("🐘 [AuthTenantStore] PostgreSQL database schema verified.");
@@ -408,6 +414,17 @@ export class AuthTenantStore {
     const row = result.rows[0]; await this.pool.query("UPDATE organization_api_keys SET last_used_at=now() WHERE id=$1", [row.api_key_id]);
     return row;
   }
+
+  async beginPublicIdempotency({ organizationId, actorKey, operation, idempotencyKey, requestHash }) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const found = await client.query("SELECT * FROM public_idempotency_records WHERE organization_id=$1 AND actor_key=$2 AND operation=$3 AND idempotency_key=$4 FOR UPDATE", [organizationId,actorKey,operation,idempotencyKey]);
+      if (found.rowCount) { const row=found.rows[0]; await client.query("COMMIT"); if(row.request_hash!==requestHash) return {kind:'conflict'}; if(row.status==='completed') return {kind:'replay',status:row.response_status,body:row.response_body}; return {kind:'in_progress'}; }
+      const id=crypto.randomUUID(); await client.query("INSERT INTO public_idempotency_records (id,organization_id,actor_key,operation,idempotency_key,request_hash) VALUES ($1,$2,$3,$4,$5,$6)",[id,organizationId,actorKey,operation,idempotencyKey,requestHash]); await client.query("COMMIT"); return {kind:'new',id};
+    } catch(error){await client.query("ROLLBACK");throw error;} finally{client.release();}
+  }
+  async completePublicIdempotency({ id, status, body }) { await this.pool.query("UPDATE public_idempotency_records SET status='completed',response_status=$2,response_body=$3::jsonb,completed_at=now() WHERE id=$1 AND status='in_progress'",[id,status,JSON.stringify(body)]); }
 
   async createApiKey({ organizationId, actorUserId, name, scopes, expiresAt = null, rotatedFrom = null }) {
     const allowed = new Set(['assets:read','assets:write','assets:delete','assets:share','search:read','audit:read']);

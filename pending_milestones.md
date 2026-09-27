@@ -81,7 +81,7 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 - [x] Criar API keys por organizacao com nome, escopos, expiracao, revogacao e rotacao (aguarda teste PostgreSQL real).
 - [x] Definir escopos minimos: `assets:read`, `assets:write`, `assets:delete`, `assets:share`, `search:read` e `audit:read`.
 - [x] Aplicar rate limit e auditoria por API key/organizacao; a quota continua vinculada ao tenant.
-- [ ] Adicionar idempotency keys para criacao/finalizacao de uploads e mutacoes de assets.
+- [x] Adicionar idempotency keys para criacao/finalizacao de uploads e mutacoes de assets (aguarda teste PostgreSQL real).
 - [ ] Publicar especificacao OpenAPI e exemplos completos do SDK.
 - [ ] Adicionar webhooks assinados para upload concluido, falha, quota alta e asset deletado.
 - [ ] Criar ambiente sandbox/testnet separado do ambiente de producao.

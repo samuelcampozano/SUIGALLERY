@@ -87,7 +87,7 @@ const corsOptions = {
     return callback(new Error("Origin is not allowed by CORS policy"));
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Authorization", "Content-Type", "X-Part-SHA256"],
+  allowedHeaders: ["Authorization", "Content-Type", "X-Part-SHA256", "Idempotency-Key"],
   maxAge: 600
 };
 
@@ -97,6 +97,7 @@ async function requireTenant(req, res, next) {
     if (process.env.NODE_ENV !== "test" && process.env.NODUS_ALLOW_INSECURE_DEV_AUTH !== "true") {
       return res.status(503).json({ success: false, error: "Tenant authentication is not configured" });
     }
+    if (await enforcePublicIdempotency(req, res)) return;
     return next();
   }
   const authorization = typeof req.headers.authorization === "string" ? req.headers.authorization.trim() : "";
@@ -113,6 +114,29 @@ async function requireTenant(req, res, next) {
     if (apiKey) { const scope = req.method === 'GET' ? (req.path.includes('/audit') ? 'audit:read' : req.path.includes('/search') ? 'search:read' : 'assets:read') : req.method === 'DELETE' ? 'assets:delete' : req.path.includes('key-envelopes') ? 'assets:share' : 'assets:write'; if (!req.auth.scopes.includes(scope)) return res.status(403).json({ success:false,error:`API key lacks ${scope} scope` }); const now=Date.now(); const state=apiKeyRequestWindows.get(context.api_key_id)||{at:now,count:0}; if(now-state.at>60000){state.at=now;state.count=0;} if(++state.count>300)return res.status(429).json({success:false,error:'API key rate limit exceeded'}); apiKeyRequestWindows.set(context.api_key_id,state); }
     return next();
   } catch (error) { return next(error); }
+}
+
+function idempotencyOperation(req) {
+  const path = req.path;
+  if (!req.headers['idempotency-key'] || !['POST','PATCH','DELETE'].includes(req.method)) return null;
+  if (/^\/api\/(assets|photos)\/uploads$/.test(path) || /^\/api\/assets\/direct-uploads$/.test(path) || /^\/api\/(assets|photos)\/upload$/.test(path)) return `${req.method}:upload.create`;
+  if (/^\/api\/(assets|photos)\/uploads\/[^/]+\/complete$/.test(path) || /^\/api\/assets\/direct-uploads\/[^/]+\/finalize$/.test(path)) return `${req.method}:upload.finalize:${path}`;
+  if (/^\/api\/(assets|photos)\/[^/]+$/.test(path) || /^\/api\/(assets|photos)\/batch-delete$/.test(path)) return `${req.method}:asset.mutate:${path}`;
+  if (/\/key-envelopes$/.test(path) || /^\/api\/key-rotations\/[^/]+\/complete$/.test(path)) return `${req.method}:key.mutate:${path}`;
+  return null;
+}
+
+async function enforcePublicIdempotency(req, res) {
+  const operation=idempotencyOperation(req); if(!operation || !authTenantStore) return false;
+  const idempotencyKey=String(req.headers['idempotency-key']); if(!/^[A-Za-z0-9._:-]{8,200}$/.test(idempotencyKey)){res.status(400).json({success:false,error:'Invalid Idempotency-Key'});return true;}
+  const actorKey=req.auth.apiKeyId ? `api:${req.auth.apiKeyId}` : `user:${req.auth.userId}`;
+  const requestHash=crypto.createHash('sha256').update(JSON.stringify(req.body||{})).digest('hex');
+  const result=await authTenantStore.beginPublicIdempotency({organizationId:req.tenant.organizationId,actorKey,operation,idempotencyKey,requestHash});
+  if(result.kind==='replay'){res.status(result.status||200).json({...result.body,idempotentReplay:true});return true;}
+  if(result.kind==='conflict'){res.status(409).json({success:false,error:'Idempotency-Key was already used with a different payload'});return true;}
+  if(result.kind==='in_progress'){res.status(409).json({success:false,error:'An identical request is still in progress'});return true;}
+  const originalJson=res.json.bind(res); res.json=(body)=>{ if(res.statusCode<500) authTenantStore.completePublicIdempotency({id:result.id,status:res.statusCode,body}).catch((error)=>console.error('Idempotency completion failed:',error.message)); return originalJson(body); };
+  return false;
 }
 
 const uploadWriteRoles = new Set(["owner", "admin", "contributor"]);
