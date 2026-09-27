@@ -113,6 +113,66 @@ export class AuthTenantStore {
         );
         CREATE INDEX IF NOT EXISTS key_rotation_tasks_pending_idx ON key_rotation_tasks (organization_id, status, created_at);
 
+        CREATE TABLE IF NOT EXISTS tenant_storage_usage (
+          organization_id TEXT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+          used_bytes BIGINT NOT NULL DEFAULT 0 CHECK (used_bytes >= 0),
+          reserved_bytes BIGINT NOT NULL DEFAULT 0 CHECK (reserved_bytes >= 0),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS managed_assets (
+          id TEXT PRIMARY KEY,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          owner_user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+          provider_asset_id TEXT,
+          upload_kind TEXT NOT NULL CHECK (upload_kind IN ('resumable', 'direct', 'single')),
+          status TEXT NOT NULL CHECK (status IN ('uploading', 'active', 'aborted', 'expired', 'failed')),
+          original_name TEXT NOT NULL,
+          original_size BIGINT NOT NULL CHECK (original_size >= 0),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          finalized_at TIMESTAMPTZ
+        );
+        CREATE INDEX IF NOT EXISTS managed_assets_tenant_idx ON managed_assets (organization_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS upload_sessions (
+          id UUID PRIMARY KEY,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+          asset_id TEXT NOT NULL REFERENCES managed_assets(id) ON DELETE CASCADE,
+          upload_kind TEXT NOT NULL CHECK (upload_kind IN ('resumable', 'direct', 'single')),
+          reserved_bytes BIGINT NOT NULL CHECK (reserved_bytes > 0),
+          status TEXT NOT NULL CHECK (status IN ('uploading', 'assembling', 'completed', 'aborted', 'expired', 'failed')),
+          expires_at TIMESTAMPTZ NOT NULL,
+          completed_asset_id TEXT,
+          idempotency_key TEXT NOT NULL UNIQUE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          completed_at TIMESTAMPTZ
+        );
+        CREATE INDEX IF NOT EXISTS upload_sessions_tenant_status_idx ON upload_sessions (organization_id, status, expires_at);
+
+        CREATE TABLE IF NOT EXISTS quota_reservations (
+          id UUID PRIMARY KEY,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          upload_id UUID NOT NULL UNIQUE REFERENCES upload_sessions(id) ON DELETE CASCADE,
+          bytes BIGINT NOT NULL CHECK (bytes > 0),
+          status TEXT NOT NULL CHECK (status IN ('active', 'committed', 'released')),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          finalized_at TIMESTAMPTZ
+        );
+
+        CREATE TABLE IF NOT EXISTS upload_audit_events (
+          id BIGSERIAL PRIMARY KEY,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+          upload_id UUID REFERENCES upload_sessions(id) ON DELETE SET NULL,
+          asset_id TEXT,
+          event_type TEXT NOT NULL,
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS upload_audit_events_tenant_idx ON upload_audit_events (organization_id, created_at DESC);
+
       `);
       console.log("🐘 [AuthTenantStore] PostgreSQL database schema verified.");
     } catch (err) {
@@ -150,6 +210,194 @@ export class AuthTenantStore {
     const result = await this.pool.query(query, [tokenHash(token)]);
     if (!result.rowCount) return null;
     return result.rows[0];
+  }
+
+  async reserveUpload({ uploadId, assetId, organizationId, userId, uploadKind, reservedBytes, expiresAt, originalName, originalSize }) {
+    if (!/^(resumable|direct|single)$/.test(uploadKind || "")) throw new Error("Unsupported upload kind");
+    const bytes = Number(reservedBytes);
+    const size = Number(originalSize);
+    if (!Number.isSafeInteger(bytes) || bytes < 1) throw new Error("Upload reservation size is invalid");
+    if (!Number.isSafeInteger(size) || size < 1) throw new Error("Original asset size is invalid");
+    if (!uploadId || !assetId || !organizationId || !userId || !expiresAt) throw new Error("Upload reservation context is incomplete");
+
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const existing = await client.query(
+        `SELECT u.id, u.organization_id, u.user_id, u.asset_id, u.expires_at AS "expiresAt", q.id AS "reservationId"
+           FROM upload_sessions u JOIN quota_reservations q ON q.upload_id = u.id
+          WHERE u.idempotency_key = $1 FOR UPDATE`,
+        [uploadId]
+      );
+      if (existing.rowCount) {
+        const session = existing.rows[0];
+        if (session.organization_id !== organizationId || session.user_id !== userId) throw new Error("Upload idempotency key belongs to a different user or organization");
+        await client.query("COMMIT");
+        return { uploadId: session.id, assetId: session.asset_id, reservationId: session.reservationId, expiresAt: session.expiresAt, duplicate: true };
+      }
+
+      const tenant = await client.query(
+        "SELECT quota_bytes FROM tenant_storage_contexts WHERE organization_id = $1 AND active = true FOR UPDATE",
+        [organizationId]
+      );
+      if (!tenant.rowCount) throw new Error("Active tenant storage context not found");
+      await client.query("INSERT INTO tenant_storage_usage (organization_id) VALUES ($1) ON CONFLICT (organization_id) DO NOTHING", [organizationId]);
+      const usage = await client.query("SELECT used_bytes, reserved_bytes FROM tenant_storage_usage WHERE organization_id = $1 FOR UPDATE", [organizationId]);
+      const used = Number(usage.rows[0].used_bytes);
+      const reserved = Number(usage.rows[0].reserved_bytes);
+      if (used + reserved + bytes > Number(tenant.rows[0].quota_bytes)) throw new Error("Storage quota exceeded");
+
+      const reservationId = crypto.randomUUID();
+      await client.query(
+        `INSERT INTO managed_assets (id, organization_id, owner_user_id, upload_kind, status, original_name, original_size)
+         VALUES ($1, $2, $3, $4, 'uploading', $5, $6)`,
+        [assetId, organizationId, userId, uploadKind, String(originalName || "asset.bin").slice(0, 255), size]
+      );
+      await client.query(
+        `INSERT INTO upload_sessions (id, organization_id, user_id, asset_id, upload_kind, reserved_bytes, status, expires_at, idempotency_key)
+         VALUES ($1, $2, $3, $4, $5, $6, 'uploading', $7, $8)`,
+        [uploadId, organizationId, userId, assetId, uploadKind, bytes, expiresAt, uploadId]
+      );
+      await client.query(
+        "INSERT INTO quota_reservations (id, organization_id, upload_id, bytes, status) VALUES ($1, $2, $3, $4, 'active')",
+        [reservationId, organizationId, uploadId, bytes]
+      );
+      await client.query(
+        "UPDATE tenant_storage_usage SET reserved_bytes = reserved_bytes + $2, updated_at = now() WHERE organization_id = $1",
+        [organizationId, bytes]
+      );
+      await this.insertUploadAudit(client, { organizationId, userId, uploadId, assetId, eventType: "upload.started", metadata: { uploadKind, reservedBytes: bytes } });
+      await client.query("COMMIT");
+      return { uploadId, assetId, reservationId, expiresAt, duplicate: false };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getUploadSessionForAccess({ uploadId, organizationId, userId, canManage = false }) {
+    const result = await this.pool.query(
+      `SELECT u.id, u.organization_id AS "organizationId", u.user_id AS "userId", u.asset_id AS "assetId", u.upload_kind AS "uploadKind",
+              u.reserved_bytes AS "reservedBytes", u.status, u.expires_at AS "expiresAt", u.completed_asset_id AS "completedAssetId",
+              q.id AS "reservationId", q.status AS "reservationStatus"
+         FROM upload_sessions u JOIN quota_reservations q ON q.upload_id = u.id
+        WHERE u.id = $1 AND u.organization_id = $2`,
+      [uploadId, organizationId]
+    );
+    if (!result.rowCount) throw new Error("Upload session not found");
+    const session = result.rows[0];
+    if (session.userId !== userId && !canManage) throw new Error("Upload session does not belong to the authenticated user");
+    return session;
+  }
+
+  async completeUpload({ uploadId, organizationId, userId, canManage = false, providerAssetId }) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const session = await this.lockUploadForAccess(client, { uploadId, organizationId, userId, canManage });
+      if (session.status === "completed") {
+        await client.query("COMMIT");
+        return { assetId: session.asset_id, providerAssetId: session.completed_asset_id, alreadyCompleted: true };
+      }
+      if (!["uploading", "assembling"].includes(session.status)) throw new Error(`Upload cannot be completed in '${session.status}' state`);
+      const reservation = await client.query("SELECT id, bytes, status FROM quota_reservations WHERE upload_id = $1 FOR UPDATE", [uploadId]);
+      if (!reservation.rowCount || reservation.rows[0].status !== "active") throw new Error("Active upload quota reservation not found");
+      const bytes = Number(reservation.rows[0].bytes);
+      const completedAssetId = String(providerAssetId || session.asset_id);
+      await client.query("UPDATE upload_sessions SET status = 'completed', completed_asset_id = $2, completed_at = now(), updated_at = now() WHERE id = $1", [uploadId, completedAssetId]);
+      await client.query("UPDATE managed_assets SET status = 'active', provider_asset_id = $2, finalized_at = now() WHERE id = $1", [session.asset_id, completedAssetId]);
+      await client.query("UPDATE quota_reservations SET status = 'committed', finalized_at = now() WHERE id = $1", [reservation.rows[0].id]);
+      await client.query(
+        `UPDATE tenant_storage_usage SET reserved_bytes = GREATEST(0, reserved_bytes - $2), used_bytes = used_bytes + $2, updated_at = now()
+          WHERE organization_id = $1`,
+        [organizationId, bytes]
+      );
+      await this.insertUploadAudit(client, { organizationId, userId, uploadId, assetId: session.asset_id, eventType: "upload.completed", metadata: { providerAssetId: completedAssetId } });
+      await client.query("COMMIT");
+      return { assetId: session.asset_id, providerAssetId: completedAssetId, alreadyCompleted: false };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async abortUpload({ uploadId, organizationId, userId, canManage = false, reason = "user" }) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const session = await this.lockUploadForAccess(client, { uploadId, organizationId, userId, canManage });
+      if (session.status === "completed") {
+        await client.query("COMMIT");
+        return { assetId: session.asset_id, alreadyCompleted: true, alreadyAborted: false };
+      }
+      if (["aborted", "expired", "failed"].includes(session.status)) {
+        await client.query("COMMIT");
+        return { assetId: session.asset_id, alreadyCompleted: false, alreadyAborted: true };
+      }
+      await this.releaseLockedUpload(client, session, reason, userId);
+      await client.query("COMMIT");
+      return { assetId: session.asset_id, alreadyCompleted: false, alreadyAborted: false };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async pruneExpiredUploadSessions() {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const expired = await client.query(
+        `SELECT id, organization_id, user_id, asset_id, status FROM upload_sessions
+          WHERE expires_at <= now() AND status IN ('uploading', 'assembling') FOR UPDATE SKIP LOCKED`
+      );
+      for (const session of expired.rows) await this.releaseLockedUpload(client, session, "expired", null);
+      await client.query("COMMIT");
+      return expired.rowCount;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async lockUploadForAccess(client, { uploadId, organizationId, userId, canManage }) {
+    const result = await client.query(
+      "SELECT id, organization_id, user_id, asset_id, status FROM upload_sessions WHERE id = $1 AND organization_id = $2 FOR UPDATE",
+      [uploadId, organizationId]
+    );
+    if (!result.rowCount) throw new Error("Upload session not found");
+    const session = result.rows[0];
+    if (session.user_id !== userId && !canManage) throw new Error("Upload session does not belong to the authenticated user");
+    return session;
+  }
+
+  async releaseLockedUpload(client, session, reason, actorUserId) {
+    const reservation = await client.query("SELECT id, bytes, status FROM quota_reservations WHERE upload_id = $1 FOR UPDATE", [session.id]);
+    if (reservation.rowCount && reservation.rows[0].status === "active") {
+      const bytes = Number(reservation.rows[0].bytes);
+      await client.query("UPDATE quota_reservations SET status = 'released', finalized_at = now() WHERE id = $1", [reservation.rows[0].id]);
+      await client.query("UPDATE tenant_storage_usage SET reserved_bytes = GREATEST(0, reserved_bytes - $2), updated_at = now() WHERE organization_id = $1", [session.organization_id, bytes]);
+    }
+    const status = reason === "expired" ? "expired" : reason === "failed" ? "failed" : "aborted";
+    await client.query("UPDATE upload_sessions SET status = $2, updated_at = now() WHERE id = $1", [session.id, status]);
+    await client.query("UPDATE managed_assets SET status = $2 WHERE id = $1", [session.asset_id, status]);
+    await this.insertUploadAudit(client, { organizationId: session.organization_id, userId: actorUserId, uploadId: session.id, assetId: session.asset_id, eventType: `upload.${status}`, metadata: { reason } });
+  }
+
+  async insertUploadAudit(client, { organizationId, userId = null, uploadId = null, assetId = null, eventType, metadata = {} }) {
+    await client.query(
+      `INSERT INTO upload_audit_events (organization_id, user_id, upload_id, asset_id, event_type, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+      [organizationId, userId, uploadId, assetId, eventType, JSON.stringify(metadata)]
+    );
   }
 
   async listOrganizations(userId) {
