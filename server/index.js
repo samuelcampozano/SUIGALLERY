@@ -123,6 +123,11 @@ function requireTenantEnvelopeStore(req, res, next) {
   return next();
 }
 
+function containsRawKeyMaterial(value) {
+  if (!value || typeof value !== "object") return false;
+  return ["key", "keyHex", "privateKey", "recoveryPrivateKey"].some((field) => Object.prototype.hasOwnProperty.call(value, field));
+}
+
 // 1. Security Headers (Helmet + Custom Content Security Policy)
 app.use(
   helmet({
@@ -488,6 +493,10 @@ app.post(["/api/assets/uploads", "/api/photos/uploads"], requireTenant, uploadLi
     encryption
   } = req.body || {};
 
+  if (containsRawKeyMaterial(encryption)) {
+    return res.status(400).json({ success: false, error: "Raw data keys must not be sent to the server" });
+  }
+
   try {
     const parsedTags = Array.isArray(tags)
       ? tags
@@ -596,6 +605,9 @@ app.delete(["/api/assets/uploads/:uploadId", "/api/photos/uploads/:uploadId"], r
 // directly to the Walrus publisher and never enters this Express process.
 app.post("/api/assets/direct-uploads", requireTenant, uploadLimiter, (req, res) => {
   const { originalName, originalType, originalSize, segmentSize, description, tags, encryption, epochs } = req.body || {};
+  if (containsRawKeyMaterial(encryption)) {
+    return res.status(400).json({ success: false, error: "Raw data keys must not be sent to the server" });
+  }
   try {
     const parsedTags = Array.isArray(tags) ? tags : typeof tags === "string" ? tags.split(",").map((tag) => tag.trim()) : [];
     const upload = directUploads.create({
@@ -867,7 +879,7 @@ app.post(["/api/photos/upload", "/api/assets/upload"], requireTenant, uploadLimi
 
   console.log(`📸 [API] Received upload request for ${originalName} (${req.file.size} bytes, encrypted: ${Boolean(encryption)})`);
 
-  if (req.body.key || (encryption && Object.prototype.hasOwnProperty.call(encryption, "key"))) {
+  if (containsRawKeyMaterial(req.body) || containsRawKeyMaterial(encryption)) {
     try { if (fs.existsSync(localFilePath)) fs.unlinkSync(localFilePath); } catch {}
     return res.status(400).json({ success: false, error: "Raw data keys must not be sent to the server" });
   }

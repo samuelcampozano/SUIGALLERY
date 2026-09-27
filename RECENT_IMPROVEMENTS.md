@@ -163,6 +163,15 @@ Entregue na branch `codex/tenant-key-envelopes`, pendente de merge na `dev`.
 - A migração `002_tenant_key_envelopes.sql` é aplicada tanto no Docker Compose quanto na inicialização do serviço. O blueprint Render exige configurar `NODUS_ALLOWED_ORIGINS` por ambiente.
 - A suíte de envelopes agora é integração PostgreSQL: cobre bearer obrigatório, isolamento entre duas organizações, recuperação por destinatário e rejeição de key material bruto. Ela é executada quando `DATABASE_URL` estiver disponível.
 
+## 7. Interface web zero-custody autenticada
+
+Entregue na branch `codex/web-zero-custody-auth`, pendente de merge na `dev`.
+
+- A interface usa o bearer token da sessão SIWS e a organização ativa em uploads, listagem, stream, edição e remoção. O bearer fica somente no `sessionStorage`, não no `localStorage` persistente.
+- A identidade ECDH do dispositivo é registrada somente pela chave pública; sua chave privada é um `CryptoKey` não exportável no IndexedDB, sem uso de `localStorage`.
+- Após cada upload, a interface grava um envelope ECDH/AES-GCM para o próprio usuário. Ao retornar à aplicação, recupera a chave de dados por esse envelope antes de decifrar o ciphertext no browser.
+- O backend rejeita `key`, `keyHex`, chaves privadas e chaves de recuperação também nos fluxos resumível e de publisher direto, impedindo persistência acidental de material secreto.
+
 ## 5. CORS restrito e autenticação uniforme de organizações
 
 Em implementação na branch `codex/cors-uniform-auth`.

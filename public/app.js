@@ -290,7 +290,7 @@ document.addEventListener("DOMContentLoaded", () => {
   try {
     const savedSession = localStorage.getItem("nodus_auth_session") || localStorage.getItem("suigallery_auth_session");
     if (savedSession) {
-      state.currentUser = JSON.parse(savedSession);
+      state.currentUser = { ...JSON.parse(savedSession), accessToken: sessionStorage.getItem("nodus_access_token") || null };
     }
   } catch {
     state.currentUser = null;
@@ -667,6 +667,15 @@ document.addEventListener("DOMContentLoaded", () => {
     async sha256Hex(bytes) {
       const hash = await window.crypto.subtle.digest("SHA-256", bytes);
       return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    },
+
+    bytesToHex(bytes) {
+      return Array.from(new Uint8Array(bytes)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    },
+
+    hexToBytes(hex) {
+      if (typeof hex !== "string" || !/^[a-f0-9]+$/i.test(hex) || hex.length % 2) throw new Error("Invalid hexadecimal value");
+      return new Uint8Array(hex.match(/.{1,2}/g).map((byte) => parseInt(byte, 16)));
     }
   };
 
@@ -676,18 +685,154 @@ document.addEventListener("DOMContentLoaded", () => {
   // absent from the gateway response, asset catalog, and storage metadata.
   const assetKeyCache = new Map();
 
+  function apiHeaders(headers = {}) {
+    const result = new Headers(headers);
+    if (state.currentUser?.accessToken) result.set("Authorization", `Bearer ${state.currentUser.accessToken}`);
+    return result;
+  }
+
+  function apiFetch(input, init = {}) {
+    return fetch(input, { ...init, headers: apiHeaders(init.headers) });
+  }
+
+  // The device encryption private key is stored as a non-extractable CryptoKey
+  // in IndexedDB. It is never included in a request, response, or localStorage.
+  const deviceKeyStore = {
+    open() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open("nodus-device-keys", 1);
+        request.onupgradeneeded = () => request.result.createObjectStore("identities");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error("Could not open device key store"));
+      });
+    },
+    async get(id) {
+      const database = await this.open();
+      return new Promise((resolve, reject) => {
+        const request = database.transaction("identities", "readonly").objectStore("identities").get(id);
+        request.onsuccess = () => { database.close(); resolve(request.result || null); };
+        request.onerror = () => { database.close(); reject(request.error); };
+      });
+    },
+    async put(id, identity) {
+      const database = await this.open();
+      return new Promise((resolve, reject) => {
+        const request = database.transaction("identities", "readwrite").objectStore("identities").put(identity, id);
+        request.onsuccess = () => { database.close(); resolve(); };
+        request.onerror = () => { database.close(); reject(request.error); };
+      });
+    }
+  };
+
+  function activeTenantId() {
+    return state.currentUser?.tenant?.organizationId || state.currentUser?.activeOrg?.orgId || null;
+  }
+
+  function deviceIdentityId() {
+    const tenantId = activeTenantId();
+    if (!state.currentUser?.address || !tenantId) throw new Error("An authenticated organization is required");
+    return `${state.currentUser.address}:${tenantId}`;
+  }
+
+  async function createDeviceIdentity() {
+    const pair = await window.crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+    const publicKey = await window.crypto.subtle.exportKey("jwk", pair.publicKey);
+    const privateJwk = await window.crypto.subtle.exportKey("jwk", pair.privateKey);
+    const privateKey = await window.crypto.subtle.importKey("jwk", privateJwk, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
+    return { publicKey, privateKey };
+  }
+
+  async function ensureDeviceIdentity() {
+    if (!state.currentUser?.accessToken || !activeTenantId()) throw new Error("Sign in to a provisioned organization before handling encrypted assets");
+    const id = deviceIdentityId();
+    let identity = await deviceKeyStore.get(id);
+    if (!identity) {
+      identity = await createDeviceIdentity();
+      await deviceKeyStore.put(id, identity);
+    }
+    const response = await apiFetch(`/api/key-identities/${encodeURIComponent(state.currentUser.address)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ publicKey: identity.publicKey })
+    });
+    const body = await response.json();
+    if (!response.ok || !body.success) throw new Error(body.error || "Could not register this device encryption identity");
+    return identity;
+  }
+
+  async function wrapDataKeyForCurrentUser(assetId, keyHex) {
+    const identity = await ensureDeviceIdentity();
+    const recipient = await window.crypto.subtle.importKey("jwk", identity.publicKey, { name: "ECDH", namedCurve: "P-256" }, false, []);
+    const ephemeral = await window.crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+    const shared = await window.crypto.subtle.deriveBits({ name: "ECDH", public: recipient }, ephemeral.privateKey, 256);
+    const wrappingKey = await window.crypto.subtle.importKey("raw", shared, { name: "AES-GCM" }, false, ["encrypt"]);
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const tenantId = activeTenantId();
+    const aad = new TextEncoder().encode(`nodus:key-envelope:v1:${assetId}:${state.currentUser.address}:user:${tenantId}`);
+    const ciphertext = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad }, wrappingKey, NodusCrypto.hexToBytes(keyHex));
+    return {
+      recipientAddress: state.currentUser.address,
+      recipientType: "user",
+      organizationId: tenantId,
+      algorithm: "ECDH-P256/AES-256-GCM",
+      ephemeralPublicKey: await window.crypto.subtle.exportKey("jwk", ephemeral.publicKey),
+      iv: NodusCrypto.bytesToHex(iv),
+      ciphertext: NodusCrypto.bytesToHex(ciphertext)
+    };
+  }
+
+  async function persistOwnerEnvelope(assetId, keyHex) {
+    const envelope = await wrapDataKeyForCurrentUser(assetId, keyHex);
+    const response = await apiFetch(`/api/assets/${encodeURIComponent(assetId)}/key-envelopes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ envelopes: [envelope] })
+    });
+    const body = await response.json();
+    if (!response.ok || !body.success) throw new Error(body.error || "Could not store the encrypted key envelope");
+  }
+
+  async function discardUnprotectedAsset(assetId) {
+    await apiFetch(`/api/assets/${encodeURIComponent(assetId)}`, { method: "DELETE" }).catch(() => {});
+  }
+
+  async function recoverAssetKey(assetId) {
+    if (assetKeyCache.has(assetId)) return assetKeyCache.get(assetId);
+    const identity = await ensureDeviceIdentity();
+    const response = await apiFetch(`/api/assets/${encodeURIComponent(assetId)}/key-envelopes`);
+    const body = await response.json();
+    if (!response.ok || !body.success) throw new Error(body.error || "No key envelope is available for this asset");
+    for (const envelope of body.envelopes || []) {
+      if (envelope.recipientType !== "user") continue;
+      try {
+        const ephemeral = await window.crypto.subtle.importKey("jwk", envelope.ephemeralPublicKey, { name: "ECDH", namedCurve: "P-256" }, false, []);
+        const shared = await window.crypto.subtle.deriveBits({ name: "ECDH", public: ephemeral }, identity.privateKey, 256);
+        const wrappingKey = await window.crypto.subtle.importKey("raw", shared, { name: "AES-GCM" }, false, ["decrypt"]);
+        const aad = new TextEncoder().encode(`nodus:key-envelope:v1:${assetId}:${envelope.recipientAddress}:user:${envelope.organizationId}`);
+        const key = await window.crypto.subtle.decrypt({ name: "AES-GCM", iv: NodusCrypto.hexToBytes(envelope.iv), additionalData: aad }, wrappingKey, NodusCrypto.hexToBytes(envelope.ciphertext));
+        const keyHex = NodusCrypto.bytesToHex(key);
+        assetKeyCache.set(assetId, keyHex);
+        return keyHex;
+      } catch {
+        // Keep trying: an account can legitimately have envelopes for another device.
+      }
+    }
+    throw new Error("This device cannot decrypt an envelope for the asset");
+  }
+
   async function getOrDecryptPhotoUrl(photo) {
     if (decryptedMediaCache.has(photo.id)) {
       return decryptedMediaCache.get(photo.id);
     }
 
-    const keyHex = assetKeyCache.get(photo.id);
+    let keyHex = assetKeyCache.get(photo.id);
+    if (photo.encrypted && !keyHex) keyHex = await recoverAssetKey(photo.id);
     if (!photo.encrypted || !keyHex || !photo.iv) {
       return photo.stream_url;
     }
 
     try {
-      const res = await fetch(photo.stream_url);
+      const res = await apiFetch(photo.stream_url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const ciphertextBuffer = await res.arrayBuffer();
       let blob;
@@ -823,7 +968,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function saveAuthSession(session) {
     state.currentUser = session;
-    localStorage.setItem("nodus_auth_session", JSON.stringify(session));
+    const { accessToken, ...nonSensitiveSession } = session;
+    localStorage.setItem("nodus_auth_session", JSON.stringify(nonSensitiveSession));
+    if (accessToken) sessionStorage.setItem("nodus_access_token", accessToken);
     localStorage.removeItem("suigallery_auth_session");
     updateAuthUI();
   }
@@ -832,9 +979,41 @@ document.addEventListener("DOMContentLoaded", () => {
     state.currentUser = null;
     localStorage.removeItem("nodus_auth_session");
     localStorage.removeItem("suigallery_auth_session");
+    sessionStorage.removeItem("nodus_access_token");
     closeVaultModal();
     updateAuthUI();
     showToast(t("toast_signed_out"), "info");
+  }
+
+  function encodeBase58(bytes) {
+    const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    const source = new Uint8Array(bytes);
+    const digits = [0];
+    for (const byte of source) {
+      let carry = byte;
+      for (let index = 0; index < digits.length; index++) {
+        carry += digits[index] << 8;
+        digits[index] = carry % 58;
+        carry = Math.floor(carry / 58);
+      }
+      while (carry) {
+        digits.push(carry % 58);
+        carry = Math.floor(carry / 58);
+      }
+    }
+    let encoded = "";
+    for (const byte of source) {
+      if (byte !== 0) break;
+      encoded += alphabet[0];
+    }
+    for (let index = digits.length - 1; index >= 0; index--) encoded += alphabet[digits[index]];
+    return encoded;
+  }
+
+  function promptForOrganization() {
+    const previous = state.currentUser?.tenant?.organizationId || "";
+    const organizationId = prompt("Informe o ID da organização pré-provisionada para esta sessão:", previous);
+    return organizationId?.trim() || null;
   }
 
   // Google zkLogin Handler
@@ -959,6 +1138,8 @@ document.addEventListener("DOMContentLoaded", () => {
         showToast("Connecting to Solana Wallet...", "info");
         const resp = await window.solana.connect();
         const address = resp.publicKey ? resp.publicKey.toString() : window.solana.publicKey.toString();
+        const organizationId = promptForOrganization();
+        if (!organizationId) return;
 
         // 1. Request SIWS Challenge from Nodus Engine
         const challengeRes = await fetch("/api/auth/solana/challenge", {
@@ -973,13 +1154,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const encodedMsg = new TextEncoder().encode(challenge.message);
         const signed = await window.solana.signMessage(encodedMsg, "utf8");
         const sigBytes = signed.signature || signed;
-        const sigHex = Array.from(sigBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+        const signature = encodeBase58(sigBytes);
 
         // 3. Verify on server and load Anchor organization
         const verifyRes = await fetch("/api/auth/solana/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address, signature: sigHex, message: challenge.message })
+          body: JSON.stringify({ address, signature, message: challenge.message, organizationId })
         });
         const verifyData = await verifyRes.json();
         if (!verifyData.success) throw new Error(verifyData.error || "Cryptographic verification failed");
@@ -993,11 +1174,15 @@ document.addEventListener("DOMContentLoaded", () => {
           address,
           scheme: "Ed25519 (SIWS Challenge)",
           organizations: verifyData.organizations || [],
-          activeOrg: verifyData.organizations?.[0] || null,
+          activeOrg: { orgId: verifyData.tenant?.organizationId || organizationId },
+          tenant: verifyData.tenant,
+          accessToken: verifyData.accessToken,
+          expiresAt: verifyData.expiresAt,
           createdAt: new Date().toISOString()
         };
 
         saveAuthSession(session);
+        await ensureDeviceIdentity();
         closeZkLoginModal();
         showToast(`☀️ Signed in with Solana: ${shortenAddress(address)}`, "success");
         return;
@@ -1106,7 +1291,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
   async function fetchStatus() {
     try {
-      const res = await fetch("/api/status");
+      const res = await apiFetch("/api/status");
       const data = await res.json();
       if (data.success) {
         state.status = data;
@@ -1124,7 +1309,7 @@ document.addEventListener("DOMContentLoaded", () => {
   async function fetchPhotos() {
     photoCounter.textContent = t("loading_vault");
     try {
-      const res = await fetch("/api/photos");
+      const res = await apiFetch("/api/photos");
       const data = await res.json();
       if (data.success) {
         state.photos = data.photos || [];
@@ -1321,7 +1506,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const isImage = cat.category === "image";
         const isSelected = state.selectedIds.has(p.id);
         const cachedUrl = decryptedMediaCache.get(p.id);
-        const initialSrc = cachedUrl || (p.encrypted && assetKeyCache.has(p.id) ? "" : p.stream_url);
+        const initialSrc = cachedUrl || (p.encrypted ? "" : p.stream_url);
         const safeName = escapeHtml(p.original_name || p.name);
         const safeId = escapeHtml(p.id);
 
@@ -1359,7 +1544,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Asynchronously decrypt and stream thumbnails on-device only for images
     filtered.forEach((p) => {
       const cat = getAssetCategory(p);
-      if (cat.category === "image" && p.encrypted && assetKeyCache.has(p.id) && p.iv && !decryptedMediaCache.has(p.id)) {
+      if (cat.category === "image" && p.encrypted && p.iv && !decryptedMediaCache.has(p.id)) {
         getOrDecryptPhotoUrl(p).then((url) => {
           const imgEl = document.getElementById(`thumb-${p.id}`);
           if (imgEl && url) imgEl.src = url;
@@ -1445,7 +1630,7 @@ document.addEventListener("DOMContentLoaded", () => {
     batchDeleteBtn.innerHTML = `<div class="spinner-sm"></div> ${t("batch_deleting", { count })}`;
 
     try {
-      const res = await fetch("/api/photos/batch-delete", {
+      const res = await apiFetch("/api/photos/batch-delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileIds: Array.from(state.selectedIds) })
@@ -1476,7 +1661,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
   // LIGHTBOX & METADATA EDITING
   // ==========================================
-  function openLightbox(photo) {
+  async function openLightbox(photo) {
     state.selectedPhoto = photo;
     if (lightboxViewport) lightboxViewport.classList.remove("zoomed");
     if (lightboxZoomBtn) {
@@ -1516,6 +1701,14 @@ document.addEventListener("DOMContentLoaded", () => {
     metaUploadDate.textContent = formatDate(photo.created_at);
 
     const cat = getAssetCategory(photo);
+
+    if (photo.encrypted && !assetKeyCache.has(photo.id)) {
+      try {
+        await recoverAssetKey(photo.id);
+      } catch (error) {
+        showToast(`Unable to unlock ${photo.original_name || photo.name}: ${error.message}`, "danger");
+      }
+    }
 
     if (photo.encrypted && assetKeyCache.has(photo.id) && photo.iv) {
       if (decryptedMediaCache.has(photo.id)) {
@@ -1671,7 +1864,7 @@ document.addEventListener("DOMContentLoaded", () => {
     editSaveBtn.innerHTML = `<div class="spinner-sm"></div> ${t("saving")}`;
 
     try {
-      const res = await fetch(`/api/photos/${fileId}`, {
+      const res = await apiFetch(`/api/photos/${fileId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName, description: newDesc, tags: newTags })
@@ -1706,7 +1899,7 @@ document.addEventListener("DOMContentLoaded", () => {
     deleteBtn.innerHTML = `<div class="spinner-sm"></div> ${t("deleting")}`;
 
     try {
-      const res = await fetch(`/api/photos/${fileId}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/photos/${fileId}`, { method: "DELETE" });
       const data = await res.json();
       if (data.success) {
         closeLightbox();
@@ -1762,7 +1955,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const chunkCount = Math.ceil(file.size / RESUMABLE_CHUNK_SIZE);
     const encryptedSize = file.size + (chunkCount * 16);
 
-    const createRes = await fetch("/api/assets/uploads", {
+    const createRes = await apiFetch("/api/assets/uploads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1795,7 +1988,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const plaintext = await file.slice(start, end).arrayBuffer();
         const ciphertext = await NodusCrypto.encryptChunk(plaintext, key, ivHex, partNumber);
         const checksum = await NodusCrypto.sha256Hex(ciphertext);
-        const partRes = await fetch(`/api/assets/uploads/${uploadId}/parts/${partNumber}`, {
+        const partRes = await apiFetch(`/api/assets/uploads/${uploadId}/parts/${partNumber}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/octet-stream",
@@ -1808,7 +2001,7 @@ document.addEventListener("DOMContentLoaded", () => {
         onProgress?.({ uploadedBytes: end, totalBytes: file.size, partNumber, chunkCount });
       }
 
-      const completeRes = await fetch(`/api/assets/uploads/${uploadId}/complete`, { method: "POST" });
+      const completeRes = await apiFetch(`/api/assets/uploads/${uploadId}/complete`, { method: "POST" });
       const completeData = await completeRes.json();
       if (!completeRes.ok || !completeData.success) throw new Error(completeData.error || "Could not complete resumable upload");
       return { ...completeData, clientKey: keyHex };
@@ -1908,6 +2101,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
           lastUploadedBlobId = data.asset?.blob_id || data.asset?.blobId || null;
           if (data.asset?.id) {
+            try {
+              await persistOwnerEnvelope(data.asset.id, data.clientKey);
+            } catch (error) {
+              await discardUnprotectedAsset(data.asset.id);
+              throw error;
+            }
             decryptedMediaCache.set(data.asset.id, task.previewUrl);
             assetKeyCache.set(data.asset.id, data.clientKey);
           }
@@ -1965,7 +2164,7 @@ document.addEventListener("DOMContentLoaded", () => {
       formData.append("description", `Zero-Knowledge encrypted asset uploaded to Walrus at ${new Date().toISOString()}`);
 
       try {
-        const res = await fetch("/api/photos/upload", {
+        const res = await apiFetch("/api/photos/upload", {
           method: "POST",
           body: formData
         });
@@ -1977,6 +2176,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
           // Cache raw object URL for immediate in-session display without re-downloading ciphertext
           if (data.photo?.id) {
+            try {
+              await persistOwnerEnvelope(data.photo.id, encryptedPayload.keyHex);
+            } catch (error) {
+              await discardUnprotectedAsset(data.photo.id);
+              throw error;
+            }
             decryptedMediaCache.set(data.photo.id, task.previewUrl);
             assetKeyCache.set(data.photo.id, encryptedPayload.keyHex);
           }
@@ -2058,9 +2263,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function requireAuth() {
-    if (!state.currentUser) {
+    if (!state.currentUser?.accessToken || !activeTenantId()) {
       openZkLoginModal();
-      showToast("Please sign in with zkLogin to store encrypted memories", "info");
+      showToast("Sign in with a provisioned Solana organization to store encrypted assets", "info");
       return false;
     }
     return true;
