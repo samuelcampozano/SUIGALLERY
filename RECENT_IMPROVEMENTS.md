@@ -22,6 +22,22 @@ Este documento registra as melhorias integradas na branch `dev` e as entregas pr
 | Pronto para merge em `dev` | Convites e aceite de membros por SIWS | branch `codex/tenant-invitations` |
 | Pronto para merge em `dev` | API keys por organização com escopos | `6d2f906`, branch `codex/api-keys-foundation` |
 | Pronto para merge em `dev` | Idempotência pública por tenant e identidade | branch `codex/public-idempotency` |
+| Pronto para merge em `dev` | Contrato OpenAPI, exemplos SDK e webhooks assinados | branch `codex/openapi-signed-webhooks` |
+
+## 17. Contrato público e webhooks assinados
+
+Entregue na branch `codex/openapi-signed-webhooks`, pendente de merge na `dev`.
+
+- O contrato versionado está em `openapi/nodus.openapi.yaml`: bearer de sessão/API key, escopos, paginação por cursor, `Idempotency-Key`, sessões de upload direto e catálogo de erros estão documentados.
+- `examples/sdk-public-api.mjs` mostra autenticação por API key, paginação e retry seguro; o SDK ganhou `client.request()` e suporte a chaves de idempotência nas criações/finalizações de upload.
+- Owner/admin pode criar, listar, rotacionar e revogar endpoint HTTPS no tenant ativo. O segredo `whsec_…` é mostrado somente no momento de criar/rotacionar e fica cifrado com AES-256-GCM usando `NODUS_WEBHOOK_ENCRYPTION_KEY`.
+- Eventos `upload.completed`, `upload.failed`, `quota.high` e `asset.deleted` entram em outbox PostgreSQL na mesma transação da mudança. O worker entrega JSON sem plaintext/chaves, assinado com `sha256=HMAC_SHA256(secret, timestamp + '.' + rawBody)`.
+- Falhas HTTP ou de rede têm até seis tentativas, backoff exponencial de 30 segundos até uma hora e eventos de auditoria por endpoint e delivery. Consulte `examples/verify-webhook.mjs` para validar a assinatura a partir do corpo bruto.
+
+### Validação
+
+- `npm run test:webhooks`: passou (cifragem do segredo, HMAC e entrega bem-sucedida simulada).
+- A execução end-to-end contra PostgreSQL e um receptor HTTPS de teste permanece necessária antes da liberação de produção.
 
 ## 16. Idempotência pública por tenant e identidade
 

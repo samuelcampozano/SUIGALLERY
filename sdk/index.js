@@ -432,6 +432,27 @@ export class NodusClient {
   }
 
   /**
+   * Execute a documented public API request with the configured bearer session
+   * or API key. Mutating requests can provide a stable idempotencyKey.
+   */
+  async request(path, { method = "GET", body, idempotencyKey } = {}) {
+    const headers = this._getHeaders(true);
+    if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const response = await this._fetch(`${this.gatewayUrl}${path.startsWith("/") ? path : `/${path}`}`, {
+      method, headers, body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = new Error(payload?.error || `Nodus API request failed: HTTP ${response.status}`);
+      error.status = response.status;
+      error.payload = payload;
+      throw error;
+    }
+    return payload;
+  }
+
+  /**
    * Ingest and anchor an asset into Walrus.
    * Encrypts client-side using AES-256-GCM before transport by default.
    *
@@ -602,6 +623,7 @@ export class NodusClient {
       const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
       ivHex = ivHex || Array.from(iv).map((byte) => byte.toString(16).padStart(2, "0")).join("");
       upload = await this.createResumableUpload({
+        ...(options.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}:create` } : {}),
         originalName: name,
         originalType: type,
         originalSize,
@@ -644,7 +666,7 @@ export class NodusClient {
           });
       }
 
-      const completed = await this.completeResumableUpload(upload.uploadId);
+      const completed = await this.completeResumableUpload(upload.uploadId, options.idempotencyKey ? `${options.idempotencyKey}:finalize` : undefined);
       this._removeUploadReference(upload.uploadId);
       const record = completed.asset || completed.result;
       if (record) this._indexRecord(record, { name, type, description, tags });
@@ -723,6 +745,7 @@ export class NodusClient {
       const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
       ivHex = ivHex || Array.from(iv).map((byte) => byte.toString(16).padStart(2, "0")).join("");
       upload = await this.createDirectUpload({
+        ...(options.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}:create` } : {}),
         originalName: name,
         originalType: type,
         originalSize,
@@ -782,7 +805,7 @@ export class NodusClient {
         }
       });
       await Promise.all(workers);
-      const completed = await this.finalizeDirectUpload(upload.uploadId);
+      const completed = await this.finalizeDirectUpload(upload.uploadId, options.idempotencyKey ? `${options.idempotencyKey}:finalize` : undefined);
       this._removeUploadReference(upload.uploadId);
       const record = completed.asset;
       if (record) this._indexRecord(record, { name, type, description, tags });
@@ -821,10 +844,11 @@ export class NodusClient {
   }
 
   async createDirectUpload(payload) {
+    const { idempotencyKey, ...requestPayload } = payload;
     const res = await this._fetch(`${this.gatewayUrl}/api/assets/direct-uploads`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...this._getHeaders() },
-      body: JSON.stringify(payload)
+      headers: { "Content-Type": "application/json", ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}), ...this._getHeaders() },
+      body: JSON.stringify(requestPayload)
     });
     const body = await res.json();
     if (!res.ok || !body.success) throw new Error(body.error || `Unable to create direct upload: HTTP ${res.status}`);
@@ -860,10 +884,10 @@ export class NodusClient {
     return body.upload;
   }
 
-  async finalizeDirectUpload(uploadId) {
+  async finalizeDirectUpload(uploadId, idempotencyKey) {
     const res = await this._fetch(`${this.gatewayUrl}/api/assets/direct-uploads/${encodeURIComponent(uploadId)}/finalize`, {
       method: "POST",
-      headers: this._getHeaders()
+      headers: { ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}), ...this._getHeaders() }
     });
     const body = await res.json();
     if (!res.ok || !body.success) throw new Error(body.error || `Unable to finalize direct upload: HTTP ${res.status}`);
@@ -1143,10 +1167,11 @@ export class NodusClient {
   }
 
   async createResumableUpload(payload) {
+    const { idempotencyKey, ...requestPayload } = payload;
     const res = await this._fetch(`${this.gatewayUrl}/api/assets/uploads`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...this._getHeaders() },
-      body: JSON.stringify(payload)
+      headers: { "Content-Type": "application/json", ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}), ...this._getHeaders() },
+      body: JSON.stringify(requestPayload)
     });
     const body = await res.json();
     if (!res.ok || !body.success) throw new Error(body.error || `Unable to create resumable upload: HTTP ${res.status}`);
@@ -1180,10 +1205,10 @@ export class NodusClient {
     return body;
   }
 
-  async completeResumableUpload(uploadId) {
+  async completeResumableUpload(uploadId, idempotencyKey) {
     const res = await this._fetch(`${this.gatewayUrl}/api/assets/uploads/${encodeURIComponent(uploadId)}/complete`, {
       method: "POST",
-      headers: this._getHeaders()
+      headers: { ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}), ...this._getHeaders() }
     });
     const body = await res.json();
     if (!res.ok || !body.success) throw new Error(body.error || `Unable to complete resumable upload: HTTP ${res.status}`);

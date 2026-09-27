@@ -14,6 +14,7 @@ import { ResumableUploadManager, RESUMABLE_UPLOAD_LIMITS } from "./resumable-upl
 import { DirectUploadManager, DIRECT_UPLOAD_MAX_SEGMENT_SIZE } from "./direct-upload-manager.js";
 import { AuthenticatedPublisher } from "./authenticated-publisher.js";
 import { AuthTenantStore } from "./auth-tenant-store.js";
+import { WebhookDispatcher, encryptWebhookSecret } from "./webhook-dispatcher.js";
 import { TenantProvisioner } from "./tenant-provisioner.js";
 import {
   validateMagicBytes,
@@ -54,6 +55,7 @@ if (!fs.existsSync(tempStorageDir)) {
 const resumableUploads = new ResumableUploadManager({ rootDir: resumableUploadDir });
 const authenticatedPublisher = new AuthenticatedPublisher();
 const authTenantStore = process.env.DATABASE_URL ? new AuthTenantStore() : null;
+const webhookDispatcher = authTenantStore && process.env.NODUS_WEBHOOK_ENCRYPTION_KEY ? new WebhookDispatcher(authTenantStore) : null;
 const tenantProvisioner = new TenantProvisioner();
 const directUploads = new DirectUploadManager({
   rootDir: authTenantStore ? null : directUploadDir,
@@ -70,6 +72,7 @@ if (authTenantStore) {
     console.error("❌ [Server] Failed to initialize PostgreSQL tenant store:", err.message);
   });
 }
+if (authTenantStore && !webhookDispatcher) console.warn("⚠️ [Webhooks] Disabled: set NODUS_WEBHOOK_ENCRYPTION_KEY to enable signed webhook delivery.");
 
 function configuredOrigins() {
   const configured = (process.env.NODUS_ALLOWED_ORIGINS || "").split(",").map((origin) => origin.trim()).filter(Boolean);
@@ -109,7 +112,7 @@ async function requireTenant(req, res, next) {
     let apiKey = false;
     if (!context) { context = await authTenantStore.resolveApiKey(token); apiKey = Boolean(context); }
     if (!context) return res.status(401).json({ success: false, error: "Session expired, revoked, or invalid" });
-    req.auth = apiKey ? { apiKeyId: context.api_key_id, scopes: context.scopes, role: 'api_key' } : { userId: context.user_id, address: context.solana_address, role: context.role };
+    req.auth = apiKey ? { apiKeyId: context.api_key_id, userId: context.created_by, scopes: context.scopes, role: 'api_key' } : { userId: context.user_id, address: context.solana_address, role: context.role };
     req.tenant = { organizationId: context.organization_id, spaceId: context.space_id, bucketId: context.bucket_id, sealPolicyId: context.seal_policy_id, quotaBytes: Number(context.quota_bytes) };
     if (apiKey) { const scope = req.method === 'GET' ? (req.path.includes('/audit') ? 'audit:read' : req.path.includes('/search') ? 'search:read' : 'assets:read') : req.method === 'DELETE' ? 'assets:delete' : req.path.includes('key-envelopes') ? 'assets:share' : 'assets:write'; if (!req.auth.scopes.includes(scope)) return res.status(403).json({ success:false,error:`API key lacks ${scope} scope` }); const now=Date.now(); const state=apiKeyRequestWindows.get(context.api_key_id)||{at:now,count:0}; if(now-state.at>60000){state.at=now;state.count=0;} if(++state.count>300)return res.status(429).json({success:false,error:'API key rate limit exceeded'}); apiKeyRequestWindows.set(context.api_key_id,state); }
     return next();
@@ -143,7 +146,7 @@ const uploadWriteRoles = new Set(["owner", "admin", "contributor"]);
 
 function requireUploadWrite(req, res, next) {
   if (!authTenantStore) return next(); // requireTenant has already allowed only explicit test/dev bypasses.
-  if (!req.auth || !uploadWriteRoles.has(req.auth.role)) {
+  if (!req.auth || (!req.auth.apiKeyId && !uploadWriteRoles.has(req.auth.role))) {
     return res.status(403).json({ success: false, error: "Your organization role cannot upload or modify uploads" });
   }
   return next();
@@ -192,6 +195,11 @@ const pruneInterval = setInterval(() => {
 }, 5 * 60 * 1000);
 if (typeof pruneInterval.unref === "function") {
   pruneInterval.unref();
+}
+
+if (webhookDispatcher) {
+  const webhookInterval = setInterval(() => webhookDispatcher.dispatchDue().catch((error) => console.error("❌ [Webhooks] Dispatch failed:", error.message)), 15_000);
+  if (typeof webhookInterval.unref === "function") webhookInterval.unref();
 }
 
 async function cleanupOrphanedPublisherBlobs() {
@@ -758,6 +766,32 @@ app.post("/api/orgs/:orgId/api-keys/:apiKeyId/rotate", requireTenant, requireTen
 app.delete("/api/orgs/:orgId/api-keys/:apiKeyId", requireTenant, requireTenantEnvelopeStore, requireSessionAdmin, async (req,res)=>{
   if(req.params.orgId!==req.tenant.organizationId)return res.status(403).json({success:false,error:'Organization does not match active tenant'});
   try{await authTenantStore.revokeApiKey({organizationId:req.tenant.organizationId,apiKeyId:req.params.apiKeyId,actorUserId:req.auth.userId});return res.json({success:true,revoked:true});}catch(error){return res.status(400).json({success:false,error:error.message});}
+});
+
+function createWebhookSecret() { return `whsec_${crypto.randomBytes(32).toString("base64url")}`; }
+function requireWebhooks(req, res, next) {
+  if (!webhookDispatcher) return res.status(503).json({ success: false, error: "Signed webhooks are not configured" });
+  return next();
+}
+app.get("/api/orgs/:orgId/webhooks", requireTenant, requireTenantEnvelopeStore, requireSessionAdmin, async (req, res) => {
+  if (req.params.orgId !== req.tenant.organizationId) return res.status(403).json({ success: false, error: "Organization does not match active tenant" });
+  try { return res.json({ success: true, webhooks: await authTenantStore.listWebhooks({ organizationId: req.tenant.organizationId }) }); }
+  catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+app.post("/api/orgs/:orgId/webhooks", requireTenant, requireTenantEnvelopeStore, requireSessionAdmin, requireWebhooks, async (req, res) => {
+  if (req.params.orgId !== req.tenant.organizationId) return res.status(403).json({ success: false, error: "Organization does not match active tenant" });
+  try { const secret = createWebhookSecret(); const webhook = await authTenantStore.createWebhook({ organizationId: req.tenant.organizationId, actorUserId: req.auth.userId, url: req.body?.url, eventTypes: req.body?.eventTypes, encryptedSecret: encryptWebhookSecret(secret), secretPrefix: secret.slice(0, 12) }); return res.status(201).json({ success: true, webhook, secret, warning: "Store this secret now; it is shown only once." }); }
+  catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+app.post("/api/orgs/:orgId/webhooks/:webhookId/rotate", requireTenant, requireTenantEnvelopeStore, requireSessionAdmin, requireWebhooks, async (req, res) => {
+  if (req.params.orgId !== req.tenant.organizationId) return res.status(403).json({ success: false, error: "Organization does not match active tenant" });
+  try { const secret = createWebhookSecret(); const webhook = await authTenantStore.rotateWebhook({ organizationId: req.tenant.organizationId, webhookId: req.params.webhookId, actorUserId: req.auth.userId, encryptedSecret: encryptWebhookSecret(secret), secretPrefix: secret.slice(0, 12) }); return res.json({ success: true, webhook, secret, warning: "Store this replacement secret now; it is shown only once." }); }
+  catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+app.delete("/api/orgs/:orgId/webhooks/:webhookId", requireTenant, requireTenantEnvelopeStore, requireSessionAdmin, async (req, res) => {
+  if (req.params.orgId !== req.tenant.organizationId) return res.status(403).json({ success: false, error: "Organization does not match active tenant" });
+  try { await authTenantStore.revokeWebhook({ organizationId: req.tenant.organizationId, webhookId: req.params.webhookId, actorUserId: req.auth.userId }); return res.json({ success: true, revoked: true }); }
+  catch (error) { return res.status(400).json({ success: false, error: error.message }); }
 });
 
 // ==========================================
