@@ -82,11 +82,11 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 - [x] Definir escopos minimos: `assets:read`, `assets:write`, `assets:delete`, `assets:share`, `search:read` e `audit:read`.
 - [x] Aplicar rate limit e auditoria por API key/organizacao; a quota continua vinculada ao tenant.
 - [x] Adicionar idempotency keys para criacao/finalizacao de uploads e mutacoes de assets (aguarda teste PostgreSQL real).
-- [ ] Publicar especificacao OpenAPI e exemplos completos do SDK.
-- [ ] Adicionar webhooks assinados para upload concluido, falha, quota alta e asset deletado.
+- [x] Publicar especificacao OpenAPI e exemplos completos do SDK (contrato em `openapi/nodus.openapi.yaml`; validacao de integracao externa pendente).
+- [x] Adicionar webhooks assinados para upload concluido, falha, quota alta e asset deletado (outbox PostgreSQL, HMAC e backoff; execucao PostgreSQL real pendente).
 - [ ] Criar ambiente sandbox/testnet separado do ambiente de producao.
 
-**Criterio de saida:** parcialmente atendido: autenticacao por API key, escopos e isolamento foram implementados. Faltam validar a suite PostgreSQL, webhooks, OpenAPI e sandbox antes de uma aplicacao externa concluir o fluxo completo do milestone.
+**Criterio de saida:** parcialmente atendido: autenticacao por API key, escopos, idempotencia, contrato OpenAPI e webhooks assinados foram implementados. Faltam validar a suite PostgreSQL e disponibilizar sandbox/testnet antes de uma aplicacao externa concluir o fluxo completo do milestone.
 
 ## M4 - Busca privada e organizacao de arquivos
 

@@ -258,6 +258,22 @@ export class AuthTenantStore {
           created_at TIMESTAMPTZ NOT NULL DEFAULT now(), completed_at TIMESTAMPTZ
         );
         CREATE UNIQUE INDEX IF NOT EXISTS public_idempotency_unique_idx ON public_idempotency_records (organization_id,actor_key,operation,idempotency_key);
+        CREATE TABLE IF NOT EXISTS organization_webhooks (
+          id UUID PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, created_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+          url TEXT NOT NULL, event_types JSONB NOT NULL, secret_ciphertext TEXT NOT NULL, secret_iv TEXT NOT NULL, secret_tag TEXT NOT NULL, secret_prefix TEXT NOT NULL,
+          active BOOLEAN NOT NULL DEFAULT true, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), revoked_at TIMESTAMPTZ
+        );
+        CREATE TABLE IF NOT EXISTS webhook_deliveries (
+          id UUID PRIMARY KEY, webhook_id UUID NOT NULL REFERENCES organization_webhooks(id) ON DELETE CASCADE, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          event_type TEXT NOT NULL, payload JSONB NOT NULL, status TEXT NOT NULL CHECK (status IN ('pending','delivering','delivered','failed')) DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,
+          next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(), response_status INTEGER, last_error TEXT, delivered_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS webhook_deliveries_due_idx ON webhook_deliveries (status, next_attempt_at);
+        CREATE TABLE IF NOT EXISTS webhook_audit_events (
+          id UUID PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, webhook_id UUID REFERENCES organization_webhooks(id) ON DELETE SET NULL,
+          delivery_id UUID REFERENCES webhook_deliveries(id) ON DELETE SET NULL, actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL, event_type TEXT NOT NULL,
+          details JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
 
       `);
       console.log("🐘 [AuthTenantStore] PostgreSQL database schema verified.");
@@ -407,7 +423,7 @@ export class AuthTenantStore {
   }
 
   async resolveApiKey(token) {
-    const result = await this.pool.query(`SELECT k.id AS api_key_id,k.organization_id,k.scopes,t.space_id,t.bucket_id,t.seal_policy_id,t.quota_bytes
+    const result = await this.pool.query(`SELECT k.id AS api_key_id,k.created_by,k.organization_id,k.scopes,t.space_id,t.bucket_id,t.seal_policy_id,t.quota_bytes
       FROM organization_api_keys k JOIN tenant_storage_contexts t ON t.organization_id=k.organization_id AND t.active=true
       WHERE k.key_hash=$1 AND k.revoked_at IS NULL AND (k.expires_at IS NULL OR k.expires_at>now())`, [tokenHash(token)]);
     if (!result.rowCount) return null;
@@ -425,6 +441,62 @@ export class AuthTenantStore {
     } catch(error){await client.query("ROLLBACK");throw error;} finally{client.release();}
   }
   async completePublicIdempotency({ id, status, body }) { await this.pool.query("UPDATE public_idempotency_records SET status='completed',response_status=$2,response_body=$3::jsonb,completed_at=now() WHERE id=$1 AND status='in_progress'",[id,status,JSON.stringify(body)]); }
+
+  async createWebhook({ organizationId, actorUserId, url, eventTypes, encryptedSecret, secretPrefix }) {
+    const target = this.validateWebhookUrl(url);
+    const events = this.validateWebhookEvents(eventTypes);
+    const id = crypto.randomUUID();
+    const result = await this.pool.query(`INSERT INTO organization_webhooks (id,organization_id,created_by,url,event_types,secret_ciphertext,secret_iv,secret_tag,secret_prefix)
+      VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9) RETURNING id,url,event_types AS "eventTypes",secret_prefix AS "secretPrefix",active,created_at AS "createdAt"`,
+      [id, organizationId, actorUserId, target, JSON.stringify(events), encryptedSecret.ciphertext, encryptedSecret.iv, encryptedSecret.tag, secretPrefix]);
+    await this.webhookAudit({ organizationId, webhookId: id, actorUserId, eventType: "webhook.created", details: { url: target, eventTypes: events } });
+    return result.rows[0];
+  }
+  async listWebhooks({ organizationId }) {
+    const result = await this.pool.query(`SELECT id,url,event_types AS "eventTypes",secret_prefix AS "secretPrefix",active,created_at AS "createdAt",updated_at AS "updatedAt",revoked_at AS "revokedAt"
+      FROM organization_webhooks WHERE organization_id=$1 ORDER BY created_at DESC`, [organizationId]);
+    return result.rows;
+  }
+  async revokeWebhook({ organizationId, webhookId, actorUserId }) {
+    const result = await this.pool.query("UPDATE organization_webhooks SET active=false,revoked_at=now(),updated_at=now() WHERE id=$1 AND organization_id=$2 AND active=true RETURNING id", [webhookId, organizationId]);
+    if (!result.rowCount) throw new Error("Active webhook endpoint not found");
+    await this.webhookAudit({ organizationId, webhookId, actorUserId, eventType: "webhook.revoked" });
+  }
+  async rotateWebhook({ organizationId, webhookId, actorUserId, encryptedSecret, secretPrefix }) {
+    const result = await this.pool.query(`UPDATE organization_webhooks SET secret_ciphertext=$3,secret_iv=$4,secret_tag=$5,secret_prefix=$6,updated_at=now()
+      WHERE id=$1 AND organization_id=$2 AND active=true RETURNING id,url,event_types AS "eventTypes",secret_prefix AS "secretPrefix",active`, [webhookId,organizationId,encryptedSecret.ciphertext,encryptedSecret.iv,encryptedSecret.tag,secretPrefix]);
+    if (!result.rowCount) throw new Error("Active webhook endpoint not found");
+    await this.webhookAudit({ organizationId, webhookId, actorUserId, eventType: "webhook.secret_rotated" });
+    return result.rows[0];
+  }
+  async enqueueWebhookDeliveries(client, { organizationId, eventType, payload }) {
+    const endpoints = await client.query("SELECT id FROM organization_webhooks WHERE organization_id=$1 AND active=true AND event_types ? $2", [organizationId, eventType]);
+    for (const endpoint of endpoints.rows) await client.query("INSERT INTO webhook_deliveries (id,webhook_id,organization_id,event_type,payload) VALUES ($1,$2,$3,$4,$5::jsonb)", [crypto.randomUUID(),endpoint.id,organizationId,eventType,JSON.stringify(payload)]);
+  }
+  async claimDueWebhookDeliveries(limit = 25) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(`WITH due AS (SELECT id FROM webhook_deliveries WHERE status='pending' AND next_attempt_at <= now() ORDER BY next_attempt_at ASC LIMIT $1 FOR UPDATE SKIP LOCKED)
+        UPDATE webhook_deliveries d SET status='delivering',updated_at=now() FROM due JOIN organization_webhooks w ON w.id=d.webhook_id
+        WHERE d.id=due.id AND w.active=true RETURNING d.id,d.organization_id AS "organizationId",d.event_type AS "eventType",d.payload,d.attempts,d.created_at AS "createdAt",w.url,w.secret_ciphertext AS "secretCiphertext",w.secret_iv AS "secretIv",w.secret_tag AS "secretTag",w.id AS "webhookId"`, [Math.max(1, Math.min(Number(limit) || 25, 100))]);
+      await client.query("COMMIT"); return result.rows;
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  }
+  async completeWebhookDelivery({ deliveryId, responseStatus }) {
+    const result = await this.pool.query("UPDATE webhook_deliveries SET status='delivered',attempts=attempts+1,response_status=$2,delivered_at=now(),updated_at=now() WHERE id=$1 RETURNING organization_id,webhook_id", [deliveryId,responseStatus]);
+    if (result.rowCount) await this.webhookAudit({ organizationId: result.rows[0].organization_id, webhookId: result.rows[0].webhook_id, deliveryId, eventType: "webhook.delivered", details: { responseStatus } });
+  }
+  async failWebhookDelivery({ deliveryId, responseStatus = null, error, maxAttempts }) {
+    const result = await this.pool.query(`UPDATE webhook_deliveries SET attempts=attempts+1,response_status=$2,last_error=$3,
+      status=CASE WHEN attempts+1 >= $4 THEN 'failed' ELSE 'pending' END,
+      next_attempt_at=CASE WHEN attempts+1 >= $4 THEN next_attempt_at ELSE now() + (LEAST(3600, 30 * power(2, attempts))) * interval '1 second' END,updated_at=now()
+      WHERE id=$1 RETURNING organization_id,webhook_id,attempts,status`, [deliveryId,responseStatus,String(error || "delivery failed").slice(0,1000),maxAttempts]);
+    if (result.rowCount) await this.webhookAudit({ organizationId: result.rows[0].organization_id, webhookId: result.rows[0].webhook_id, deliveryId, eventType: result.rows[0].status === "failed" ? "webhook.failed" : "webhook.retry_scheduled", details: { attempts: result.rows[0].attempts, error: String(error).slice(0,300), responseStatus } });
+  }
+  async webhookAudit({ organizationId, webhookId = null, deliveryId = null, actorUserId = null, eventType, details = {} }) { await this.pool.query("INSERT INTO webhook_audit_events (id,organization_id,webhook_id,delivery_id,actor_user_id,event_type,details) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)", [crypto.randomUUID(),organizationId,webhookId,deliveryId,actorUserId,eventType,JSON.stringify(details)]); }
+  validateWebhookEvents(events) { const allowed = new Set(["upload.completed","upload.failed","quota.high","asset.deleted"]); if (!Array.isArray(events) || !events.length || events.some((event) => !allowed.has(event))) throw new Error("Webhook events are invalid"); return [...new Set(events)]; }
+  validateWebhookUrl(value) { let url; try { url = new URL(value); } catch { throw new Error("Webhook URL is invalid"); } if (url.username || url.password || (url.protocol !== "https:" && !(process.env.NODE_ENV !== "production" && url.protocol === "http:"))) throw new Error("Webhook URL must use HTTPS"); return url.toString(); }
 
   async createApiKey({ organizationId, actorUserId, name, scopes, expiresAt = null, rotatedFrom = null }) {
     const allowed = new Set(['assets:read','assets:write','assets:delete','assets:share','search:read','audit:read']);
@@ -497,6 +569,9 @@ export class AuthTenantStore {
         [organizationId, bytes]
       );
       await this.insertUploadAudit(client, { organizationId, userId, uploadId, assetId, eventType: "upload.started", metadata: { uploadKind, reservedBytes: bytes } });
+      const projectedUsage = used + reserved + bytes;
+      const quotaBytes = Number(tenant.rows[0].quota_bytes);
+      if (projectedUsage / quotaBytes >= 0.8) await this.enqueueWebhookDeliveries(client, { organizationId, eventType: "quota.high", payload: { quotaBytes, usedBytes: used, reservedBytes: reserved + bytes, percentage: Math.round((projectedUsage / quotaBytes) * 100) } });
       await client.query("COMMIT");
       return { uploadId, assetId, reservationId, expiresAt, duplicate: false };
     } catch (error) {
@@ -608,6 +683,7 @@ export class AuthTenantStore {
         [organizationId, bytes]
       );
       await this.insertUploadAudit(client, { organizationId, userId, uploadId, assetId: session.asset_id, eventType: "upload.completed", metadata: { providerAssetId: completedAssetId } });
+      await this.enqueueWebhookDeliveries(client, { organizationId, eventType: "upload.completed", payload: { uploadId, assetId: session.asset_id, providerAssetId: completedAssetId, uploadKind: session.upload_kind } });
       await client.query("COMMIT");
       return { assetId: session.asset_id, providerAssetId: completedAssetId, alreadyCompleted: false };
     } catch (error) {
@@ -695,6 +771,7 @@ export class AuthTenantStore {
     await client.query("UPDATE upload_sessions SET status = $2, updated_at = now() WHERE id = $1", [session.id, status]);
     await client.query("UPDATE managed_assets SET status = $2 WHERE id = $1", [session.asset_id, status]);
     await this.insertUploadAudit(client, { organizationId: session.organization_id, userId: actorUserId, uploadId: session.id, assetId: session.asset_id, eventType: `upload.${status}`, metadata: { reason } });
+    if (status === "failed") await this.enqueueWebhookDeliveries(client, { organizationId: session.organization_id, eventType: "upload.failed", payload: { uploadId: session.id, assetId: session.asset_id, reason: String(reason).slice(0, 200) } });
   }
 
   async insertUploadAudit(client, { organizationId, userId = null, uploadId = null, assetId = null, eventType, metadata = {} }) {
@@ -1158,10 +1235,16 @@ export class AuthTenantStore {
   }
 
   async deleteCatalogAsset({ organizationId, assetId, actorUserId }) {
-    const result = await this.pool.query(`UPDATE catalog_assets SET status='deleted', deleted_at=now(), updated_at=now()
-      WHERE organization_id=$1 AND asset_id=$2 AND status='active' RETURNING asset_id`, [organizationId, assetId]);
-    if (!result.rowCount) throw new Error("Catalog asset not found");
-    await this.audit({ organizationId, assetId, actorUserId, eventType: "asset.deleted" });
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(`UPDATE catalog_assets SET status='deleted', deleted_at=now(), updated_at=now()
+        WHERE organization_id=$1 AND asset_id=$2 AND status='active' RETURNING asset_id`, [organizationId, assetId]);
+      if (!result.rowCount) throw new Error("Catalog asset not found");
+      await this.audit({ client, organizationId, assetId, actorUserId, eventType: "asset.deleted" });
+      await this.enqueueWebhookDeliveries(client, { organizationId, eventType: "asset.deleted", payload: { assetId } });
+      await client.query("COMMIT");
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
   }
 
   async listAssetVersions({ organizationId, assetId }) {

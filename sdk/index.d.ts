@@ -45,6 +45,8 @@ export interface PutOptions {
   /** Optional Sui address to receive the created Walrus Blob object. */
   sendObjectTo?: string;
   uploadId?: string;
+  /** Stable key used to safely retry a public mutation after a timeout. */
+  idempotencyKey?: string;
   key?: string;
   iv?: string;
   onProgress?: (progress: ResumableUploadProgress) => void;
@@ -106,6 +108,8 @@ export interface PutResult {
   iv?: string;
   record?: any;
 }
+
+export interface NodusRequestOptions { method?: string; body?: unknown; idempotencyKey?: string; }
 
 export interface GetOptions {
   key?: string;
@@ -172,6 +176,7 @@ export declare class NodusClient {
 
   constructor(config?: NodusClientConfig);
   getStatus(): Promise<any>;
+  request(path: string, options?: NodusRequestOptions): Promise<any>;
   put(data: Uint8Array | ArrayBuffer | string | Blob, options: PutOptions): Promise<PutResult>;
   putResumable(data: Uint8Array | ArrayBuffer | string | Blob, options: PutOptions): Promise<PutResult & { uploadId: string; upload: ResumableUpload }>;
   resumeResumableUpload(uploadId: string, data: Uint8Array | ArrayBuffer | string | Blob, options: PutOptions & { key: string; iv: string }): Promise<PutResult & { uploadId: string; upload: ResumableUpload }>;
@@ -180,13 +185,13 @@ export declare class NodusClient {
   createResumableUpload(payload: Record<string, any>): Promise<ResumableUpload>;
   getResumableUpload(uploadId: string): Promise<ResumableUpload>;
   uploadResumablePart(uploadId: string, partNumber: number, data: Uint8Array, checksum: string): Promise<any>;
-  completeResumableUpload(uploadId: string): Promise<any>;
+  completeResumableUpload(uploadId: string, idempotencyKey?: string): Promise<any>;
   abortResumableUpload(uploadId: string): Promise<{ success: boolean; aborted: boolean }>;
-  createDirectUpload(payload: Record<string, any>): Promise<DirectUpload>;
+  createDirectUpload(payload: Record<string, any> & { idempotencyKey?: string }): Promise<DirectUpload>;
   getDirectUpload(uploadId: string): Promise<DirectUpload>;
   authorizeDirectSegment(uploadId: string, segmentIndex: number, sendObjectTo?: string): Promise<any>;
   completeDirectSegment(uploadId: string, segmentIndex: number, payload: any): Promise<DirectUpload>;
-  finalizeDirectUpload(uploadId: string): Promise<{ upload: DirectUpload; asset: any; manifest: any }>;
+  finalizeDirectUpload(uploadId: string, idempotencyKey?: string): Promise<{ upload: DirectUpload; asset: any; manifest: any }>;
   getDirectManifest(assetId: string): Promise<any>;
   stream(fileId: string, options?: GetOptions): Promise<ReadableStream<Uint8Array>>;
   get(fileId: string, options?: GetOptions): Promise<GetResult>;
