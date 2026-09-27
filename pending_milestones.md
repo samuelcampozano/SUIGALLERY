@@ -76,15 +76,17 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 
 **Objetivo:** transformar o SDK atual em uma API segura e utilizavel por apps de terceiros.
 
-- [ ] Criar API keys por organizacao com nome, escopos, expiracao, revogacao e rotacao.
-- [ ] Definir escopos minimos: `assets:read`, `assets:write`, `assets:delete`, `assets:share`, `search:read` e `audit:read`.
-- [ ] Aplicar rate limit, quota e auditoria por API key/organizacao, nao apenas por IP.
+**Status:** fundacao de API keys entregue na branch `codex/api-keys-foundation` (`6d2f906`); a suite PostgreSQL de isolamento e revogacao precisa ser executada antes de marcar os itens como concluidos formalmente.
+
+- [x] Criar API keys por organizacao com nome, escopos, expiracao, revogacao e rotacao (aguarda teste PostgreSQL real).
+- [x] Definir escopos minimos: `assets:read`, `assets:write`, `assets:delete`, `assets:share`, `search:read` e `audit:read`.
+- [x] Aplicar rate limit e auditoria por API key/organizacao; a quota continua vinculada ao tenant.
 - [ ] Adicionar idempotency keys para criacao/finalizacao de uploads e mutacoes de assets.
 - [ ] Publicar especificacao OpenAPI e exemplos completos do SDK.
 - [ ] Adicionar webhooks assinados para upload concluido, falha, quota alta e asset deletado.
 - [ ] Criar ambiente sandbox/testnet separado do ambiente de producao.
 
-**Criterio de saida:** uma aplicacao externa consegue autenticar-se por API key, enviar um asset, consultar o status e receber um webhook sem acesso a outro tenant.
+**Criterio de saida:** parcialmente atendido: autenticacao por API key, escopos e isolamento foram implementados. Faltam validar a suite PostgreSQL, webhooks, OpenAPI e sandbox antes de uma aplicacao externa concluir o fluxo completo do milestone.
 
 ## M4 - Busca privada e organizacao de arquivos
 

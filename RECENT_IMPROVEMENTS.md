@@ -20,6 +20,22 @@ Este documento registra as melhorias integradas na branch `dev` e as entregas pr
 | Pronto para merge em `dev` | M0 zero-custody: bloqueio de chaves brutas e fail-closed por envelopes | `5fa4a70` |
 | Pronto para merge em `dev` | Provisionamento administrativo e ciclo de vida de tenants | `46d99df`, branch `codex/tenant-provisioning-admin` |
 | Pronto para merge em `dev` | Convites e aceite de membros por SIWS | branch `codex/tenant-invitations` |
+| Pronto para merge em `dev` | API keys por organização com escopos | `6d2f906`, branch `codex/api-keys-foundation` |
+
+## 15. API keys por organização com escopos
+
+Entregue na branch `codex/api-keys-foundation` pelo commit `6d2f906` (`feat: add scoped organization API keys`), pendente de merge na `dev`.
+
+- API keys são geradas uma única vez e persistidas somente como hash SHA-256, com prefixo público para identificação operacional.
+- Owner/admin cria, lista, revoga e rotaciona chaves do tenant ativo; uma API key não pode administrar outras chaves.
+- O middleware de tenant aceita bearer de sessão ou API key e aplica os escopos `assets:read`, `assets:write`, `assets:delete`, `assets:share`, `search:read` e `audit:read` antes de executar a rota.
+- Criação, revogação e uso carregam organização, chave e auditoria; cada chave tem limite independente de 300 requisições por minuto, além dos limites globais existentes.
+- A migração `008_api_keys.sql` e a suíte `npm run test:api-keys` cobrem resolução, isolamento de tenant e invalidação após revogação.
+
+### Validação
+
+- `npm run test:zero-plaintext`: passou.
+- `npm run test:api-keys`: adicionada; requer `DATABASE_URL` e aguarda execução contra PostgreSQL real.
 
 ## 14. Convites e aceite de membros
 
