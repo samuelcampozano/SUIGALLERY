@@ -104,7 +104,7 @@ async function run() {
     const result = await client.put(data, {
       name: "direct-publisher-test.bin",
       type: "application/octet-stream",
-      directPublisher: true,
+      resumableThresholdBytes: MiB,
       chunkSize: MiB,
       segmentSize: 2 * MiB,
       epochs: 2,

@@ -6,11 +6,14 @@
  */
 
 import { PublicKey } from "@solana/web3.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 
 export const DEFAULT_NODUS_PROGRAM_ID = "NodUS11111111111111111111111111111111111111";
 export const DEFAULT_RESUMABLE_THRESHOLD_BYTES = 20 * 1024 * 1024;
 export const DEFAULT_RESUMABLE_CHUNK_SIZE = 8 * 1024 * 1024;
 export const DEFAULT_DIRECT_PUBLISHER_SEGMENT_SIZE = 64 * 1024 * 1024;
+export const DEFAULT_DIRECT_UPLOAD_CONCURRENCY = 3;
+export const DEFAULT_DIRECT_UPLOAD_MAX_RETRIES = 4;
 
 /**
  * Derives the deterministic Anchor Program Derived Address (PDA) for an Organization.
@@ -425,6 +428,12 @@ export class NodusClient {
       return this.putDirectPublisher(data, { ...options, name, type, description, tags, encrypt });
     }
     const resumableThreshold = options.resumableThresholdBytes || DEFAULT_RESUMABLE_THRESHOLD_BYTES;
+    // Large objects never traverse the gateway. A caller can explicitly opt out
+    // while migrating an older publisher integration, but should not do so for
+    // production-scale uploads.
+    if (options.directPublisher !== false && options.resumable !== true && sourceSize > resumableThreshold) {
+      return this.putDirectPublisher(data, { ...options, name, type, description, tags, encrypt });
+    }
     if (options.resumable !== false && (options.resumable === true || sourceSize > resumableThreshold)) {
       return this.putResumable(data, { ...options, name, type, description, tags, encrypt });
     }
@@ -697,32 +706,45 @@ export class NodusClient {
     }
 
     try {
-      for (const segment of upload.segments) {
-        if (segment.status === "completed") continue;
-        const { ciphertext, ciphertextSha256 } = await this._encryptDirectSegment(data, segment, keyHex, ivHex, chunkSize);
-        const authorization = await this.authorizeDirectSegment(upload.uploadId, segment.index, ciphertextSha256, options.sendObjectTo);
-        const published = await this._fetch(authorization.uploadUrl, {
-          method: authorization.method || "PUT",
-          headers: authorization.headers,
-          body: ciphertext
-        });
-        const publisherResponse = await this._readPublisherResponse(published);
-        if (!published.ok) {
-          throw new Error(publisherResponse?.error || publisherResponse?.message || `Publisher rejected segment ${segment.index}: HTTP ${published.status}`);
-        }
-        const blobId = this._publisherBlobId(publisherResponse);
-        if (!blobId) throw new Error(`Publisher did not return a blob ID for segment ${segment.index}`);
-        upload = await this.completeDirectSegment(upload.uploadId, segment.index, { ciphertextSha256, publisherResponse, receipt: publisherResponse?.receipt });
+      const pending = upload.segments.filter((segment) => segment.status !== "completed");
+      const concurrency = Number(options.concurrency || DEFAULT_DIRECT_UPLOAD_CONCURRENCY);
+      if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 5) throw new Error("direct upload concurrency must be between 1 and 5");
+      const maxRetries = Number(options.maxRetries || DEFAULT_DIRECT_UPLOAD_MAX_RETRIES);
+      if (!Number.isInteger(maxRetries) || maxRetries < 1 || maxRetries > 8) throw new Error("direct upload maxRetries must be between 1 and 8");
+
+      let nextIndex = 0;
+      let uploadedBytes = upload.segments
+        .filter((segment) => segment.status === "completed")
+        .reduce((total, segment) => total + segment.plainSize, 0);
+      const publishOne = async (segment) => {
+        await this._withExponentialBackoff(async () => {
+          const { ciphertextSha256, ciphertextStream } = await this._prepareDirectSegmentUpload(data, segment, keyHex, ivHex, chunkSize);
+          const authorization = await this.authorizeDirectSegment(upload.uploadId, segment.index, ciphertextSha256, options.sendObjectTo);
+          const request = {
+            method: authorization.method || "PUT",
+            headers: authorization.headers,
+            body: ciphertextStream,
+            // Required by Node's fetch and supported by Chromium for request streams.
+            duplex: "half"
+          };
+          const published = await this._fetch(authorization.uploadUrl, request);
+          const publisherResponse = await this._readPublisherResponse(published);
+          if (!published.ok) throw new Error(publisherResponse?.error || publisherResponse?.message || `Publisher rejected segment ${segment.index}: HTTP ${published.status}`);
+          if (!this._publisherBlobId(publisherResponse)) throw new Error(`Publisher did not return a blob ID for segment ${segment.index}`);
+          await this.completeDirectSegment(upload.uploadId, segment.index, { ciphertextSha256, publisherResponse, receipt: publisherResponse?.receipt });
+        }, maxRetries);
+        uploadedBytes += segment.plainSize;
         if (typeof options.onProgress === "function") {
-          options.onProgress({
-            uploadId: upload.uploadId,
-            segmentIndex: segment.index,
-            segmentCount: upload.segmentCount,
-            uploadedBytes: segment.plainEnd,
-            totalBytes: originalSize
-          });
+          options.onProgress({ uploadId: upload.uploadId, segmentIndex: segment.index, segmentCount: upload.segmentCount, uploadedBytes, totalBytes: originalSize });
         }
-      }
+      };
+      const workers = Array.from({ length: Math.min(concurrency, pending.length) }, async () => {
+        while (nextIndex < pending.length) {
+          const segment = pending[nextIndex++];
+          await publishOne(segment);
+        }
+      });
+      await Promise.all(workers);
       const completed = await this.finalizeDirectUpload(upload.uploadId);
       const record = completed.asset;
       if (record) this._indexRecord(record, { name, type, description, tags });
@@ -903,22 +925,50 @@ export class NodusClient {
     return data;
   }
 
-  async _encryptDirectSegment(data, segment, keyHex, ivHex, chunkSize) {
-    // The client keeps one segment, never the complete file, in memory. For a
-    // production 500 GiB profile, replace this bounded buffer with a browser
-    // ReadableStream once the selected publisher accepts chunked request bodies.
-    const ciphertext = new Uint8Array(segment.ciphertextSize);
-    let offset = 0;
+  async _prepareDirectSegmentUpload(data, segment, keyHex, ivHex, chunkSize) {
+    // The publisher JWT binds a SHA-256 checksum, so hash one deterministic
+    // encryption pass before authorization. The second pass is streamed directly
+    // to the publisher; no ciphertext segment (up to 1 GiB) is ever allocated.
+    const hasher = sha256.create();
     for (let chunkOffset = 0; chunkOffset < segment.chunkCount; chunkOffset++) {
       const start = segment.plainStart + (chunkOffset * chunkSize);
       const end = Math.min(start + chunkSize, segment.plainEnd);
       const plaintext = await this._readSourceChunk(data, start, end);
       const encrypted = await NodusCrypto.encryptChunk(plaintext, keyHex, ivHex, segment.chunkStart + chunkOffset);
-      ciphertext.set(encrypted, offset);
-      offset += encrypted.byteLength;
+      hasher.update(encrypted);
     }
-    if (offset !== ciphertext.byteLength) throw new Error("Encrypted segment size mismatch");
-    return { ciphertext, ciphertextSha256: await NodusCrypto.sha256Hex(ciphertext) };
+    return {
+      ciphertextSha256: NodusCrypto.bytesToHex(hasher.digest()),
+      ciphertextStream: this._encryptedSegmentStream(data, segment, keyHex, ivHex, chunkSize)
+    };
+  }
+
+  _encryptedSegmentStream(data, segment, keyHex, ivHex, chunkSize) {
+    let chunkOffset = 0;
+    return new ReadableStream({
+      pull: async (controller) => {
+        if (chunkOffset >= segment.chunkCount) return controller.close();
+        const start = segment.plainStart + (chunkOffset * chunkSize);
+        const end = Math.min(start + chunkSize, segment.plainEnd);
+        const plaintext = await this._readSourceChunk(data, start, end);
+        const encrypted = await NodusCrypto.encryptChunk(plaintext, keyHex, ivHex, segment.chunkStart + chunkOffset);
+        chunkOffset++;
+        controller.enqueue(encrypted);
+      }
+    });
+  }
+
+  async _withExponentialBackoff(operation, maxRetries) {
+    let lastError;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try { return await operation(); } catch (error) {
+        lastError = error;
+        if (attempt === maxRetries - 1) break;
+        const delay = Math.min(2000, 150 * (2 ** attempt)) + Math.floor(Math.random() * 100);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+    throw lastError;
   }
 
   async _readPublisherResponse(response) {

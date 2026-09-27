@@ -173,6 +173,23 @@ export class AuthTenantStore {
         );
         CREATE INDEX IF NOT EXISTS upload_audit_events_tenant_idx ON upload_audit_events (organization_id, created_at DESC);
 
+        CREATE TABLE IF NOT EXISTS upload_session_payloads (
+          upload_id UUID PRIMARY KEY REFERENCES upload_sessions(id) ON DELETE CASCADE,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS upload_session_payloads_org_idx ON upload_session_payloads (organization_id, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS orphaned_publisher_blobs (
+          blob_id TEXT PRIMARY KEY,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          upload_id UUID REFERENCES upload_sessions(id) ON DELETE SET NULL,
+          reason TEXT NOT NULL,
+          discovered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          cleaned_at TIMESTAMPTZ
+        );
+
       `);
       console.log("🐘 [AuthTenantStore] PostgreSQL database schema verified.");
     } catch (err) {
@@ -292,6 +309,69 @@ export class AuthTenantStore {
     return session;
   }
 
+  async saveUploadPayload({ uploadId, organizationId, payload }) {
+    if (!uploadId || !organizationId || !payload || typeof payload !== "object") throw new Error("Upload payload is invalid");
+    if (this.containsRawKeyMaterial(payload)) throw new Error("Raw data keys must not be persisted in upload state");
+    const result = await this.pool.query(
+      `INSERT INTO upload_session_payloads (upload_id, organization_id, payload)
+       VALUES ($1, $2, $3::jsonb)
+       ON CONFLICT (upload_id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()
+       RETURNING payload`,
+      [uploadId, organizationId, JSON.stringify(payload)]
+    );
+    return result.rows[0].payload;
+  }
+
+  async loadUploadPayload(uploadId) {
+    const result = await this.pool.query("SELECT payload FROM upload_session_payloads WHERE upload_id = $1", [uploadId]);
+    return result.rowCount ? result.rows[0].payload : null;
+  }
+
+  async listUploadPayloads({ uploadKind = "direct", organizationId = null } = {}) {
+    const result = await this.pool.query(
+      `SELECT p.payload FROM upload_session_payloads p
+       JOIN upload_sessions u ON u.id = p.upload_id
+       WHERE u.upload_kind = $1 AND ($2::text IS NULL OR u.organization_id = $2) ORDER BY p.updated_at DESC`,
+      [uploadKind, organizationId]
+    );
+    return result.rows.map((row) => row.payload);
+  }
+
+  async loadDirectUploadPayloadByAssetId({ assetId, organizationId }) {
+    const result = await this.pool.query(
+      `SELECT p.payload FROM upload_session_payloads p
+       JOIN upload_sessions u ON u.id = p.upload_id
+       WHERE u.asset_id = $1 AND u.organization_id = $2 AND u.upload_kind = 'direct'`,
+      [assetId, organizationId]
+    );
+    return result.rowCount ? result.rows[0].payload : null;
+  }
+
+  async removeUploadPayload(uploadId) {
+    await this.pool.query("DELETE FROM upload_session_payloads WHERE upload_id = $1", [uploadId]);
+  }
+
+  async listPendingOrphanedPublisherBlobs(limit = 100) {
+    const result = await this.pool.query(
+      `SELECT blob_id AS "blobId", organization_id AS "organizationId", upload_id AS "uploadId", reason
+         FROM orphaned_publisher_blobs WHERE cleaned_at IS NULL
+        ORDER BY discovered_at ASC LIMIT $1`,
+      [Math.max(1, Math.min(Number(limit) || 100, 1000))]
+    );
+    return result.rows;
+  }
+
+  async markOrphanedPublisherBlobCleaned(blobId) {
+    await this.pool.query("UPDATE orphaned_publisher_blobs SET cleaned_at = now() WHERE blob_id = $1 AND cleaned_at IS NULL", [blobId]);
+  }
+
+  containsRawKeyMaterial(value) {
+    if (!value || typeof value !== "object") return false;
+    if (Array.isArray(value)) return value.some((entry) => this.containsRawKeyMaterial(entry));
+    if (["key", "keyHex", "privateKey", "recoveryPrivateKey"].some((field) => Object.prototype.hasOwnProperty.call(value, field))) return true;
+    return Object.values(value).some((entry) => entry && typeof entry === "object" && this.containsRawKeyMaterial(entry));
+  }
+
   async completeUpload({ uploadId, organizationId, userId, canManage = false, providerAssetId }) {
     const client = await this.pool.connect();
     try {
@@ -380,6 +460,18 @@ export class AuthTenantStore {
   }
 
   async releaseLockedUpload(client, session, reason, actorUserId) {
+    const payload = await client.query("SELECT payload FROM upload_session_payloads WHERE upload_id = $1 FOR UPDATE", [session.id]);
+    const segments = payload.rows[0]?.payload?.segments;
+    if (Array.isArray(segments)) {
+      for (const segment of segments) {
+        if (typeof segment?.blobId !== "string" || !/^[A-Za-z0-9_-]{16,256}$/.test(segment.blobId)) continue;
+        await client.query(
+          `INSERT INTO orphaned_publisher_blobs (blob_id, organization_id, upload_id, reason)
+           VALUES ($1, $2, $3, $4) ON CONFLICT (blob_id) DO NOTHING`,
+          [segment.blobId, session.organization_id, session.id, reason]
+        );
+      }
+    }
     const reservation = await client.query("SELECT id, bytes, status FROM quota_reservations WHERE upload_id = $1 FOR UPDATE", [session.id]);
     if (reservation.rowCount && reservation.rows[0].status === "active") {
       const bytes = Number(reservation.rows[0].bytes);

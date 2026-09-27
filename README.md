@@ -187,7 +187,7 @@ const org = await nodus.createOrganization({
 console.log(`Anchor Org PDA: ${org.orgPda}`);
 ```
 
-In a production tenant deployment, `verifySolanaAuth` returns a short-lived `accessToken` after the address is verified as a member of the selected pre-provisioned organization. The SDK retains that token for subsequent asset, upload, manifest, and deletion requests; do not persist it in browser local storage. Configure `POSTGRES_PASSWORD` and `DATABASE_URL` only in an untracked `.env` file, then apply migrations `001_auth_tenants.sql` through `004_upload_control_plane.sql` before enabling tenant uploads. The control plane reserves quota before an upload, binds it to the authenticated user and organization, and converts the reservation to used storage only after finalization.
+In a production tenant deployment, `verifySolanaAuth` returns a short-lived `accessToken` after the address is verified as a member of the selected pre-provisioned organization. The SDK retains that token for subsequent asset, upload, manifest, and deletion requests; do not persist it in browser local storage. Configure `POSTGRES_PASSWORD` and `DATABASE_URL` only in an untracked `.env` file, then apply migrations `001_auth_tenants.sql` through `005_upload_payloads.sql` before enabling tenant uploads. The control plane reserves quota before an upload, binds it to the authenticated user and organization, and converts the reservation to used storage only after finalization.
 
 The API refuses tenant endpoints when no tenant store is configured. A local-only compatibility bypass requires `NODUS_ALLOW_INSECURE_DEV_AUTH=true`; never set it outside a disposable development environment.
 
@@ -233,22 +233,23 @@ Set `NODUS_ALLOWED_ORIGINS` to the comma-separated HTTPS origins of the browser 
 
 ### Resumable uploads
 
-The gateway supports encrypted multipart sessions for files from 1 byte up to 500 GiB. The SDK automatically chooses this protocol above 20 MiB, using 8 MiB chunks by default. Each part is encrypted independently with AES-256-GCM, checksum-verified by the gateway, persisted to a session directory, and can be retried without re-uploading prior parts. A session expires after 24 hours if it is not completed.
+The gateway supports encrypted multipart sessions for files from 1 byte up to 500 GiB. The SDK uses this legacy protocol only when explicitly selected or below 20 MiB; each part is encrypted independently with AES-256-GCM, checksum-verified by the gateway, persisted to a session directory, and can be retried without re-uploading prior parts. A session expires after 24 hours if it is not completed.
 
-The legacy resumable route assembles ciphertext sequentially on local disk before passing it to the Walrus adapter. For production-scale workloads, use the direct authenticated publisher flow. The gateway becomes a control plane: it issues a short-lived, one-time JWT per encrypted segment and stores only session/manifest metadata. Ciphertext is sent from the browser directly to the configured Walrus publisher and never passes through the Nodus server.
+The legacy resumable route assembles ciphertext sequentially on local disk before passing it to the Walrus adapter. For production-scale workloads, the SDK automatically selects the direct authenticated publisher flow above 20 MiB (set `directPublisher: false` only for a controlled legacy migration). The gateway becomes a control plane: it issues a short-lived, one-time JWT per encrypted segment and stores canonical session/manifest metadata in PostgreSQL. Ciphertext is sent from the browser directly to the configured Walrus publisher and never passes through the Nodus server.
 
 ```js
 const upload = await nodus.put(largeVideoFile, {
   name: "archive.mp4",
   type: "video/mp4",
-  directPublisher: true,
   chunkSize: 8 * 1024 * 1024,
   segmentSize: 64 * 1024 * 1024,
+  concurrency: 3,
+  maxRetries: 4,
   epochs: 2
 });
 ```
 
-Each segment becomes one Walrus blob; Nodus returns a logical asset plus an ordered manifest. This is required for files larger than a single Walrus blob. The AES key stays with the client and is never sent to the control plane or stored in the manifest. Configure `NODUS_PUBLISHER_URL`, `NODUS_PUBLISHER_JWT_SECRET`, and a distinct `NODUS_PUBLISHER_RECEIPT_SECRET` before enabling this option outside tests. The publisher must consume each JWT `jti` exactly once and return an HMAC-SHA256 signed receipt binding the `jti`, upload ID, segment index, ciphertext SHA-256, ciphertext size, and Walrus blob ID; Nodus refuses to finalize an asset without verified receipts for every segment.
+Each segment becomes one Walrus blob; Nodus returns a logical asset plus an ordered manifest. This is required for files larger than a single Walrus blob. The SDK hashes one deterministic encryption pass and streams a second one to the publisher, avoiding any in-memory ciphertext segment allocation. The AES key stays with the client and is never sent to the control plane or stored in the manifest. Configure `NODUS_PUBLISHER_URL`, `NODUS_PUBLISHER_JWT_SECRET`, and a distinct `NODUS_PUBLISHER_RECEIPT_SECRET` before enabling this option outside tests. The publisher must consume each JWT `jti` exactly once and return an HMAC-SHA256 signed receipt binding the `jti`, upload ID, segment index, ciphertext SHA-256, ciphertext size, and Walrus blob ID; Nodus refuses to finalize an asset without verified receipts for every segment.
 
 ### Recipient envelopes and account recovery
 
