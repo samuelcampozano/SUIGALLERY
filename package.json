@@ -15,6 +15,7 @@
     "test:direct-publisher": "node test/test-direct-publisher.js",
     "test:key-envelopes": "node test/test-key-envelopes.js",
     "test:tenant-provisioning": "node test/test-tenant-provisioning.js",
+    "test:api-keys": "node test/test-api-keys.js",
     "test:web-zero-custody": "node test/test-web-zero-custody.js",
     "test:sdk": "node test/test-sdk.js",
     "test:onchain": "node test/test-onchain.js",

@@ -19,6 +19,7 @@ services:
       - ./server/migrations/005_upload_payloads.sql:/docker-entrypoint-initdb.d/005_upload_payloads.sql:ro
       - ./server/migrations/006_tenant_provisioning.sql:/docker-entrypoint-initdb.d/006_tenant_provisioning.sql:ro
       - ./server/migrations/007_organization_invitations.sql:/docker-entrypoint-initdb.d/007_organization_invitations.sql:ro
+      - ./server/migrations/008_api_keys.sql:/docker-entrypoint-initdb.d/008_api_keys.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nodus -d nodus"]
       interval: 5s

@@ -246,6 +246,12 @@ export class AuthTenantStore {
           created_at TIMESTAMPTZ NOT NULL DEFAULT now(), revoked_at TIMESTAMPTZ
         );
         CREATE INDEX IF NOT EXISTS organization_invitations_recipient_idx ON organization_invitations (recipient_address, status, expires_at);
+        CREATE TABLE IF NOT EXISTS organization_api_keys (
+          id UUID PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, created_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+          name TEXT NOT NULL, key_prefix TEXT NOT NULL, key_hash TEXT NOT NULL UNIQUE, scopes JSONB NOT NULL, expires_at TIMESTAMPTZ, revoked_at TIMESTAMPTZ, last_used_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(), rotated_from UUID REFERENCES organization_api_keys(id) ON DELETE SET NULL
+        );
+        CREATE TABLE IF NOT EXISTS api_key_audit_events (id UUID PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, api_key_id UUID REFERENCES organization_api_keys(id) ON DELETE SET NULL, actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL, event_type TEXT NOT NULL, details JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
 
       `);
       console.log("🐘 [AuthTenantStore] PostgreSQL database schema verified.");
@@ -393,6 +399,31 @@ export class AuthTenantStore {
     if (!result.rowCount) return null;
     return result.rows[0];
   }
+
+  async resolveApiKey(token) {
+    const result = await this.pool.query(`SELECT k.id AS api_key_id,k.organization_id,k.scopes,t.space_id,t.bucket_id,t.seal_policy_id,t.quota_bytes
+      FROM organization_api_keys k JOIN tenant_storage_contexts t ON t.organization_id=k.organization_id AND t.active=true
+      WHERE k.key_hash=$1 AND k.revoked_at IS NULL AND (k.expires_at IS NULL OR k.expires_at>now())`, [tokenHash(token)]);
+    if (!result.rowCount) return null;
+    const row = result.rows[0]; await this.pool.query("UPDATE organization_api_keys SET last_used_at=now() WHERE id=$1", [row.api_key_id]);
+    return row;
+  }
+
+  async createApiKey({ organizationId, actorUserId, name, scopes, expiresAt = null, rotatedFrom = null }) {
+    const allowed = new Set(['assets:read','assets:write','assets:delete','assets:share','search:read','audit:read']);
+    if (typeof name !== 'string' || !name.trim() || name.length > 120) throw new Error("API key name is required");
+    if (!Array.isArray(scopes) || !scopes.length || scopes.some((scope) => !allowed.has(scope))) throw new Error("Invalid API key scopes");
+    if (expiresAt && Number.isNaN(new Date(expiresAt).getTime())) throw new Error("Invalid API key expiry");
+    const secret = `ndk_${crypto.randomBytes(32).toString('base64url')}`;
+    const result = await this.pool.query(`INSERT INTO organization_api_keys (id,organization_id,created_by,name,key_prefix,key_hash,scopes,expires_at,rotated_from)
+      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING id,name,key_prefix,scopes,expires_at AS "expiresAt",created_at AS "createdAt"`, [crypto.randomUUID(), organizationId, actorUserId, name.trim(), secret.slice(0, 12), tokenHash(secret), JSON.stringify([...new Set(scopes)]), expiresAt, rotatedFrom]);
+    await this.apiKeyAudit({ organizationId, apiKeyId: result.rows[0].id, actorUserId, eventType: 'api_key.created' });
+    return { key: secret, apiKey: result.rows[0] };
+  }
+  async listApiKeys({ organizationId }) { const result = await this.pool.query(`SELECT id,name,key_prefix AS "keyPrefix",scopes,expires_at AS "expiresAt",revoked_at AS "revokedAt",last_used_at AS "lastUsedAt",created_at AS "createdAt" FROM organization_api_keys WHERE organization_id=$1 ORDER BY created_at DESC`, [organizationId]); return result.rows; }
+  async revokeApiKey({ organizationId, apiKeyId, actorUserId }) { const result = await this.pool.query("UPDATE organization_api_keys SET revoked_at=now() WHERE id=$1 AND organization_id=$2 AND revoked_at IS NULL RETURNING id", [apiKeyId, organizationId]); if (!result.rowCount) throw new Error("Active API key not found"); await this.apiKeyAudit({ organizationId, apiKeyId, actorUserId, eventType: 'api_key.revoked' }); }
+  async rotateApiKey({ organizationId, apiKeyId, actorUserId, name, scopes, expiresAt }) { const current = await this.pool.query("SELECT name,scopes,expires_at FROM organization_api_keys WHERE id=$1 AND organization_id=$2 AND revoked_at IS NULL", [apiKeyId,organizationId]); if (!current.rowCount) throw new Error("Active API key not found"); const created=await this.createApiKey({organizationId,actorUserId,name:name||current.rows[0].name,scopes:scopes||current.rows[0].scopes,expiresAt:expiresAt===undefined?current.rows[0].expires_at:expiresAt,rotatedFrom:apiKeyId}); await this.revokeApiKey({organizationId,apiKeyId,actorUserId}); return created; }
+  async apiKeyAudit({ organizationId, apiKeyId = null, actorUserId = null, eventType, details = {} }) { await this.pool.query("INSERT INTO api_key_audit_events (id,organization_id,api_key_id,actor_user_id,event_type,details) VALUES ($1,$2,$3,$4,$5,$6::jsonb)", [crypto.randomUUID(),organizationId,apiKeyId,actorUserId,eventType,JSON.stringify(details)]); }
 
   async reserveUpload({ uploadId, assetId, organizationId, userId, uploadKind, reservedBytes, expiresAt, originalName, originalSize }) {
     if (!/^(resumable|direct|single)$/.test(uploadKind || "")) throw new Error("Unsupported upload kind");

@@ -104,10 +104,13 @@ async function requireTenant(req, res, next) {
   const token = authorizationParts[0]?.toLowerCase() === "bearer" ? authorizationParts.slice(1).join(" ") : "";
   if (!token) return res.status(401).json({ success: false, error: "Bearer token required" });
   try {
-    const context = await authTenantStore.resolve(token);
+    let context = await authTenantStore.resolve(token);
+    let apiKey = false;
+    if (!context) { context = await authTenantStore.resolveApiKey(token); apiKey = Boolean(context); }
     if (!context) return res.status(401).json({ success: false, error: "Session expired, revoked, or invalid" });
-    req.auth = { userId: context.user_id, address: context.solana_address, role: context.role };
+    req.auth = apiKey ? { apiKeyId: context.api_key_id, scopes: context.scopes, role: 'api_key' } : { userId: context.user_id, address: context.solana_address, role: context.role };
     req.tenant = { organizationId: context.organization_id, spaceId: context.space_id, bucketId: context.bucket_id, sealPolicyId: context.seal_policy_id, quotaBytes: Number(context.quota_bytes) };
+    if (apiKey) { const scope = req.method === 'GET' ? (req.path.includes('/audit') ? 'audit:read' : req.path.includes('/search') ? 'search:read' : 'assets:read') : req.method === 'DELETE' ? 'assets:delete' : req.path.includes('key-envelopes') ? 'assets:share' : 'assets:write'; if (!req.auth.scopes.includes(scope)) return res.status(403).json({ success:false,error:`API key lacks ${scope} scope` }); const now=Date.now(); const state=apiKeyRequestWindows.get(context.api_key_id)||{at:now,count:0}; if(now-state.at>60000){state.at=now;state.count=0;} if(++state.count>300)return res.status(429).json({success:false,error:'API key rate limit exceeded'}); apiKeyRequestWindows.set(context.api_key_id,state); }
     return next();
   } catch (error) { return next(error); }
 }
@@ -191,6 +194,16 @@ function requireTenantEnvelopeStore(req, res, next) {
     return res.status(503).json({ success: false, error: "Persistent tenant authentication is required for key envelopes" });
   }
   return next();
+}
+
+function requireSessionAdmin(req, res, next) {
+  if (!req.auth?.userId || !['owner','admin'].includes(req.auth.role)) return res.status(403).json({ success:false,error:'Owner or admin session required' });
+  return next();
+}
+
+const apiKeyRequestWindows = new Map();
+function apiKeyRateLimit(req, res, next) {
+  if (!req.auth?.apiKeyId) return next(); const now=Date.now(); const state=apiKeyRequestWindows.get(req.auth.apiKeyId)||{at:now,count:0}; if(now-state.at>60000){state.at=now;state.count=0;} state.count++; apiKeyRequestWindows.set(req.auth.apiKeyId,state); if(state.count>300)return res.status(429).json({success:false,error:'API key rate limit exceeded'}); next();
 }
 
 function requireProvisioningAdmin(req, res, next) {
@@ -704,6 +717,23 @@ app.post("/api/org-invitations/accept", async (req, res) => {
     const session = await authTenantStore.createSession({ address, organizationId: accepted.organizationId });
     return res.json({ success: true, organizationId: accepted.organizationId, role: accepted.role, accessToken: session.token, expiresAt: session.expiresAt });
   } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+
+app.get("/api/orgs/:orgId/api-keys", requireTenant, requireTenantEnvelopeStore, requireSessionAdmin, async (req,res)=>{
+  if(req.params.orgId!==req.tenant.organizationId)return res.status(403).json({success:false,error:'Organization does not match active tenant'});
+  try{return res.json({success:true,apiKeys:await authTenantStore.listApiKeys({organizationId:req.tenant.organizationId})});}catch(error){return res.status(400).json({success:false,error:error.message});}
+});
+app.post("/api/orgs/:orgId/api-keys", requireTenant, requireTenantEnvelopeStore, requireSessionAdmin, async (req,res)=>{
+  if(req.params.orgId!==req.tenant.organizationId)return res.status(403).json({success:false,error:'Organization does not match active tenant'});
+  try{const created=await authTenantStore.createApiKey({organizationId:req.tenant.organizationId,actorUserId:req.auth.userId,name:req.body?.name,scopes:req.body?.scopes,expiresAt:req.body?.expiresAt||null});return res.status(201).json({success:true,...created});}catch(error){return res.status(400).json({success:false,error:error.message});}
+});
+app.post("/api/orgs/:orgId/api-keys/:apiKeyId/rotate", requireTenant, requireTenantEnvelopeStore, requireSessionAdmin, async (req,res)=>{
+  if(req.params.orgId!==req.tenant.organizationId)return res.status(403).json({success:false,error:'Organization does not match active tenant'});
+  try{const created=await authTenantStore.rotateApiKey({organizationId:req.tenant.organizationId,apiKeyId:req.params.apiKeyId,actorUserId:req.auth.userId,...(req.body||{})});return res.json({success:true,...created});}catch(error){return res.status(400).json({success:false,error:error.message});}
+});
+app.delete("/api/orgs/:orgId/api-keys/:apiKeyId", requireTenant, requireTenantEnvelopeStore, requireSessionAdmin, async (req,res)=>{
+  if(req.params.orgId!==req.tenant.organizationId)return res.status(403).json({success:false,error:'Organization does not match active tenant'});
+  try{await authTenantStore.revokeApiKey({organizationId:req.tenant.organizationId,apiKeyId:req.params.apiKeyId,actorUserId:req.auth.userId});return res.json({success:true,revoked:true});}catch(error){return res.status(400).json({success:false,error:error.message});}
 });
 
 // ==========================================
