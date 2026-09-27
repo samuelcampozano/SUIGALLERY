@@ -1,4 +1,5 @@
 import http from "node:http";
+import { walrus } from "../server/walrus-client.js";
 
 process.env.NODE_ENV = "production";
 process.env.NODUS_ALLOWED_ORIGINS = "https://app.nodus.example";
@@ -30,6 +31,7 @@ async function run() {
   } finally {
     if (typeof server.closeAllConnections === "function") server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
+    await walrus.disconnect();
   }
   console.log("🎉 ALL CORS & UNIFORM AUTH TESTS PASSED");
 }

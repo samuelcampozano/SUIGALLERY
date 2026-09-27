@@ -50,6 +50,11 @@ const resumableUploads = new ResumableUploadManager({ rootDir: resumableUploadDi
 const directUploads = new DirectUploadManager({ rootDir: directUploadDir });
 const authenticatedPublisher = new AuthenticatedPublisher();
 const authTenantStore = process.env.DATABASE_URL ? new AuthTenantStore() : null;
+if (authTenantStore) {
+  authTenantStore.init().catch((err) => {
+    console.error("❌ [Server] Failed to initialize PostgreSQL tenant store:", err.message);
+  });
+}
 
 function configuredOrigins() {
   const configured = (process.env.NODUS_ALLOWED_ORIGINS || "").split(",").map((origin) => origin.trim()).filter(Boolean);
