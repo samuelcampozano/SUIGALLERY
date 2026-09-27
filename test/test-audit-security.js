@@ -243,15 +243,13 @@ async function runAuditSuite() {
 
     // Attempting to pass plaintext file claiming to be ciphertext
     const plainCheck = await validateCiphertextPayload(dummyPlaintextPng, {
-      iv: "00112233445566778899aabb",
-      key: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      iv: "00112233445566778899aabb"
     });
     testAssert(!plainCheck.valid, "Plaintext PNG header correctly rejected under zero-knowledge policy");
 
     // Missing / invalid IV
     const badIvCheck = await validateCiphertextPayload(dummyPlaintextPng, {
-      iv: "short_iv",
-      key: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      iv: "short_iv"
     });
     testAssert(!badIvCheck.valid, "Invalid IV length (< 24 hex characters) rejected");
 

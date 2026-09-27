@@ -6,11 +6,13 @@ import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { walrus, DEFAULT_SPACE_ID, DEFAULT_BUCKET_ID } from "./walrus-client.js";
 import { ResumableUploadManager, RESUMABLE_UPLOAD_LIMITS } from "./resumable-upload.js";
 import { DirectUploadManager, DIRECT_UPLOAD_MAX_SEGMENT_SIZE } from "./direct-upload-manager.js";
 import { AuthenticatedPublisher } from "./authenticated-publisher.js";
+import { KeyEnvelopeStore } from "./key-envelope-store.js";
 import { AuthTenantStore } from "./auth-tenant-store.js";
 import {
   validateMagicBytes,
@@ -30,6 +32,9 @@ import {
   listUserOrganizations,
   addOrganizationMember,
   removeOrganizationMember,
+  listOrganizationMembers,
+  verifyOrgPermission,
+  isSessionAuthenticated,
   deriveOrgPDA,
   deriveMemberPDA,
   NODUS_SOLANA_PROGRAM_ID_STR
@@ -41,6 +46,7 @@ const rootDir = path.resolve(__dirname, "..");
 const tempStorageDir = path.join(rootDir, "temp_storage");
 const resumableUploadDir = path.join(tempStorageDir, "resumable_uploads");
 const directUploadDir = path.join(tempStorageDir, "direct_uploads");
+const keyEnvelopeFile = path.join(tempStorageDir, "key_envelopes.json");
 
 // Ensure temp_storage directory exists
 if (!fs.existsSync(tempStorageDir)) {
@@ -49,6 +55,7 @@ if (!fs.existsSync(tempStorageDir)) {
 const resumableUploads = new ResumableUploadManager({ rootDir: resumableUploadDir });
 const directUploads = new DirectUploadManager({ rootDir: directUploadDir });
 const authenticatedPublisher = new AuthenticatedPublisher();
+const keyEnvelopes = new KeyEnvelopeStore({ filePath: keyEnvelopeFile });
 const authTenantStore = process.env.DATABASE_URL ? new AuthTenantStore() : null;
 if (authTenantStore) {
   authTenantStore.init().catch((err) => {
@@ -82,7 +89,9 @@ async function requireTenant(req, res, next) {
     if (process.env.NODE_ENV === "production") return res.status(503).json({ success: false, error: "Tenant authentication is not configured" });
     return next();
   }
-  const token = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  const authorization = typeof req.headers.authorization === "string" ? req.headers.authorization.trim() : "";
+  const authorizationParts = authorization.split(/\s+/);
+  const token = authorizationParts[0]?.toLowerCase() === "bearer" ? authorizationParts.slice(1).join(" ") : "";
   if (!token) return res.status(401).json({ success: false, error: "Bearer token required" });
   try {
     const context = await authTenantStore.resolve(token);
@@ -110,6 +119,16 @@ if (typeof pruneInterval.unref === "function") {
 }
 
 const app = express();
+
+function requireAuthenticatedAddress(req) {
+  const address = req.headers["x-solana-address"];
+  if (!isValidSolanaAddress(address) || !isSessionAuthenticated(address)) {
+    const error = new Error("An active verified Solana session is required");
+    error.status = 401;
+    throw error;
+  }
+  return address;
+}
 
 // 1. Security Headers (Helmet + Custom Content Security Policy)
 app.use(
@@ -451,6 +470,7 @@ app.delete("/api/orgs/:orgId/members/:memberAddress", requireTenant, async (req,
 
   try {
     const removed = removeOrganizationMember({ orgId, memberAddress, callerAddress });
+    if (removed) keyEnvelopes.revokeOrganizationRecipient(orgId, memberAddress);
     res.json({ success: true, removed });
   } catch (err) {
     const status = err.message.startsWith("Unauthorized") ? 403 : 400;
@@ -666,9 +686,123 @@ app.get("/api/assets/direct-uploads/:uploadId/manifest", requireTenant, (req, re
   }
 });
 
+// ==========================================
+// CLIENT-SIDE KEY ENVELOPE DIRECTORY
+// ==========================================
+// The directory contains only public encryption identities and ciphertext
+// envelopes. It is deliberately unable to decrypt an asset.
+app.post("/api/key-identities/:address", (req, res) => {
+  try {
+    const caller = requireAuthenticatedAddress(req);
+    if (caller !== req.params.address) throw Object.assign(new Error("A user may only register their own encryption identity"), { status: 403 });
+    const identity = keyEnvelopes.registerIdentity(caller, req.body || {});
+    res.status(201).json({ success: true, identity });
+  } catch (err) {
+    res.status(err.status || 400).json({ success: false, error: err.message });
+  }
+});
+
+// Public keys are intentionally discoverable so a sender can encrypt locally
+// for a recipient. Private keys are never accepted or returned.
+app.get("/api/key-identities/:address", (req, res) => {
+  if (!isValidSolanaAddress(req.params.address)) return res.status(400).json({ success: false, error: "Invalid Solana address" });
+  const identity = keyEnvelopes.getIdentity(req.params.address);
+  if (!identity) return res.status(404).json({ success: false, error: "Encryption identity not found" });
+  res.json({ success: true, identity });
+});
+
+app.get("/api/orgs/:orgId/key-recipients", (req, res) => {
+  try {
+    const caller = requireAuthenticatedAddress(req);
+    if (!verifyOrgPermission(req.params.orgId, caller, "viewer")) throw Object.assign(new Error("Not authorized for this organization"), { status: 403 });
+    const recipients = listOrganizationMembers(req.params.orgId)
+      .map((member) => ({ ...member, identity: keyEnvelopes.getIdentity(member.member) }))
+      .filter((member) => member.identity);
+    res.json({ success: true, organizationId: req.params.orgId, recipients });
+  } catch (err) {
+    res.status(err.status || 400).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/assets/:assetId/key-envelopes", (req, res) => {
+  try {
+    if (!isValidFileId(req.params.assetId)) throw new Error("Invalid asset ID");
+    const caller = requireAuthenticatedAddress(req);
+    const envelopes = req.body?.envelopes;
+    for (const envelope of envelopes || []) {
+      if (!envelope.organizationId) continue;
+      if (!verifyOrgPermission(envelope.organizationId, caller, "contributor")) {
+        throw Object.assign(new Error("Only organization contributors may share an asset with that organization"), { status: 403 });
+      }
+      if (!verifyOrgPermission(envelope.organizationId, envelope.recipientAddress, "viewer")) {
+        throw new Error("Envelope recipient is not an organization member");
+      }
+    }
+    const asset = keyEnvelopes.putEnvelopes(req.params.assetId, caller, envelopes);
+    res.status(201).json({ success: true, asset });
+  } catch (err) {
+    res.status(err.status || 400).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/assets/:assetId/key-envelopes", (req, res) => {
+  try {
+    if (!isValidFileId(req.params.assetId)) throw new Error("Invalid asset ID");
+    const caller = requireAuthenticatedAddress(req);
+    const result = keyEnvelopes.envelopesForRecipient(req.params.assetId, caller);
+    if (!result) return res.status(404).json({ success: false, error: "Key envelopes not found" });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(err.status || 400).json({ success: false, error: err.message });
+  }
+});
+
+// Read one encrypted segment through the gateway. The gateway never decrypts
+// it; this proxy lets the SDK stream directly from the authenticated publisher
+// without exposing publisher topology or credentials to an application.
+app.get("/api/assets/:assetId/direct-segments/:segmentIndex", requireTenant, async (req, res) => {
+  try {
+    const manifest = directUploads.manifestByAssetId(req.params.assetId, req.tenant?.organizationId);
+    const index = Number(req.params.segmentIndex);
+    const segment = manifest.segments.find((entry) => entry.index === index);
+    if (!segment) return res.status(404).json({ success: false, error: "Direct segment not found" });
+
+    const headers = {};
+    if (req.headers.range) headers.Range = req.headers.range;
+    const publisherResponse = await fetch(authenticatedPublisher.readUrl(segment.blobId), { headers });
+    if (!publisherResponse.ok) {
+      return res.status(502).json({ success: false, error: `Publisher read failed: HTTP ${publisherResponse.status}` });
+    }
+
+    const passthroughHeaders = ["content-type", "content-length", "content-range", "accept-ranges", "etag"];
+    for (const name of passthroughHeaders) {
+      const value = publisherResponse.headers.get(name);
+      if (value) res.setHeader(name, value);
+    }
+    res.status(publisherResponse.status);
+    if (!publisherResponse.body) return res.end();
+    Readable.fromWeb(publisherResponse.body).on("error", (error) => res.destroy(error)).pipe(res);
+  } catch (err) {
+    const status = err.message === "Upload session not found" ? 404 : 400;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+// A manifest is intentionally public encryption metadata only: no data key,
+// plaintext, or publisher credential is included.
+app.get("/api/assets/:assetId/direct-manifest", requireTenant, (req, res) => {
+  try {
+    res.json({ success: true, manifest: directUploads.manifestByAssetId(req.params.assetId, req.tenant?.organizationId) });
+  } catch (err) {
+    const status = err.message === "Upload session not found" ? 404 : 400;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
 app.delete("/api/assets/direct-uploads/:uploadId", requireTenant, (req, res) => {
   try {
     directUploads.abort(req.params.uploadId, req.tenant?.organizationId);
+    keyEnvelopes.deleteAsset(`direct_${req.params.uploadId}`);
     res.json({ success: true, aborted: true });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -691,7 +825,6 @@ app.get(["/api/photos", "/api/assets"], requireTenant, async (req, res) => {
       download_url: `/api/photos/${file.id}/stream?download=true`,
       encrypted: Boolean(file.encrypted),
       iv: file.iv || null,
-      key: file.key || null,
       original_name: file.original_name || file.name,
       original_type: file.original_type || getContentType(file.name),
       original_size: file.original_size || file.size,
@@ -706,9 +839,7 @@ app.get(["/api/photos", "/api/assets"], requireTenant, async (req, res) => {
     // on Walrus; they are not Console/MCP file records.
     photos.push(...directUploads.listAssets(req.tenant?.organizationId).map((asset) => ({
       ...asset,
-      blob_id: null,
-      stream_url: null,
-      download_url: null
+      blob_id: null
     })));
 
     // Sort newest first
@@ -745,10 +876,9 @@ app.post(["/api/photos/upload", "/api/assets/upload"], requireTenant, uploadLimi
     } catch {
       encryption = null;
     }
-  } else if (req.body.iv && req.body.key) {
+  } else if (req.body.iv) {
     encryption = {
       iv: req.body.iv,
-      key: req.body.key,
       originalName: req.body.originalName || originalName,
       originalType: req.body.originalType || req.file.mimetype,
       originalSize: Number(req.body.originalSize) || req.file.size
@@ -756,6 +886,11 @@ app.post(["/api/photos/upload", "/api/assets/upload"], requireTenant, uploadLimi
   }
 
   console.log(`📸 [API] Received upload request for ${originalName} (${req.file.size} bytes, encrypted: ${Boolean(encryption)})`);
+
+  if (req.body.key || (encryption && Object.prototype.hasOwnProperty.call(encryption, "key"))) {
+    try { if (fs.existsSync(localFilePath)) fs.unlinkSync(localFilePath); } catch {}
+    return res.status(400).json({ success: false, error: "Raw data keys must not be sent to the server" });
+  }
 
   try {
     // Phase 0 Zero-Knowledge Enforcement:
@@ -861,7 +996,6 @@ app.get(["/api/photos/:fileId/stream", "/api/assets/:fileId/stream"], requireTen
     res.setHeader("Content-Type", contentType);
     res.setHeader("x-nodus-encrypted", matched.encrypted ? "true" : "false");
     if (matched.iv) res.setHeader("x-nodus-iv", matched.iv);
-    if (matched.key) res.setHeader("x-nodus-key", matched.key);
     if (matched.original_type) res.setHeader("x-nodus-original-type", matched.original_type);
     if (matched.original_name) res.setHeader("x-nodus-original-name", encodeURIComponent(matched.original_name));
     if (matched.encryption_mode) res.setHeader("x-nodus-encryption-mode", matched.encryption_mode);
@@ -893,6 +1027,7 @@ app.delete(["/api/photos/:fileId", "/api/assets/:fileId"], requireTenant, async 
 
   try {
     await walrus.deletePhoto(fileId, req.tenant);
+    keyEnvelopes.deleteAsset(fileId);
 
     // Immediately evict and unlink decrypted cache from disk
     cacheManager.evict(`${req.tenant?.organizationId || "development"}:${fileId}`);

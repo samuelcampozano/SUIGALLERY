@@ -25,7 +25,7 @@ async function run() {
     const resumableSession = resumable.create({
       originalName: "tenant.bin", originalType: "application/octet-stream",
       originalSize: MiB, encryptedSize: MiB + 16, partSize: MiB + 16,
-      organizationId: "org-alpha", encryption: { key: "a".repeat(64), iv: "b".repeat(24) }
+      organizationId: "org-alpha", encryption: { iv: "b".repeat(24) }
     });
     assert(resumable.get(resumableSession.uploadId, "org-alpha").uploadId === resumableSession.uploadId, "Allows the owning organization to read a resumable session");
     assert(rejects(() => resumable.get(resumableSession.uploadId, "org-beta")), "Rejects another organization reading a resumable session");

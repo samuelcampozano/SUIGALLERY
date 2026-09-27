@@ -432,6 +432,14 @@ export function listUserOrganizations(userAddress) {
   return matchedOrgs;
 }
 
+/** Returns the current organization membership records for envelope fan-out. */
+export function listOrganizationMembers(orgId) {
+  if (!isValidOrgId(orgId)) throw new Error("Invalid orgId format");
+  const cleanOrgId = orgId.toLowerCase().trim();
+  if (!organizations.has(cleanOrgId)) throw new Error(`Organization '${cleanOrgId}' not found`);
+  return [...memberAccounts.values()].filter((member) => member.orgId === cleanOrgId);
+}
+
 /**
  * Adds or updates an organization member with a specific RBAC role.
  *

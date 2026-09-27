@@ -12,6 +12,7 @@
     "test:resumable": "node test/test-resumable-upload.js && node test/test-resumable-api.js",
     "test:resumable-api": "node test/test-resumable-api.js",
     "test:direct-publisher": "node test/test-direct-publisher.js",
+    "test:key-envelopes": "node test/test-key-envelopes.js",
     "test:sdk": "node test/test-sdk.js",
     "test:onchain": "node test/test-onchain.js",
     "test:shred": "node test-crypto-shredding.js",
