@@ -681,7 +681,14 @@ app.post(["/api/assets/uploads/:uploadId/complete", "/api/photos/uploads/:upload
       tenant: req.tenant
     });
     const completed = resumableUploads.markCompleted(uploadId, result, ciphertextSha256, uploadAccessContext(req));
-    if (authTenantStore) await authTenantStore.completeUpload({ uploadId, ...uploadAccessContext(req), providerAssetId: result.id });
+    if (authTenantStore) {
+      await authTenantStore.completeUpload({ uploadId, ...uploadAccessContext(req), providerAssetId: result.id });
+      await authTenantStore.registerAsset({
+        organizationId: req.tenant.organizationId, actorUserId: req.auth.userId, assetId: result.id,
+        name: session.originalName, contentType: session.originalType, byteSize: session.originalSize,
+        description: session.description, tags: session.tags, storageKind: "walrus", folderId: req.body?.folderId || null
+      });
+    }
     res.json({ success: true, upload: completed, asset: result, result });
   } catch (err) {
     try { resumableUploads.markRetryable(uploadId, uploadAccessContext(req)); } catch {}
@@ -804,7 +811,14 @@ app.post("/api/assets/direct-uploads/:uploadId/finalize", requireTenant, require
   try {
     await assertPersistentUploadAccess(req, req.params.uploadId);
     const result = await directUploads.finalize(req.params.uploadId, uploadAccessContext(req));
-    if (authTenantStore) await authTenantStore.completeUpload({ uploadId: req.params.uploadId, ...uploadAccessContext(req), providerAssetId: result.asset.id });
+    if (authTenantStore) {
+      await authTenantStore.completeUpload({ uploadId: req.params.uploadId, ...uploadAccessContext(req), providerAssetId: result.asset.id });
+      await authTenantStore.registerAsset({
+        organizationId: req.tenant.organizationId, actorUserId: req.auth.userId, assetId: result.asset.id,
+        name: result.asset.name, contentType: result.asset.original_type, byteSize: result.asset.original_size,
+        description: result.asset.description, tags: result.asset.tags, storageKind: "direct", folderId: req.body?.folderId || null
+      });
+    }
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(err.message === "Upload session not found" ? 404 : 400).json({ success: false, error: err.message });
@@ -974,9 +988,45 @@ app.delete("/api/assets/direct-uploads/:uploadId", requireTenant, requireUploadW
   }
 });
 
-// 2. List Assets in Bucket
+// Persistent tenant catalog. Folders and metadata remain private control-plane
+// records; only ciphertext is stored in Walrus.
+app.get("/api/assets/folders", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  try { res.json({ success: true, folders: await authTenantStore.listFolders({ organizationId: req.tenant.organizationId }) }); }
+  catch (error) { res.status(400).json({ success: false, error: error.message }); }
+});
+app.post("/api/assets/folders", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  if (!['owner', 'admin', 'contributor'].includes(req.auth.role)) return res.status(403).json({ success: false, error: "Insufficient organization role" });
+  try { const folder = await authTenantStore.createFolder({ organizationId: req.tenant.organizationId, actorUserId: req.auth.userId, name: req.body?.name, parentId: req.body?.parentId || null }); return res.status(201).json({ success: true, folder }); }
+  catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+app.patch("/api/assets/folders/:folderId", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  if (!['owner', 'admin', 'contributor'].includes(req.auth.role)) return res.status(403).json({ success: false, error: "Insufficient organization role" });
+  try { return res.json({ success: true, folder: await authTenantStore.renameFolder({ organizationId: req.tenant.organizationId, actorUserId: req.auth.userId, folderId: req.params.folderId, name: req.body?.name }) }); }
+  catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+app.delete("/api/assets/folders/:folderId", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  if (!['owner', 'admin', 'contributor'].includes(req.auth.role)) return res.status(403).json({ success: false, error: "Insufficient organization role" });
+  try { await authTenantStore.deleteFolder({ organizationId: req.tenant.organizationId, actorUserId: req.auth.userId, folderId: req.params.folderId }); return res.json({ success: true, deleted: true }); }
+  catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+app.get("/api/assets/:fileId/versions", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  try { const asset = await authTenantStore.getCatalogAsset({ organizationId: req.tenant.organizationId, assetId: req.params.fileId }); if (!asset) return res.status(404).json({ success: false, error: "Catalog asset not found" }); return res.json({ success: true, assetId: asset.id, versions: await authTenantStore.listAssetVersions({ organizationId: req.tenant.organizationId, assetId: asset.id }) }); }
+  catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+app.get("/api/assets/:fileId/audit", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  try { const asset = await authTenantStore.getCatalogAsset({ organizationId: req.tenant.organizationId, assetId: req.params.fileId }); if (!asset) return res.status(404).json({ success: false, error: "Catalog asset not found" }); return res.json({ success: true, assetId: asset.id, events: await authTenantStore.listAssetAudit({ organizationId: req.tenant.organizationId, assetId: asset.id, limit: req.query.limit }) }); }
+  catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+
+// 2. List assets. Authenticated deployments read PostgreSQL rather than an
+// unbounded bucket listing, allowing cursor pagination and tenant-only metadata.
 app.get(["/api/photos", "/api/assets"], requireTenant, async (req, res) => {
   try {
+    if (authTenantStore) {
+      const page = await authTenantStore.listCatalogAssets({ organizationId: req.tenant.organizationId, folderId: req.query.folderId, limit: req.query.limit, cursor: req.query.cursor });
+      const assets = page.assets.map((asset) => ({ ...asset, created_at: asset.createdAt, content_type: asset.contentType, stream_url: asset.storageKind === "walrus" ? `/api/assets/${asset.id}/stream` : null, download_url: asset.storageKind === "walrus" ? `/api/assets/${asset.id}/stream?download=true` : null }));
+      return res.json({ success: true, count: assets.length, assets, photos: assets, nextCursor: page.nextCursor });
+    }
     const rawFiles = await walrus.listPhotos(req.tenant?.bucketId);
     const photos = (Array.isArray(rawFiles) ? rawFiles : []).map((file) => ({
       id: file.id,
@@ -1119,6 +1169,12 @@ app.post(["/api/photos/upload", "/api/assets/upload"], requireTenant, requireUpl
     });
     if (uploadRecord && authTenantStore) {
       await authTenantStore.completeUpload({ uploadId: uploadRecord.uploadId, ...uploadAccessContext(req), providerAssetId: result.id });
+      await authTenantStore.registerAsset({
+        organizationId: req.tenant.organizationId, actorUserId: req.auth.userId, assetId: result.id,
+        name: sanitizedName, contentType: encryption?.originalType || req.file.mimetype || "application/octet-stream",
+        byteSize: Number(encryption?.originalSize) || req.file.size, description: sanitizedDesc, tags: combinedTags,
+        storageKind: "walrus", folderId: req.body.folderId || null
+      });
     }
 
     // Clean up temp upload file
@@ -1160,6 +1216,10 @@ app.get(["/api/photos/:fileId/stream", "/api/assets/:fileId/stream"], requireTen
   }
 
   try {
+    if (authTenantStore) {
+      const catalogAsset = await authTenantStore.getCatalogAsset({ organizationId: req.tenant.organizationId, assetId: fileId });
+      if (!catalogAsset || catalogAsset.storageKind !== "walrus") return res.status(404).json({ success: false, error: "File not found" });
+    }
     const files = await walrus.listPhotos(req.tenant?.bucketId);
     const matched = files.find((f) => f.id === fileId);
     if (!matched) {
@@ -1215,7 +1275,11 @@ app.delete(["/api/photos/:fileId", "/api/assets/:fileId"], requireTenant, async 
   }
 
   try {
+    if (authTenantStore && !await authTenantStore.getCatalogAsset({ organizationId: req.tenant.organizationId, assetId: fileId })) {
+      return res.status(404).json({ success: false, error: "Catalog asset not found" });
+    }
     await walrus.deletePhoto(fileId, req.tenant);
+    if (authTenantStore) await authTenantStore.deleteCatalogAsset({ organizationId: req.tenant.organizationId, assetId: fileId, actorUserId: req.auth.userId });
     if (authTenantStore) await authTenantStore.deleteKeyEnvelopeAsset({ organizationId: req.tenant.organizationId, assetId: fileId });
 
     // Immediately evict and unlink decrypted cache from disk
@@ -1242,12 +1306,16 @@ app.patch(["/api/photos/:fileId", "/api/assets/:fileId"], requireTenant, async (
   const cleanTags = tags !== undefined ? sanitizeTags(tags) : undefined;
 
   try {
+    if (authTenantStore && !await authTenantStore.getCatalogAsset({ organizationId: req.tenant.organizationId, assetId: fileId })) {
+      return res.status(404).json({ success: false, error: "Catalog asset not found" });
+    }
     const result = await walrus.updatePhoto({
       fileId,
       name: cleanName,
       description: cleanDesc,
       tags: cleanTags, tenant: req.tenant
     });
+    if (authTenantStore) await authTenantStore.updateCatalogAsset({ organizationId: req.tenant.organizationId, assetId: fileId, actorUserId: req.auth.userId, changes: { name: cleanName, description: cleanDesc, tags: cleanTags, folderId: req.body.folderId } });
 
     res.json({
       success: true,
@@ -1276,7 +1344,12 @@ app.post(["/api/photos/batch-delete", "/api/assets/batch-delete"], requireTenant
   const results = [];
   for (const fileId of validIds) {
     try {
+      if (authTenantStore && !await authTenantStore.getCatalogAsset({ organizationId: req.tenant.organizationId, assetId: fileId })) {
+        results.push({ fileId, success: false, error: "Catalog asset not found" });
+        continue;
+      }
       await walrus.deletePhoto(fileId, req.tenant);
+      if (authTenantStore) await authTenantStore.deleteCatalogAsset({ organizationId: req.tenant.organizationId, assetId: fileId, actorUserId: req.auth.userId });
       if (authTenantStore) await authTenantStore.deleteKeyEnvelopeAsset({ organizationId: req.tenant.organizationId, assetId: fileId });
       cacheManager.evict(`${req.tenant?.organizationId || "development"}:${fileId}`);
       results.push({ fileId, success: true });

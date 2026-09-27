@@ -13,6 +13,18 @@ Este documento registra as melhorias integradas na branch `dev` e as entregas pr
 | Integrado em `dev` | Confiança e verificação de recibos do publisher | `048e49d`, merge `fadc63f` |
 | Integrado em `dev` | Autenticação persistente e contexto por organização nos fluxos de assets | `4c5f5f3`, merge `7e849d0` |
 | Pronto para merge em `dev` | CORS restrito e autenticação uniforme das rotas de organizações | branch `codex/cors-uniform-auth` |
+| Pronto para merge em `dev` | Catálogo persistente de assets por tenant | branch `codex/tenant-metadata-catalog` |
+
+## 9. Catálogo persistente de assets por tenant
+
+Entregue na branch `codex/tenant-metadata-catalog`, pendente de merge na `dev`.
+
+- A migração `004_tenant_asset_catalog.sql` cria um catálogo PostgreSQL isolado por `organization_id`, sem registrar plaintext ou chaves de dados.
+- Uploads comuns, retomáveis e diretos registram o asset no catálogo com proprietário, MIME type, tamanho, tags, descrição, pasta e tipo de storage.
+- A listagem autenticada deixa de depender de uma varredura integral do bucket: usa paginação por cursor, máximo de 100 itens e filtro opcional de pasta.
+- Pastas aninhadas podem ser criadas, renomeadas e removidas somente no tenant ativo; uma pasta com assets ou subpastas não é removida acidentalmente.
+- Cada criação e atualização de metadata gera uma versão imutável; criação, atualização, exclusão e operações em pasta produzem eventos de auditoria consultáveis pelo tenant.
+- Stream, atualização e exclusão verificam o catálogo do tenant antes de operar sobre o ciphertext no Walrus. Isso impede que um ID conhecido fora da organização contorne o isolamento do catálogo.
 
 ## 1. Uploads cifrados retomáveis
 

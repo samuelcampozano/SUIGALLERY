@@ -189,6 +189,41 @@ export class AuthTenantStore {
           discovered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
           cleaned_at TIMESTAMPTZ
         );
+        CREATE TABLE IF NOT EXISTS asset_folders (
+          id UUID PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          parent_id UUID, name TEXT NOT NULL, created_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          UNIQUE (organization_id, id),
+          FOREIGN KEY (organization_id, parent_id) REFERENCES asset_folders(organization_id, id) ON DELETE RESTRICT,
+          UNIQUE NULLS NOT DISTINCT (organization_id, parent_id, name)
+        );
+        CREATE TABLE IF NOT EXISTS catalog_assets (
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, asset_id TEXT NOT NULL,
+          owner_user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT, folder_id UUID, name TEXT NOT NULL,
+          content_type TEXT NOT NULL, byte_size BIGINT NOT NULL CHECK (byte_size >= 0), description TEXT NOT NULL DEFAULT '',
+          tags JSONB NOT NULL DEFAULT '[]'::jsonb, storage_kind TEXT NOT NULL CHECK (storage_kind IN ('walrus', 'direct')),
+          status TEXT NOT NULL CHECK (status IN ('active', 'deleted')) DEFAULT 'active',
+          current_version INTEGER NOT NULL DEFAULT 1 CHECK (current_version >= 1),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), deleted_at TIMESTAMPTZ,
+          PRIMARY KEY (organization_id, asset_id),
+          FOREIGN KEY (organization_id, folder_id) REFERENCES asset_folders(organization_id, id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS catalog_assets_list_idx ON catalog_assets (organization_id, status, created_at DESC, asset_id DESC);
+        CREATE INDEX IF NOT EXISTS catalog_assets_folder_idx ON catalog_assets (organization_id, folder_id, status, created_at DESC);
+        CREATE TABLE IF NOT EXISTS asset_versions (
+          organization_id TEXT NOT NULL, asset_id TEXT NOT NULL, version INTEGER NOT NULL CHECK (version >= 1),
+          name TEXT NOT NULL, content_type TEXT NOT NULL, byte_size BIGINT NOT NULL CHECK (byte_size >= 0),
+          description TEXT NOT NULL DEFAULT '', tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+          changed_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT, change_reason TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (organization_id, asset_id, version),
+          FOREIGN KEY (organization_id, asset_id) REFERENCES catalog_assets(organization_id, asset_id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS asset_audit_events (
+          id UUID PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, asset_id TEXT,
+          actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL, event_type TEXT NOT NULL,
+          details JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS asset_audit_events_asset_idx ON asset_audit_events (organization_id, asset_id, created_at DESC);
 
       `);
       console.log("🐘 [AuthTenantStore] PostgreSQL database schema verified.");
@@ -761,6 +796,163 @@ export class AuthTenantStore {
     const result = await this.pool.query("DELETE FROM key_envelope_assets WHERE organization_id = $1 AND asset_id = $2", [organizationId, assetId]);
     return result.rowCount > 0;
   }
+
+  async createFolder({ organizationId, actorUserId, name, parentId = null }) {
+    const cleanName = this.catalogText(name, 128, "Folder name is required");
+    if (parentId) await this.assertFolder({ organizationId, folderId: parentId });
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO asset_folders (id, organization_id, parent_id, name, created_by)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, parent_id AS "parentId", name, created_at AS "createdAt", updated_at AS "updatedAt"`,
+        [crypto.randomUUID(), organizationId, parentId, cleanName, actorUserId]
+      );
+      await this.audit({ organizationId, actorUserId, eventType: "folder.created", details: { folderId: result.rows[0].id, parentId, name: cleanName } });
+      return result.rows[0];
+    } catch (error) {
+      if (error.code === "23505") throw new Error("A folder with this name already exists at this location");
+      throw error;
+    }
+  }
+
+  async listFolders({ organizationId }) {
+    const result = await this.pool.query(
+      `SELECT id, parent_id AS "parentId", name, created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM asset_folders WHERE organization_id = $1 ORDER BY name ASC`, [organizationId]
+    );
+    return result.rows;
+  }
+
+  async renameFolder({ organizationId, actorUserId, folderId, name }) {
+    const cleanName = this.catalogText(name, 128, "Folder name is required");
+    try {
+      const result = await this.pool.query(`UPDATE asset_folders SET name=$3, updated_at=now() WHERE organization_id=$1 AND id=$2
+        RETURNING id, parent_id AS "parentId", name, created_at AS "createdAt", updated_at AS "updatedAt"`, [organizationId, folderId, cleanName]);
+      if (!result.rowCount) throw new Error("Folder not found in the active organization");
+      await this.audit({ organizationId, actorUserId, eventType: "folder.renamed", details: { folderId, name: cleanName } });
+      return result.rows[0];
+    } catch (error) { if (error.code === "23505") throw new Error("A folder with this name already exists at this location"); throw error; }
+  }
+
+  async deleteFolder({ organizationId, actorUserId, folderId }) {
+    const children = await this.pool.query("SELECT 1 FROM asset_folders WHERE organization_id=$1 AND parent_id=$2 LIMIT 1", [organizationId, folderId]);
+    const assets = await this.pool.query("SELECT 1 FROM catalog_assets WHERE organization_id=$1 AND folder_id=$2 AND status='active' LIMIT 1", [organizationId, folderId]);
+    if (children.rowCount || assets.rowCount) throw new Error("Move or delete all child folders and assets before deleting this folder");
+    const result = await this.pool.query("DELETE FROM asset_folders WHERE organization_id=$1 AND id=$2 RETURNING id", [organizationId, folderId]);
+    if (!result.rowCount) throw new Error("Folder not found in the active organization");
+    await this.audit({ organizationId, actorUserId, eventType: "folder.deleted", details: { folderId } });
+  }
+
+  async registerAsset({ organizationId, actorUserId, assetId, name, contentType, byteSize, description = "", tags = [], storageKind = "walrus", folderId = null }) {
+    if (!assetId || typeof assetId !== "string") throw new Error("A valid asset ID is required");
+    if (folderId) await this.assertFolder({ organizationId, folderId });
+    const asset = this.normalizeCatalogAsset({ name, contentType, byteSize, description, tags, storageKind, folderId });
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const inserted = await client.query(
+        `INSERT INTO catalog_assets (organization_id, asset_id, owner_user_id, folder_id, name, content_type, byte_size, description, tags, storage_kind)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)
+         ON CONFLICT (organization_id, asset_id) DO UPDATE SET name=EXCLUDED.name, content_type=EXCLUDED.content_type, byte_size=EXCLUDED.byte_size,
+           description=EXCLUDED.description, tags=EXCLUDED.tags, folder_id=EXCLUDED.folder_id, updated_at=now()
+         RETURNING *`, [organizationId, assetId, actorUserId, asset.folderId, asset.name, asset.contentType, asset.byteSize, asset.description, JSON.stringify(asset.tags), asset.storageKind]
+      );
+      const row = inserted.rows[0];
+      await client.query(
+        `INSERT INTO asset_versions (organization_id, asset_id, version, name, content_type, byte_size, description, tags, changed_by, change_reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,'uploaded') ON CONFLICT DO NOTHING`,
+        [organizationId, assetId, row.current_version, row.name, row.content_type, row.byte_size, row.description, JSON.stringify(row.tags), actorUserId]
+      );
+      await this.audit({ client, organizationId, assetId, actorUserId, eventType: "asset.created", details: { storageKind: asset.storageKind } });
+      await client.query("COMMIT");
+      return this.catalogRow(row);
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  }
+
+  async listCatalogAssets({ organizationId, folderId = undefined, limit = 50, cursor = null }) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+    const decoded = this.decodeCursor(cursor);
+    const params = [organizationId];
+    let where = "organization_id = $1 AND status = 'active'";
+    if (folderId !== undefined) { params.push(folderId || null); where += ` AND folder_id IS NOT DISTINCT FROM $${params.length}`; }
+    if (decoded) { params.push(decoded.createdAt, decoded.assetId); where += ` AND (created_at, asset_id) < ($${params.length - 1}::timestamptz, $${params.length})`; }
+    params.push(safeLimit + 1);
+    const result = await this.pool.query(`SELECT * FROM catalog_assets WHERE ${where} ORDER BY created_at DESC, asset_id DESC LIMIT $${params.length}`, params);
+    const rows = result.rows.slice(0, safeLimit).map((row) => this.catalogRow(row));
+    const tail = rows.at(-1);
+    return { assets: rows, nextCursor: result.rows.length > safeLimit && tail ? this.encodeCursor(tail) : null };
+  }
+
+  async getCatalogAsset({ organizationId, assetId }) {
+    const result = await this.pool.query("SELECT * FROM catalog_assets WHERE organization_id = $1 AND asset_id = $2 AND status = 'active'", [organizationId, assetId]);
+    return result.rowCount ? this.catalogRow(result.rows[0]) : null;
+  }
+
+  async updateCatalogAsset({ organizationId, assetId, actorUserId, changes }) {
+    const current = await this.getCatalogAsset({ organizationId, assetId });
+    if (!current) throw new Error("Catalog asset not found");
+    const next = this.normalizeCatalogAsset({
+      name: changes.name === undefined ? current.name : changes.name,
+      contentType: current.contentType,
+      byteSize: current.size,
+      description: changes.description === undefined ? current.description : changes.description,
+      tags: changes.tags === undefined ? current.tags : changes.tags,
+      storageKind: current.storageKind,
+      folderId: changes.folderId === undefined ? current.folderId : changes.folderId
+    });
+    if (next.folderId) await this.assertFolder({ organizationId, folderId: next.folderId });
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `UPDATE catalog_assets SET name=$3, description=$4, tags=$5::jsonb, folder_id=$6, current_version=current_version+1, updated_at=now()
+         WHERE organization_id=$1 AND asset_id=$2 AND status='active' RETURNING *`,
+        [organizationId, assetId, next.name, next.description, JSON.stringify(next.tags), next.folderId]
+      );
+      const row = result.rows[0];
+      await client.query(`INSERT INTO asset_versions (organization_id,asset_id,version,name,content_type,byte_size,description,tags,changed_by,change_reason)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,'metadata.updated')`, [organizationId, assetId, row.current_version, row.name, row.content_type, row.byte_size, row.description, JSON.stringify(row.tags), actorUserId]);
+      await this.audit({ client, organizationId, assetId, actorUserId, eventType: "asset.metadata_updated", details: { version: row.current_version } });
+      await client.query("COMMIT");
+      return this.catalogRow(row);
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  }
+
+  async deleteCatalogAsset({ organizationId, assetId, actorUserId }) {
+    const result = await this.pool.query(`UPDATE catalog_assets SET status='deleted', deleted_at=now(), updated_at=now()
+      WHERE organization_id=$1 AND asset_id=$2 AND status='active' RETURNING asset_id`, [organizationId, assetId]);
+    if (!result.rowCount) throw new Error("Catalog asset not found");
+    await this.audit({ organizationId, assetId, actorUserId, eventType: "asset.deleted" });
+  }
+
+  async listAssetVersions({ organizationId, assetId }) {
+    const result = await this.pool.query(`SELECT version, name, content_type AS "contentType", byte_size AS "byteSize", description, tags,
+      change_reason AS "changeReason", created_at AS "createdAt" FROM asset_versions WHERE organization_id=$1 AND asset_id=$2 ORDER BY version DESC`, [organizationId, assetId]);
+    return result.rows;
+  }
+
+  async listAssetAudit({ organizationId, assetId, limit = 100 }) {
+    const result = await this.pool.query(`SELECT e.id, e.asset_id AS "assetId", e.event_type AS "eventType", e.details, u.solana_address AS "actorAddress", e.created_at AS "createdAt"
+      FROM asset_audit_events e LEFT JOIN users u ON u.id=e.actor_user_id WHERE e.organization_id=$1 AND e.asset_id=$2 ORDER BY e.created_at DESC LIMIT $3`, [organizationId, assetId, Math.min(Math.max(Number(limit) || 100, 1), 200)]);
+    return result.rows;
+  }
+
+  async assertFolder({ organizationId, folderId }) {
+    const result = await this.pool.query("SELECT 1 FROM asset_folders WHERE organization_id=$1 AND id=$2", [organizationId, folderId]);
+    if (!result.rowCount) throw new Error("Folder not found in the active organization");
+  }
+  async audit({ client = this.pool, organizationId, assetId = null, actorUserId = null, eventType, details = {} }) {
+    await client.query("INSERT INTO asset_audit_events (id,organization_id,asset_id,actor_user_id,event_type,details) VALUES ($1,$2,$3,$4,$5,$6::jsonb)", [crypto.randomUUID(), organizationId, assetId, actorUserId, eventType, JSON.stringify(details)]);
+  }
+  catalogText(value, max, message) { const text = typeof value === "string" ? value.trim() : ""; if (!text || text.length > max) throw new Error(message); return text; }
+  normalizeCatalogAsset({ name, contentType, byteSize, description, tags, storageKind, folderId }) {
+    if (!['walrus', 'direct'].includes(storageKind)) throw new Error("Invalid asset storage kind");
+    const size = Number(byteSize); if (!Number.isSafeInteger(size) || size < 0) throw new Error("Invalid asset size");
+    return { name: this.catalogText(name, 255, "Asset name is required"), contentType: this.catalogText(contentType || "application/octet-stream", 255, "Content type is required"), byteSize: size,
+      description: typeof description === "string" ? description.slice(0, 1024) : "", tags: Array.isArray(tags) ? tags.slice(0, 30).map((tag) => String(tag).slice(0, 64)) : [], storageKind, folderId: folderId || null };
+  }
+  catalogRow(row) { return { id: row.asset_id, name: row.name, contentType: row.content_type, size: Number(row.byte_size), description: row.description, tags: row.tags, folderId: row.folder_id, storageKind: row.storage_kind, ownerUserId: row.owner_user_id, version: row.current_version, createdAt: row.created_at, updatedAt: row.updated_at }; }
+  encodeCursor(row) { return Buffer.from(JSON.stringify({ createdAt: row.createdAt || row.created_at, assetId: row.id || row.asset_id })).toString("base64url"); }
+  decodeCursor(cursor) { if (!cursor) return null; try { const value = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")); if (!value.createdAt || !value.assetId) throw new Error(); return value; } catch { throw new Error("Invalid pagination cursor"); } }
 
   normalizeKeyEnvelope(entry, organizationId) {
     if (!entry || typeof entry !== "object") throw new Error("Invalid key envelope");
