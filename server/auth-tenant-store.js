@@ -3,6 +3,14 @@ import { Pool } from "pg";
 
 const tokenHash = (token) => crypto.createHash("sha256").update(token).digest("hex");
 const validRoles = new Set(["owner", "admin", "contributor", "viewer"]);
+const MAX_ENVELOPES_PER_ASSET = 500;
+
+function isP256PublicJwk(value) {
+  return value && typeof value === "object" && value.kty === "EC" && value.crv === "P-256"
+    && typeof value.x === "string" && value.x.length >= 40
+    && typeof value.y === "string" && value.y.length >= 40
+    && !Object.prototype.hasOwnProperty.call(value, "d");
+}
 
 export class AuthTenantStore {
   constructor({ databaseUrl = process.env.DATABASE_URL } = {}) {
@@ -14,9 +22,7 @@ export class AuthTenantStore {
     });
   }
 
-  /**
-   * Initializes PostgreSQL tables, indexes, and seeds default tenant context if missing.
-   */
+  /** Initializes PostgreSQL tables and indexes. Tenant contexts are provisioned explicitly. */
   async init() {
     const client = await this.pool.connect();
     try {
@@ -61,12 +67,41 @@ export class AuthTenantStore {
 
         CREATE INDEX IF NOT EXISTS sessions_active_idx ON sessions (token_hash, expires_at) WHERE revoked_at IS NULL;
 
-        INSERT INTO organizations (id, name) VALUES ('default', 'Default Organization') ON CONFLICT (id) DO NOTHING;
-        INSERT INTO tenant_storage_contexts (organization_id, space_id, bucket_id, seal_policy_id, quota_bytes, active)
-        VALUES ('default', '443d9a48-7835-437f-9bb4-2716833aee06', 'ec7acd16-05b1-4fa2-b368-94700eb29f5e', '0x9c1baccb244e45342ac150a0123a4802e8e834f25c00210e50c81081354eee44', 10737418240, true)
-        ON CONFLICT (organization_id) DO NOTHING;
+        CREATE TABLE IF NOT EXISTS user_key_identities (
+          user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          public_key JSONB NOT NULL,
+          recovery_public_key JSONB,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS key_envelope_assets (
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          asset_id TEXT NOT NULL,
+          owner_user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          PRIMARY KEY (organization_id, asset_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS asset_key_envelopes (
+          id UUID PRIMARY KEY,
+          organization_id TEXT NOT NULL,
+          asset_id TEXT NOT NULL,
+          recipient_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          recipient_type TEXT NOT NULL CHECK (recipient_type IN ('user', 'recovery')),
+          algorithm TEXT NOT NULL CHECK (algorithm = 'ECDH-P256/AES-256-GCM'),
+          ephemeral_public_key JSONB NOT NULL,
+          iv TEXT NOT NULL,
+          ciphertext TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          FOREIGN KEY (organization_id, asset_id) REFERENCES key_envelope_assets(organization_id, asset_id) ON DELETE CASCADE,
+          UNIQUE (organization_id, asset_id, recipient_user_id, recipient_type)
+        );
+        CREATE INDEX IF NOT EXISTS asset_key_envelopes_recipient_idx ON asset_key_envelopes (organization_id, asset_id, recipient_user_id);
+
       `);
-      console.log("🐘 [AuthTenantStore] PostgreSQL database schema verified and seeded.");
+      console.log("🐘 [AuthTenantStore] PostgreSQL database schema verified.");
     } catch (err) {
       console.error("❌ [AuthTenantStore] Migration error:", err.message);
       throw err;
@@ -82,11 +117,7 @@ export class AuthTenantStore {
       const userId = crypto.randomUUID();
       await client.query("INSERT INTO users (id, solana_address) VALUES ($1, $2) ON CONFLICT (solana_address) DO NOTHING", [userId, address]);
       const user = await client.query("SELECT id FROM users WHERE solana_address = $1", [address]);
-      let member = await client.query("SELECT role FROM memberships WHERE organization_id = $1 AND user_id = $2", [organizationId, user.rows[0].id]);
-      if (!member.rowCount && (organizationId === "default" || organizationId === "nodus")) {
-        await client.query("INSERT INTO memberships (organization_id, user_id, role) VALUES ($1, $2, 'contributor') ON CONFLICT DO NOTHING", [organizationId, user.rows[0].id]);
-        member = await client.query("SELECT role FROM memberships WHERE organization_id = $1 AND user_id = $2", [organizationId, user.rows[0].id]);
-      }
+      const member = await client.query("SELECT role FROM memberships WHERE organization_id = $1 AND user_id = $2", [organizationId, user.rows[0].id]);
       const tenant = await client.query("SELECT space_id, bucket_id, seal_policy_id, quota_bytes FROM tenant_storage_contexts WHERE organization_id = $1 AND active = true", [organizationId]);
       if (!member.rowCount || !tenant.rowCount) throw new Error("No active membership or storage context for organization");
       const token = crypto.randomBytes(32).toString("base64url");
@@ -169,7 +200,141 @@ export class AuthTenantStore {
     );
     if (!membership.rowCount) throw new Error("Organization member not found");
     if (membership.rows[0].role === "owner") throw new Error("Cannot remove Organization Owner");
+    await this.pool.query("DELETE FROM asset_key_envelopes WHERE organization_id = $1 AND recipient_user_id = $2", [organizationId, membership.rows[0].user_id]);
     await this.pool.query("DELETE FROM memberships WHERE organization_id = $1 AND user_id = $2", [organizationId, membership.rows[0].user_id]);
     return true;
+  }
+
+  async registerKeyIdentity({ userId, payload = {} }) {
+    const { publicKey, recoveryPublicKey = null } = payload;
+    if (Object.prototype.hasOwnProperty.call(payload, "privateKey") || Object.prototype.hasOwnProperty.call(payload, "recoveryPrivateKey")) {
+      throw new Error("Private keys must not be sent to the server");
+    }
+    if (!isP256PublicJwk(publicKey)) throw new Error("A P-256 public encryption key is required");
+    if (recoveryPublicKey !== null && !isP256PublicJwk(recoveryPublicKey)) throw new Error("Recovery key must be a P-256 public encryption key");
+    const result = await this.pool.query(
+      `INSERT INTO user_key_identities (user_id, public_key, recovery_public_key)
+       VALUES ($1, $2::jsonb, $3::jsonb)
+       ON CONFLICT (user_id) DO UPDATE SET public_key = EXCLUDED.public_key, recovery_public_key = EXCLUDED.recovery_public_key, updated_at = now()
+       RETURNING public_key AS "publicKey", recovery_public_key AS "recoveryPublicKey", updated_at AS "updatedAt"`,
+      [userId, JSON.stringify(publicKey), recoveryPublicKey ? JSON.stringify(recoveryPublicKey) : null]
+    );
+    return result.rows[0];
+  }
+
+  async listOrganizationKeyRecipients({ organizationId }) {
+    const result = await this.pool.query(
+      `SELECT u.solana_address AS "address", m.role, i.public_key AS "publicKey", i.recovery_public_key AS "recoveryPublicKey"
+       FROM memberships m
+       JOIN users u ON u.id = m.user_id
+       JOIN user_key_identities i ON i.user_id = u.id
+       WHERE m.organization_id = $1
+       ORDER BY u.solana_address`,
+      [organizationId]
+    );
+    return result.rows.map((row) => ({
+      member: row.address,
+      role: row.role,
+      identity: {
+        address: row.address,
+        publicKey: row.publicKey,
+        recoveryPublicKey: row.recoveryPublicKey
+      }
+    }));
+  }
+
+  async getOrganizationKeyRecipient({ organizationId, address }) {
+    const result = await this.pool.query(
+      `SELECT u.solana_address AS "address", m.role, i.public_key AS "publicKey", i.recovery_public_key AS "recoveryPublicKey"
+       FROM memberships m
+       JOIN users u ON u.id = m.user_id
+       JOIN user_key_identities i ON i.user_id = u.id
+       WHERE m.organization_id = $1 AND u.solana_address = $2`,
+      [organizationId, address]
+    );
+    return result.rows[0] || null;
+  }
+
+  async putKeyEnvelopes({ organizationId, assetId, ownerUserId, envelopes }) {
+    if (!Array.isArray(envelopes) || envelopes.length < 1 || envelopes.length > MAX_ENVELOPES_PER_ASSET) {
+      throw new Error(`envelopes must contain between 1 and ${MAX_ENVELOPES_PER_ASSET} entries`);
+    }
+    const normalized = envelopes.map((entry) => this.normalizeKeyEnvelope(entry, organizationId));
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO key_envelope_assets (organization_id, asset_id, owner_user_id)
+         VALUES ($1, $2, $3) ON CONFLICT (organization_id, asset_id) DO NOTHING`,
+        [organizationId, assetId, ownerUserId]
+      );
+      const asset = await client.query("SELECT owner_user_id FROM key_envelope_assets WHERE organization_id = $1 AND asset_id = $2", [organizationId, assetId]);
+      if (!asset.rowCount || asset.rows[0].owner_user_id !== ownerUserId) throw new Error("Only the asset envelope owner can change key recipients");
+
+      const addresses = [...new Set(normalized.map((entry) => entry.recipientAddress))];
+      const recipients = await client.query(
+        `SELECT u.id, u.solana_address FROM memberships m JOIN users u ON u.id = m.user_id
+         WHERE m.organization_id = $1 AND u.solana_address = ANY($2::text[])`,
+        [organizationId, addresses]
+      );
+      const recipientIds = new Map(recipients.rows.map((row) => [row.solana_address, row.id]));
+      if (recipientIds.size !== addresses.length) throw new Error("Envelope recipient is not an organization member");
+
+      for (const entry of normalized) {
+        await client.query(
+          `INSERT INTO asset_key_envelopes (id, organization_id, asset_id, recipient_user_id, recipient_type, algorithm, ephemeral_public_key, iv, ciphertext)
+           VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
+           ON CONFLICT (organization_id, asset_id, recipient_user_id, recipient_type)
+           DO UPDATE SET algorithm = EXCLUDED.algorithm, ephemeral_public_key = EXCLUDED.ephemeral_public_key, iv = EXCLUDED.iv, ciphertext = EXCLUDED.ciphertext, updated_at = now()`,
+          [crypto.randomUUID(), organizationId, assetId, recipientIds.get(entry.recipientAddress), entry.recipientType, entry.algorithm, JSON.stringify(entry.ephemeralPublicKey), entry.iv, entry.ciphertext]
+        );
+      }
+      await client.query("COMMIT");
+      return { assetId, envelopeCount: normalized.length };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async envelopesForRecipient({ organizationId, assetId, recipientUserId }) {
+    const result = await this.pool.query(
+      `SELECT owner.solana_address AS "ownerAddress", recipient.solana_address AS "recipientAddress",
+              e.recipient_type AS "recipientType", e.algorithm,
+              e.ephemeral_public_key AS "ephemeralPublicKey", e.iv, e.ciphertext, e.updated_at AS "updatedAt"
+       FROM key_envelope_assets a
+       JOIN users owner ON owner.id = a.owner_user_id
+       JOIN asset_key_envelopes e ON e.organization_id = a.organization_id AND e.asset_id = a.asset_id
+       JOIN users recipient ON recipient.id = e.recipient_user_id
+       WHERE a.organization_id = $1 AND a.asset_id = $2 AND e.recipient_user_id = $3`,
+      [organizationId, assetId, recipientUserId]
+    );
+    if (!result.rowCount) return null;
+    return {
+      assetId,
+      ownerAddress: result.rows[0].ownerAddress,
+      updatedAt: result.rows[0].updatedAt,
+      envelopes: result.rows.map(({ ownerAddress, ...envelope }) => ({ ...envelope, organizationId }))
+    };
+  }
+
+  async deleteKeyEnvelopeAsset({ organizationId, assetId }) {
+    const result = await this.pool.query("DELETE FROM key_envelope_assets WHERE organization_id = $1 AND asset_id = $2", [organizationId, assetId]);
+    return result.rowCount > 0;
+  }
+
+  normalizeKeyEnvelope(entry, organizationId) {
+    if (!entry || typeof entry !== "object") throw new Error("Invalid key envelope");
+    if (Object.prototype.hasOwnProperty.call(entry, "key") || Object.prototype.hasOwnProperty.call(entry, "privateKey")) throw new Error("Raw or private keys must not be sent to the server");
+    if (!/^(user|recovery)$/.test(entry.recipientType || "")) throw new Error("recipientType must be 'user' or 'recovery'");
+    if (typeof entry.recipientAddress !== "string" || entry.recipientAddress.length < 32 || entry.recipientAddress.length > 64) throw new Error("Invalid envelope recipient");
+    if (entry.organizationId && entry.organizationId !== organizationId) throw new Error("Envelope organization does not match the active tenant");
+    if (entry.algorithm !== "ECDH-P256/AES-256-GCM") throw new Error("Unsupported key-envelope algorithm");
+    if (!isP256PublicJwk(entry.ephemeralPublicKey)) throw new Error("Invalid ephemeral public key");
+    if (typeof entry.iv !== "string" || !/^[a-f0-9]{24}$/i.test(entry.iv)) throw new Error("Invalid envelope IV");
+    if (typeof entry.ciphertext !== "string" || !/^[a-f0-9]{64,512}$/i.test(entry.ciphertext)) throw new Error("Invalid encrypted key envelope");
+    return { ...entry, organizationId, iv: entry.iv.toLowerCase(), ciphertext: entry.ciphertext.toLowerCase() };
   }
 }

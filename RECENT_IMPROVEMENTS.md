@@ -151,6 +151,18 @@ Antes de habilitar produção, um operador deve provisionar cada organização, 
 
 Adicionar a interface ou API administrativa autenticada para o provisionamento de organizações e memberships, seguida de quotas/auditoria por tenant. A verificação do publisher já protege a integridade do blob; o próximo passo é operacionalizar o ciclo de vida do tenant sem conceder privilégios pelo cliente.
 
+## 6. Diretório de envelopes com tenant persistente
+
+Entregue na branch `codex/tenant-key-envelopes`, pendente de merge na `dev`.
+
+- As rotas de identidades e envelopes agora exigem `requireTenant` e uma sessão bearer persistida; `x-solana-address` não é aceito como autorização para esses fluxos.
+- As identidades públicas, o proprietário do envelope e cada ciphertext passam a ser persistidos no PostgreSQL. `organization_id` compõe as chaves e filtros de escrita, leitura, remoção e revogação por membership.
+- Um mesmo `assetId` pode existir em organizações diferentes sem compartilhar envelopes. A leitura retorna somente ciphertexts destinados ao `user_id` da sessão e à organização ativa.
+- A API confere que destinatários pertencem à organização ativa; o SDK usa obrigatoriamente o tenant autenticado, inclui o ID da organização no AAD criptográfico e rejeita destinatários fora da membership.
+- O login não cria mais organização, contexto de storage nem membership implícitos. Essas relações precisam ser pré-provisionadas por um operador.
+- A migração `002_tenant_key_envelopes.sql` é aplicada tanto no Docker Compose quanto na inicialização do serviço. O blueprint Render exige configurar `NODUS_ALLOWED_ORIGINS` por ambiente.
+- A suíte de envelopes agora é integração PostgreSQL: cobre bearer obrigatório, isolamento entre duas organizações, recuperação por destinatário e rejeição de key material bruto. Ela é executada quando `DATABASE_URL` estiver disponível.
+
 ## 5. CORS restrito e autenticação uniforme de organizações
 
 Em implementação na branch `codex/cors-uniform-auth`.

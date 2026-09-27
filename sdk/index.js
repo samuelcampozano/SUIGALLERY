@@ -379,6 +379,7 @@ export class NodusClient {
     this.gatewayUrl = (config.gatewayUrl || "http://localhost:3000").replace(/\/+$/, "");
     this.apiKey = config.apiKey || null;
     this.accessToken = config.accessToken || null;
+    this.organizationId = config.organizationId || null;
     this._fetch = config.fetch || globalThis.fetch.bind(globalThis);
     this.searchIndex = new NodusSearchIndex();
     // Ephemeral device-local mapping. It is never serialized into an upload,
@@ -1168,6 +1169,7 @@ export class NodusClient {
     if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
     this.userAddress = address;
     if (data.accessToken) this.accessToken = data.accessToken;
+    if (data.tenant?.organizationId) this.organizationId = data.tenant.organizationId;
     return data;
   }
 
@@ -1214,20 +1216,19 @@ export class NodusClient {
     }
     const dataKeyHex = this.keyCache.get(assetId);
     if (!dataKeyHex) throw new Error(`No device-local data key is available for ${assetId}`);
-    const recipients = new Map();
-    recipients.set(this.userAddress, { member: this.userAddress, identity: {
-      address: this.userAddress,
-      publicKey: this.keyIdentity.primaryPublicKey,
-      recoveryPublicKey: this.keyIdentity.recoveryPublicKey || null
-    }, organizationId: null });
-    for (const address of recipientAddresses) {
-      const identity = await this.getKeyIdentity(address);
-      recipients.set(address, { member: address, identity, organizationId: null });
+    const activeOrganizationId = organizationId || this.organizationId;
+    if (!activeOrganizationId) throw new Error("A tenant organization is required to protect an asset key");
+    if (organizationId && this.organizationId && organizationId !== this.organizationId) {
+      throw new Error("The requested organization does not match the authenticated tenant");
     }
-    if (organizationId) {
-      for (const recipient of await this.getOrganizationKeyRecipients(organizationId)) {
-        recipients.set(recipient.member, { ...recipient, organizationId });
-      }
+    const recipients = new Map();
+    for (const recipient of await this.getOrganizationKeyRecipients(activeOrganizationId)) {
+      recipients.set(recipient.member, { ...recipient, organizationId: activeOrganizationId });
+    }
+    // The API is deliberately organization-scoped: arbitrary addresses cannot
+    // receive an envelope unless they are a member of the active tenant.
+    for (const address of recipientAddresses) {
+      if (!recipients.has(address)) throw new Error(`Recipient ${address} is not a member of the active organization`);
     }
 
     const envelopes = [];
@@ -1281,7 +1282,7 @@ export class NodusClient {
       if (options?.organizationId) throw new Error("Organization assets require an authenticated device encryption identity");
       return null;
     }
-    return this.protectAssetKey(assetId, { organizationId: options?.organizationId || null });
+    return this.protectAssetKey(assetId, { organizationId: options?.organizationId || this.organizationId || null });
   }
 
   /**
@@ -1417,7 +1418,9 @@ export class NodusClient {
     const headers = {};
     if (includeJson) headers["Accept"] = "application/json";
     if (this.accessToken || this.apiKey) headers["Authorization"] = `Bearer ${this.accessToken || this.apiKey}`;
-    if (this.userAddress) headers["x-solana-address"] = this.userAddress;
+    // Legacy local/demo endpoints still accept this hint. Production routes
+    // authenticate exclusively from the bearer session token.
+    if (this.userAddress && !this.accessToken) headers["x-solana-address"] = this.userAddress;
     return headers;
   }
 }

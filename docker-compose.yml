@@ -12,6 +12,7 @@ services:
     volumes:
       - nodus-postgres:/var/lib/postgresql/data
       - ./server/migrations/001_auth_tenants.sql:/docker-entrypoint-initdb.d/001_auth_tenants.sql:ro
+      - ./server/migrations/002_tenant_key_envelopes.sql:/docker-entrypoint-initdb.d/002_tenant_key_envelopes.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nodus -d nodus"]
       interval: 5s
