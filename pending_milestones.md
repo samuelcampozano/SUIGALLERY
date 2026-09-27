@@ -61,14 +61,16 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 
 **Objetivo:** permitir que a equipe crie e opere organizacoes sem manipulacao manual do banco.
 
-- [ ] Criar API ou painel administrativo autenticado para provisionar organizacao, owner e membership inicial.
-- [ ] Automatizar a criacao/vinculo de `space`, `bucket` e politica Seal por organizacao.
-- [ ] Permitir alterar quota, ativar, suspender e encerrar organizacoes com auditoria.
-- [ ] Criar fluxo de convite e aceite de membros.
-- [ ] Registrar e tratar erros de provisionamento parcial, com retry seguro.
-- [ ] Documentar runbook de criacao, suspensao, exclusao e recuperacao de tenant.
+**Status:** implementacao concluida na branch `codex/tenant-provisioning-admin` (`46d99df`); a execucao da suite de integracao PostgreSQL com `DATABASE_URL` real continua pendente antes de encerrar formalmente o milestone.
 
-**Criterio de saida:** um operador consegue provisionar uma organizacao completa por interface/API e o owner consegue entrar sem intervencao no banco.
+- [x] Criar API ou painel administrativo autenticado para provisionar organizacao, owner e membership inicial.
+- [x] Automatizar a criacao/vinculo de `space`, `bucket` e politica Seal por organizacao.
+- [x] Permitir alterar quota, ativar, suspender e encerrar organizacoes com auditoria.
+- [ ] Criar fluxo de convite e aceite de membros.
+- [x] Registrar e tratar erros de provisionamento parcial, com retry seguro.
+- [x] Documentar runbook de criacao, suspensao, exclusao e recuperacao de tenant.
+
+**Criterio de saida:** pendente da suite PostgreSQL e do fluxo de convite/aceite. Um operador ja pode provisionar uma organizacao completa por API e o owner pode entrar sem intervencao manual no banco apos a ativacao do contexto de storage.
 
 ## M3 - API comercial para desenvolvedores
 
