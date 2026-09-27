@@ -1277,6 +1277,41 @@ export class NodusClient {
     throw new Error(`No decryptable key envelope is available for ${assetId}`);
   }
 
+  /** Lists assets that must be re-encrypted after a member's envelope is revoked. */
+  async listPendingKeyRotations() {
+    const res = await this._fetch(`${this.gatewayUrl}/api/key-rotations/pending`, { headers: this._getHeaders() });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || "Unable to load pending key rotations");
+    return body.rotations || [];
+  }
+
+  /**
+   * Performs strong revocation without server key custody. The SDK decrypts the
+   * source asset locally, encrypts a replacement with a fresh data key, creates
+   * envelopes for current members, then asks the API to shred the old asset.
+   */
+  async rotateAssetAfterRevocation({ rotationId, assetId, name, type, description, tags } = {}) {
+    if (!rotationId || !assetId) throw new Error("rotationId and assetId are required");
+    const source = await this.get(assetId);
+    const record = source.record || source;
+    const replacement = await this.put(source.data, {
+      name: name || record.original_name || record.name,
+      type: type || record.original_type || record.content_type,
+      description: description || record.description || "Re-encrypted after member revocation",
+      tags: tags || record.tags || [],
+      organizationId: this.organizationId
+    });
+    const res = await this._fetch(`${this.gatewayUrl}/api/key-rotations/${encodeURIComponent(rotationId)}/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._getHeaders() },
+      body: JSON.stringify({ replacementAssetId: replacement.id })
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || "Unable to complete key rotation");
+    this.keyCache.delete(assetId);
+    return { replacement, rotation: body.rotation };
+  }
+
   async _protectUploadedAsset(assetId, options) {
     if (!this.keyIdentity || !this.userAddress) {
       if (options?.organizationId) throw new Error("Organization assets require an authenticated device encryption identity");

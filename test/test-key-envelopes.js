@@ -1,5 +1,7 @@
 import http from "node:http";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import nacl from "tweetnacl";
 import bs58 from "bs58";
 import { Keypair } from "@solana/web3.js";
@@ -97,6 +99,42 @@ async function run() {
 
     const recipients = await alice.getOrganizationKeyRecipients(orgA);
     assert(recipients.some((recipient) => recipient.member === bobAddress), "Organization recipient directory exposes only registered public identities to members");
+
+    const revokeResponse = await fetch(`${gatewayUrl}/api/orgs/${orgA}/members/${bobAddress}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${alice.accessToken}` }
+    });
+    const revokeBody = await revokeResponse.json();
+    assert(revokeResponse.ok && revokeBody.keyRotationRequired && revokeBody.rotationRequiredAssetIds.includes(assetId), "Removing a member immediately revokes their envelopes and creates a tenant key-rotation task");
+    const revokedRead = await fetch(`${gatewayUrl}/api/assets/${assetId}/key-envelopes`, { headers: { Authorization: `Bearer ${bob.accessToken}` } });
+    assert(revokedRead.status === 401, "A revoked member's existing bearer session can no longer read an envelope");
+    const rotationsResponse = await fetch(`${gatewayUrl}/api/key-rotations/pending`, { headers: { Authorization: `Bearer ${alice.accessToken}` } });
+    const rotationsBody = await rotationsResponse.json();
+    assert(rotationsResponse.ok && rotationsBody.rotations.some((rotation) => rotation.assetId === assetId), "The asset owner receives an explicit client-side re-encryption task");
+
+    const { walrus } = await import("../server/walrus-client.js");
+    const batchPath = path.join(process.cwd(), "temp_storage", `batch-envelope-${Date.now()}.bin`);
+    fs.mkdirSync(path.dirname(batchPath), { recursive: true });
+    fs.writeFileSync(batchPath, crypto.randomBytes(64));
+    const batchStored = await walrus.uploadPhoto({
+      localPath: batchPath,
+      fileName: `batch-envelope-${Date.now()}.bin`,
+      encryption: { iv: crypto.randomBytes(12).toString("hex"), originalType: "application/octet-stream" },
+      tenant: { bucketId: `bucket-${orgA}`, sealPolicyId: "seal-a" }
+    });
+    const batchAssetId = batchStored.id || batchStored.fileId;
+    alice.keyCache.set(batchAssetId, crypto.randomBytes(32).toString("hex"));
+    await alice.protectAssetKey(batchAssetId);
+    const batchDelete = await fetch(`${gatewayUrl}/api/assets/batch-delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${alice.accessToken}` },
+      body: JSON.stringify({ fileIds: [batchAssetId] })
+    });
+    const batchDeleteBody = await batchDelete.json();
+    assert(batchDelete.ok && batchDeleteBody.deleted_count === 1, "Batch deletion removes the ciphertext asset in the active tenant");
+    const batchEnvelopeRead = await fetch(`${gatewayUrl}/api/assets/${batchAssetId}/key-envelopes`, { headers: { Authorization: `Bearer ${alice.accessToken}` } });
+    assert(batchEnvelopeRead.status === 404, "Batch deletion also shreds every persisted key envelope for the asset");
+    fs.unlinkSync(batchPath);
 
     await authenticate(alice, alicePair, orgB);
     const otherTenantRead = await fetch(`${gatewayUrl}/api/assets/${assetId}/key-envelopes`, { headers: { Authorization: `Bearer ${alice.accessToken}` } });

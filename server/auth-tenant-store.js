@@ -100,6 +100,19 @@ export class AuthTenantStore {
         );
         CREATE INDEX IF NOT EXISTS asset_key_envelopes_recipient_idx ON asset_key_envelopes (organization_id, asset_id, recipient_user_id);
 
+        CREATE TABLE IF NOT EXISTS key_rotation_tasks (
+          id UUID PRIMARY KEY,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          asset_id TEXT NOT NULL,
+          revoked_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          status TEXT NOT NULL CHECK (status IN ('pending', 'completed')) DEFAULT 'pending',
+          replacement_asset_id TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          completed_at TIMESTAMPTZ,
+          UNIQUE (organization_id, asset_id, revoked_user_id)
+        );
+        CREATE INDEX IF NOT EXISTS key_rotation_tasks_pending_idx ON key_rotation_tasks (organization_id, status, created_at);
+
       `);
       console.log("🐘 [AuthTenantStore] PostgreSQL database schema verified.");
     } catch (err) {
@@ -193,16 +206,100 @@ export class AuthTenantStore {
   }
 
   async removeMembership({ organizationId, address }) {
-    const membership = await this.pool.query(
-      `SELECT m.user_id, m.role FROM memberships m JOIN users u ON u.id = m.user_id
-        WHERE m.organization_id = $1 AND u.solana_address = $2`,
-      [organizationId, address]
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const membership = await client.query(
+        `SELECT m.user_id, m.role FROM memberships m JOIN users u ON u.id = m.user_id
+          WHERE m.organization_id = $1 AND u.solana_address = $2 FOR UPDATE`,
+        [organizationId, address]
+      );
+      if (!membership.rowCount) throw new Error("Organization member not found");
+      if (membership.rows[0].role === "owner") throw new Error("Cannot remove Organization Owner");
+      const userId = membership.rows[0].user_id;
+      const affected = await client.query(
+        "SELECT DISTINCT asset_id FROM asset_key_envelopes WHERE organization_id = $1 AND recipient_user_id = $2",
+        [organizationId, userId]
+      );
+      for (const { asset_id: assetId } of affected.rows) {
+        await client.query(
+          `INSERT INTO key_rotation_tasks (id, organization_id, asset_id, revoked_user_id)
+           VALUES ($1, $2, $3, $4) ON CONFLICT (organization_id, asset_id, revoked_user_id)
+           DO UPDATE SET status = 'pending', replacement_asset_id = NULL, completed_at = NULL`,
+          [crypto.randomUUID(), organizationId, assetId, userId]
+        );
+      }
+      await client.query("DELETE FROM asset_key_envelopes WHERE organization_id = $1 AND recipient_user_id = $2", [organizationId, userId]);
+      await client.query("DELETE FROM memberships WHERE organization_id = $1 AND user_id = $2", [organizationId, userId]);
+      await client.query("COMMIT");
+      return { revokedEnvelopeAssetIds: affected.rows.map((row) => row.asset_id) };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async listPendingKeyRotations({ organizationId, ownerUserId }) {
+    const result = await this.pool.query(
+      `SELECT r.id, r.asset_id AS "assetId", u.solana_address AS "revokedAddress", r.created_at AS "createdAt"
+       FROM key_rotation_tasks r
+       JOIN key_envelope_assets a ON a.organization_id = r.organization_id AND a.asset_id = r.asset_id
+       JOIN users u ON u.id = r.revoked_user_id
+       WHERE r.organization_id = $1 AND a.owner_user_id = $2 AND r.status = 'pending'
+       ORDER BY r.created_at ASC`,
+      [organizationId, ownerUserId]
     );
-    if (!membership.rowCount) throw new Error("Organization member not found");
-    if (membership.rows[0].role === "owner") throw new Error("Cannot remove Organization Owner");
-    await this.pool.query("DELETE FROM asset_key_envelopes WHERE organization_id = $1 AND recipient_user_id = $2", [organizationId, membership.rows[0].user_id]);
-    await this.pool.query("DELETE FROM memberships WHERE organization_id = $1 AND user_id = $2", [organizationId, membership.rows[0].user_id]);
-    return true;
+    return result.rows;
+  }
+
+  async validateKeyRotation({ organizationId, rotationId, ownerUserId, replacementAssetId }) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const task = await client.query(
+        `SELECT r.asset_id, r.status FROM key_rotation_tasks r
+         JOIN key_envelope_assets a ON a.organization_id = r.organization_id AND a.asset_id = r.asset_id
+         WHERE r.id = $1 AND r.organization_id = $2 AND a.owner_user_id = $3 FOR UPDATE`,
+        [rotationId, organizationId, ownerUserId]
+      );
+      if (!task.rowCount || task.rows[0].status !== "pending") throw new Error("Pending key rotation not found");
+      const replacement = await client.query(
+        "SELECT owner_user_id FROM key_envelope_assets WHERE organization_id = $1 AND asset_id = $2",
+        [organizationId, replacementAssetId]
+      );
+      if (!replacement.rowCount || replacement.rows[0].owner_user_id !== ownerUserId) throw new Error("Replacement asset is not owned by the current user");
+      const expected = await client.query("SELECT user_id FROM memberships WHERE organization_id = $1", [organizationId]);
+      const protectedRecipients = await client.query(
+        `SELECT DISTINCT recipient_user_id FROM asset_key_envelopes
+         WHERE organization_id = $1 AND asset_id = $2 AND recipient_type = 'user'`,
+        [organizationId, replacementAssetId]
+      );
+      const recipientIds = new Set(protectedRecipients.rows.map((row) => row.recipient_user_id));
+      if (expected.rows.some((row) => !recipientIds.has(row.user_id))) throw new Error("Replacement asset is missing an envelope for an active organization member");
+      await client.query("COMMIT");
+      return { sourceAssetId: task.rows[0].asset_id, replacementAssetId };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async finalizeKeyRotation({ organizationId, rotationId, ownerUserId, replacementAssetId, sourceAssetId }) {
+    const result = await this.pool.query(
+      `UPDATE key_rotation_tasks r SET status = 'completed', replacement_asset_id = $1, completed_at = now()
+       FROM key_envelope_assets a
+       WHERE r.id = $2 AND r.organization_id = $3 AND r.status = 'pending'
+         AND r.asset_id = $4 AND a.organization_id = r.organization_id AND a.asset_id = r.asset_id AND a.owner_user_id = $5
+       RETURNING r.asset_id`,
+      [replacementAssetId, rotationId, organizationId, sourceAssetId, ownerUserId]
+    );
+    if (!result.rowCount) throw new Error("Pending key rotation could not be finalized");
+    await this.deleteKeyEnvelopeAsset({ organizationId, assetId: sourceAssetId });
+    return { sourceAssetId, replacementAssetId };
   }
 
   async registerKeyIdentity({ userId, payload = {} }) {
