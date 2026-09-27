@@ -8,7 +8,7 @@ process.env.NODE_ENV = "test";
 import http from "node:http";
 import assert from "node:assert";
 import app from "../server/index.js";
-import { NodusClient, createNodusClient, NodusCrypto } from "../sdk/index.js";
+import { NodusClient, createNodusClient, NodusCrypto, NodusUploadControl } from "../sdk/index.js";
 
 async function runSdkTests() {
   console.log("==================================================");
@@ -152,6 +152,38 @@ async function runSdkTests() {
     // Search index automatically pruned
     const searchPostDelete = await client.search("audit");
     testAssert(searchPostDelete.every((d) => d.id !== doc1.id), "Deleted asset was purged from local search index");
+
+    // ----------------------------------------------------
+    // TEST GROUP 8: Large-upload controls and safe resume references
+    // ----------------------------------------------------
+    console.log("\n[TEST 8] Upload Controls & Safe Resume References");
+    const control = new NodusUploadControl();
+    control.pause();
+    let resumed = false;
+    const waiting = control.waitUntilReady().then(() => { resumed = true; });
+    await Promise.resolve();
+    testAssert(!resumed, "Paused upload control blocks subsequent upload work");
+    control.resume();
+    await waiting;
+    testAssert(resumed, "Paused upload control resumes deterministically");
+    control.cancel();
+    let cancelled = false;
+    try { await control.waitUntilReady(); } catch { cancelled = true; }
+    testAssert(cancelled, "Cancelled upload control rejects subsequent upload work");
+
+    const entries = new Map();
+    const resumeStorage = {
+      get length() { return entries.size; },
+      key: (index) => [...entries.keys()][index] || null,
+      getItem: (key) => entries.get(key) || null,
+      setItem: (key, value) => entries.set(key, value),
+      removeItem: (key) => entries.delete(key)
+    };
+    const resumableClient = createNodusClient({ gatewayUrl, resumeStorage, organizationId: "org-test" });
+    resumableClient._saveUploadReference({ uploadId: "upload-reference", assetId: "asset-reference", originalName: "video.mp4", originalSize: 100, expiresAt: "2030-01-01T00:00:00.000Z" }, "direct");
+    const references = resumableClient.listPendingUploadReferences();
+    testAssert(references.length === 1 && references[0].uploadId === "upload-reference", "Persists only a resumable upload reference for browser recovery");
+    testAssert(!JSON.stringify(references).includes("key"), "Resume references never persist a raw data key");
 
   } finally {
     server.close();

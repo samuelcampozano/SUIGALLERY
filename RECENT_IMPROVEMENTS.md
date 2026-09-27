@@ -1,6 +1,6 @@
 # Nodus - Log de Melhorias Recentes
 
-Atualizado em 26 de setembro de 2026.
+Atualizado em 27 de setembro de 2026.
 
 Este documento registra as melhorias integradas na branch `dev` e as entregas prontas para merge nas branches de trabalho.
 
@@ -14,6 +14,9 @@ Este documento registra as melhorias integradas na branch `dev` e as entregas pr
 | Integrado em `dev` | Autenticação persistente e contexto por organização nos fluxos de assets | `4c5f5f3`, merge `7e849d0` |
 | Pronto para merge em `dev` | CORS restrito e autenticação uniforme das rotas de organizações | branch `codex/cors-uniform-auth` |
 | Pronto para merge em `dev` | Catálogo persistente de assets por tenant | branch `codex/tenant-metadata-catalog` |
+| Pronto para merge em `dev` | Control plane seguro para uploads e reserva de quota | `fac592b` |
+| Pronto para merge em `dev` | Escala do publisher direto e persistência de payloads | `9eefc10` |
+| Pronto para merge em `dev` | Streaming verificado, ranges e controles de upload | `687d440` |
 
 ## 9. Catálogo persistente de assets por tenant
 
@@ -204,3 +207,53 @@ Em implementação na branch `codex/cors-uniform-auth`.
 - Listagem e consulta de organizações usam a membership da sessão PostgreSQL; alterações de membros exigem papel `owner` ou `admin` e o tenant ativo correspondente.
 - Criação de organização em produção fica bloqueada até existir o fluxo administrativo de pré-provisionamento, evitando criar organização sem contexto `space/bucket/Seal`.
 - O teste cobre origem autorizada, origem bloqueada e tentativa de acessar organização somente com endereço forjado.
+
+## 10. Control plane seguro para uploads e reserva de quota
+
+Entregue na branch `codex/upload-auth-foundation` pelo commit `fac592b` (`feat: secure upload sessions and quota reservations`), pendente de merge na `dev`.
+
+- A migração `004_upload_control_plane.sql` passa a registrar cada sessão de upload com `userId`, `organizationId`, `assetId`, estado e reserva de quota; a sessão não é mais um objeto anônimo do gateway.
+- Criação, consulta, envio de parte ou segmento, finalização, cancelamento, manifesto e download passam pelo contexto autenticado do tenant. Uma organização ou usuário diferente não consegue inspecionar, autorizar ou abortar uma sessão conhecida.
+- RBAC é aplicado no upload: `owner`, `admin` e `contributor` podem enviar; `viewer` mantém acesso somente de leitura.
+- Antes do primeiro chunk, a quota da organização é reservada de forma transacional. Ela é consolidada como uso somente após a finalização e é liberada em cancelamentos, expiração ou falha do provider.
+- O gateway rejeita material de chave bruto (`key`, `keyHex`, chaves privadas e chaves de recuperação) também no estado de upload, nos corpos HTTP e nos payloads persistidos. A chave de dados permanece no cliente e é recuperada somente por envelopes cifrados.
+- Sessões, quotas e eventos de upload ganham persistência no PostgreSQL; a política de CORS permanece restrita às origens declaradas em `NODUS_ALLOWED_ORIGINS`.
+
+### Garantias verificadas
+
+- Isolamento entre organizações e usuários para sessões retomáveis e diretas.
+- Acesso administrativo permitido somente dentro da organização ativa.
+- Rejeição de tentativa de persistir chave AES bruta em sessões.
+- Reserva de quota antes do envio e liberação segura quando o upload não é concluído.
+
+## 11. Upload direto escalável, streaming verificado e recuperação segura
+
+Entregue na branch `codex/upload-auth-foundation` pelos commits `9eefc10` (`feat: scale direct publisher uploads`) e `687d440` (`feat: add verified direct streaming controls`), pendente de merge na `dev`.
+
+### Escala e ciclo de vida do publisher
+
+- Arquivos grandes usam o publisher direto como padrão: o browser envia ciphertext ao Walrus sem fazer o gateway armazenar localmente segmentos de até 1 GiB ou arquivos de até 500 GiB.
+- O SDK cifra e publica segmentos usando `ReadableStream`, sem bufferizar o ciphertext completo do segmento na memória. O envio trabalha com concorrência controlada de 1 a 5 segmentos e retentativas com backoff exponencial.
+- O estado canônico das sessões e dos manifestos diretos é persistido no PostgreSQL pela migração `005_upload_payloads.sql`, em vez de arquivos locais do processo.
+- Finalização é idempotente: uma nova chamada de `complete` para a mesma sessão finalizada retorna o mesmo asset lógico.
+- Blobs publicados por uma sessão abortada ou expirada recebem tombstones de órfão. A limpeza no servidor tenta apagá-los no publisher e mantém o registro até a confirmação, tornando a recuperação observável e repetível.
+
+### Download, integridade e retomada
+
+- O manifesto direto contém hashes SHA-256 determinísticos do próprio manifesto e de cada chunk AES-GCM. O SDK valida o manifesto e cada chunk de ciphertext antes da descriptografia no browser.
+- `nodus.stream(assetId, { range })` entrega streaming direto do publisher, descriptografa somente os chunks necessários no cliente e aceita intervalos plaintext no formato `bytes=início-fim`, viabilizando download retomável e seek de vídeo.
+- Referências seguras de uploads em andamento podem ser salvas no browser para descoberta após reabrir a aplicação. Elas contêm apenas identificadores de sessão e contexto, nunca a chave de dados.
+- A recuperação da chave depende do envelope do dono ou do envelope de recuperação cifrado; o gateway continua incapaz de desembrulhar a chave AES.
+
+### Experiência e auditoria
+
+- `NodusUploadControl` permite pausar, retomar e cancelar uploads diretos ou retomáveis sem expor material de chave. O cancelamento aciona a limpeza da sessão e libera a quota reservada.
+- Progresso do SDK passa a informar bytes enviados, velocidade, bytes restantes e estimativa de término; erros de quota, rede, sessão expirada, cancelamento e indisponibilidade do publisher recebem mensagens orientadas ao usuário.
+- O compartilhamento de envelopes de chave registra o evento de auditoria `asset.shared`, incluindo a quantidade de destinatários, sem guardar o conteúdo ou a chave do arquivo.
+
+### Cobertura adicionada
+
+- Fluxo direto sem ciphertext no gateway, concorrência e recibos autenticados do publisher.
+- Persistência e recuperação de sessão direta pelo estado canônico do banco.
+- Hash do manifesto, hash por chunk e descriptografia de intervalos plaintext.
+- Pausa, retomada, cancelamento e comprovação de que referências de recuperação não contêm chave bruta.

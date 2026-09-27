@@ -15,6 +15,33 @@ export const DEFAULT_DIRECT_PUBLISHER_SEGMENT_SIZE = 64 * 1024 * 1024;
 export const DEFAULT_DIRECT_UPLOAD_CONCURRENCY = 3;
 export const DEFAULT_DIRECT_UPLOAD_MAX_RETRIES = 4;
 
+/** Controls an in-flight large upload without ever retaining its data key. */
+export class NodusUploadControl {
+  constructor() {
+    this.paused = false;
+    this.cancelled = false;
+    this._resumeWaiters = [];
+  }
+
+  pause() { this.paused = true; }
+
+  resume() {
+    this.paused = false;
+    for (const resolve of this._resumeWaiters.splice(0)) resolve();
+  }
+
+  cancel() {
+    this.cancelled = true;
+    this.resume();
+  }
+
+  async waitUntilReady() {
+    if (this.cancelled) throw new Error("Upload cancelled");
+    while (this.paused && !this.cancelled) await new Promise((resolve) => this._resumeWaiters.push(resolve));
+    if (this.cancelled) throw new Error("Upload cancelled");
+  }
+}
+
 /**
  * Derives the deterministic Anchor Program Derived Address (PDA) for an Organization.
  * @param {string} orgId
@@ -389,6 +416,7 @@ export class NodusClient {
     // session, catalog entry, or HTTP header.
     this.keyCache = new Map();
     this.keyIdentity = config.keyIdentity || null;
+    this.resumeStorage = config.resumeStorage || globalThis.localStorage || null;
   }
 
   /**
@@ -594,8 +622,11 @@ export class NodusClient {
     }
 
     const received = new Set(upload.receivedParts || []);
+    this._saveUploadReference(upload, "resumable");
+    const startedAt = Date.now();
     try {
       for (let partNumber = 0; partNumber < chunkCount; partNumber++) {
+        await this._waitForUploadControl(options.control);
         if (received.has(partNumber)) continue;
         const start = partNumber * chunkSize;
         const end = Math.min(start + chunkSize, originalSize);
@@ -603,18 +634,18 @@ export class NodusClient {
         const ciphertextPart = await NodusCrypto.encryptChunk(plaintextPart, keyHex, ivHex, partNumber);
         const checksum = await NodusCrypto.sha256Hex(ciphertextPart);
         await this.uploadResumablePart(upload.uploadId, partNumber, ciphertextPart, checksum);
-        if (typeof options.onProgress === "function") {
-          options.onProgress({
+        this._emitUploadProgress(options, {
             uploadId: upload.uploadId,
             partNumber,
             partCount: chunkCount,
             uploadedBytes: Math.min(end, originalSize),
-            totalBytes: originalSize
+            totalBytes: originalSize,
+            startedAt
           });
-        }
       }
 
       const completed = await this.completeResumableUpload(upload.uploadId);
+      this._removeUploadReference(upload.uploadId);
       const record = completed.asset || completed.result;
       if (record) this._indexRecord(record, { name, type, description, tags });
       if (record?.id || record?.fileId) {
@@ -636,8 +667,13 @@ export class NodusClient {
         upload: completed.upload
       };
     } catch (error) {
+      if (this._isCancellation(error, options.control)) {
+        await this.abortResumableUpload(upload.uploadId).catch(() => {});
+        this._removeUploadReference(upload.uploadId);
+      }
       error.uploadId = upload.uploadId;
       error.encryption = { key: keyHex, iv: ivHex, chunkSize, chunkCount };
+      error.userMessage = this._friendlyUploadError(error);
       throw error;
     }
   }
@@ -706,7 +742,9 @@ export class NodusClient {
     }
 
     try {
-      const pending = upload.segments.filter((segment) => segment.status !== "completed");
+    const pending = upload.segments.filter((segment) => segment.status !== "completed");
+      this._saveUploadReference(upload, "direct");
+      const startedAt = Date.now();
       const concurrency = Number(options.concurrency || DEFAULT_DIRECT_UPLOAD_CONCURRENCY);
       if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 5) throw new Error("direct upload concurrency must be between 1 and 5");
       const maxRetries = Number(options.maxRetries || DEFAULT_DIRECT_UPLOAD_MAX_RETRIES);
@@ -717,8 +755,9 @@ export class NodusClient {
         .filter((segment) => segment.status === "completed")
         .reduce((total, segment) => total + segment.plainSize, 0);
       const publishOne = async (segment) => {
+        await this._waitForUploadControl(options.control);
         await this._withExponentialBackoff(async () => {
-          const { ciphertextSha256, ciphertextStream } = await this._prepareDirectSegmentUpload(data, segment, keyHex, ivHex, chunkSize);
+          const { ciphertextSha256, chunkSha256s, ciphertextStream } = await this._prepareDirectSegmentUpload(data, segment, keyHex, ivHex, chunkSize);
           const authorization = await this.authorizeDirectSegment(upload.uploadId, segment.index, ciphertextSha256, options.sendObjectTo);
           const request = {
             method: authorization.method || "PUT",
@@ -731,12 +770,10 @@ export class NodusClient {
           const publisherResponse = await this._readPublisherResponse(published);
           if (!published.ok) throw new Error(publisherResponse?.error || publisherResponse?.message || `Publisher rejected segment ${segment.index}: HTTP ${published.status}`);
           if (!this._publisherBlobId(publisherResponse)) throw new Error(`Publisher did not return a blob ID for segment ${segment.index}`);
-          await this.completeDirectSegment(upload.uploadId, segment.index, { ciphertextSha256, publisherResponse, receipt: publisherResponse?.receipt });
+          await this.completeDirectSegment(upload.uploadId, segment.index, { ciphertextSha256, chunkSha256s, publisherResponse, receipt: publisherResponse?.receipt });
         }, maxRetries);
         uploadedBytes += segment.plainSize;
-        if (typeof options.onProgress === "function") {
-          options.onProgress({ uploadId: upload.uploadId, segmentIndex: segment.index, segmentCount: upload.segmentCount, uploadedBytes, totalBytes: originalSize });
-        }
+        this._emitUploadProgress(options, { uploadId: upload.uploadId, segmentIndex: segment.index, segmentCount: upload.segmentCount, uploadedBytes, totalBytes: originalSize, startedAt });
       };
       const workers = Array.from({ length: Math.min(concurrency, pending.length) }, async () => {
         while (nextIndex < pending.length) {
@@ -746,6 +783,7 @@ export class NodusClient {
       });
       await Promise.all(workers);
       const completed = await this.finalizeDirectUpload(upload.uploadId);
+      this._removeUploadReference(upload.uploadId);
       const record = completed.asset;
       if (record) this._indexRecord(record, { name, type, description, tags });
       if (record?.id) {
@@ -767,8 +805,13 @@ export class NodusClient {
         manifest: completed.manifest
       };
     } catch (error) {
+      if (this._isCancellation(error, options.control)) {
+        await this.abortDirectUpload(upload.uploadId).catch(() => {});
+        this._removeUploadReference(upload.uploadId);
+      }
       error.uploadId = upload.uploadId;
       error.encryption = { key: keyHex, iv: ivHex, chunkSize, segmentSize };
+      error.userMessage = this._friendlyUploadError(error);
       throw error;
     }
   }
@@ -827,12 +870,36 @@ export class NodusClient {
     return body;
   }
 
+  async abortDirectUpload(uploadId) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/direct-uploads/${encodeURIComponent(uploadId)}`, {
+      method: "DELETE",
+      headers: this._getHeaders()
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to abort direct upload: HTTP ${res.status}`);
+    return body;
+  }
+
+  /** Returns browser-persistent upload references, never plaintext or data keys. */
+  listPendingUploadReferences() {
+    if (!this.resumeStorage) return [];
+    const prefix = this._resumeStoragePrefix();
+    const references = [];
+    for (let index = 0; index < this.resumeStorage.length; index++) {
+      const key = this.resumeStorage.key(index);
+      if (!key?.startsWith(prefix)) continue;
+      try { references.push(JSON.parse(this.resumeStorage.getItem(key))); } catch {}
+    }
+    return references.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
   async getDirectManifest(assetId) {
     const res = await this._fetch(`${this.gatewayUrl}/api/assets/${encodeURIComponent(assetId)}/direct-manifest`, {
       headers: this._getHeaders()
     });
     const body = await res.json();
     if (!res.ok || !body.success) throw new Error(body.error || `Unable to read direct asset manifest: HTTP ${res.status}`);
+    await this._verifyDirectManifest(body.manifest);
     return body.manifest;
   }
 
@@ -856,30 +923,47 @@ export class NodusClient {
       throw new Error(`Asset ${fileId} has invalid chunk encryption metadata`);
     }
 
+    const requestedRange = this._parsePlainRange(options.range, manifest.originalSize);
+    const selectedSegments = manifest.segments.filter((segment) => !requestedRange
+      || (segment.plainEnd > requestedRange.start && segment.plainStart <= requestedRange.end));
     return new ReadableStream({
       start: async (controller) => {
         try {
-          for (const segment of manifest.segments) {
+          for (const segment of selectedSegments) {
+            const requestedStart = requestedRange ? Math.max(requestedRange.start, segment.plainStart) : segment.plainStart;
+            const requestedEndExclusive = requestedRange ? Math.min(requestedRange.end + 1, segment.plainEnd) : segment.plainEnd;
+            const firstChunk = Math.floor((requestedStart - segment.plainStart) / chunkSize);
+            const lastChunk = Math.ceil((requestedEndExclusive - segment.plainStart) / chunkSize) - 1;
+            const ciphertextStart = firstChunk * (chunkSize + 16);
+            const lastPlainLength = Math.min(chunkSize, segment.plainSize - (lastChunk * chunkSize));
+            const ciphertextEnd = (lastChunk * (chunkSize + 16)) + lastPlainLength + 15;
             const response = await this._fetch(
               `${this.gatewayUrl}/api/assets/${encodeURIComponent(fileId)}/direct-segments/${segment.index}`,
-              { headers: this._getHeaders() }
+              { headers: { ...this._getHeaders(), ...(requestedRange ? { Range: `bytes=${ciphertextStart}-${ciphertextEnd}` } : {}) } }
             );
             if (!response.ok || !response.body) {
               throw new Error(`Failed to read direct segment ${segment.index}: HTTP ${response.status}`);
             }
             const reader = response.body.getReader();
             let pending = new Uint8Array();
-            let plainOffset = 0;
-            let chunkOffset = 0;
+            let plainOffset = firstChunk * chunkSize;
+            let chunkOffset = firstChunk;
             const consume = async () => {
-              while (chunkOffset < segment.chunkCount) {
+              while (chunkOffset <= lastChunk) {
                 const plainLength = Math.min(chunkSize, segment.plainSize - plainOffset);
                 const ciphertextLength = plainLength + 16;
                 if (pending.byteLength < ciphertextLength) return;
                 const ciphertext = pending.slice(0, ciphertextLength);
                 pending = pending.slice(ciphertextLength);
+                const expectedChunkHash = segment.chunkSha256s?.[chunkOffset];
+                if (!expectedChunkHash || await NodusCrypto.sha256Hex(ciphertext) !== expectedChunkHash) {
+                  throw new Error(`Ciphertext integrity check failed for direct segment ${segment.index}, chunk ${chunkOffset}`);
+                }
                 const plaintext = await NodusCrypto.decryptChunk(ciphertext, keyHex, ivHex, segment.chunkStart + chunkOffset);
-                controller.enqueue(plaintext);
+                const chunkPlainStart = segment.plainStart + plainOffset;
+                const from = Math.max(0, requestedStart - chunkPlainStart);
+                const to = Math.min(plaintext.byteLength, requestedEndExclusive - chunkPlainStart);
+                if (to > from) controller.enqueue(plaintext.slice(from, to));
                 plainOffset += plaintext.byteLength;
                 chunkOffset++;
               }
@@ -887,6 +971,7 @@ export class NodusClient {
             while (true) {
               const { value, done } = await reader.read();
               if (done) break;
+              if (chunkOffset > lastChunk) continue;
               const combined = new Uint8Array(pending.byteLength + value.byteLength);
               combined.set(pending);
               combined.set(value, pending.byteLength);
@@ -894,7 +979,7 @@ export class NodusClient {
               await consume();
             }
             await consume();
-            if (chunkOffset !== segment.chunkCount || pending.byteLength !== 0 || plainOffset !== segment.plainSize) {
+            if (chunkOffset !== lastChunk + 1 || pending.byteLength !== 0) {
               throw new Error(`Ciphertext length mismatch for direct segment ${segment.index}`);
             }
           }
@@ -930,15 +1015,18 @@ export class NodusClient {
     // encryption pass before authorization. The second pass is streamed directly
     // to the publisher; no ciphertext segment (up to 1 GiB) is ever allocated.
     const hasher = sha256.create();
+    const chunkSha256s = [];
     for (let chunkOffset = 0; chunkOffset < segment.chunkCount; chunkOffset++) {
       const start = segment.plainStart + (chunkOffset * chunkSize);
       const end = Math.min(start + chunkSize, segment.plainEnd);
       const plaintext = await this._readSourceChunk(data, start, end);
       const encrypted = await NodusCrypto.encryptChunk(plaintext, keyHex, ivHex, segment.chunkStart + chunkOffset);
       hasher.update(encrypted);
+      chunkSha256s.push(NodusCrypto.bytesToHex(sha256(encrypted)));
     }
     return {
       ciphertextSha256: NodusCrypto.bytesToHex(hasher.digest()),
+      chunkSha256s,
       ciphertextStream: this._encryptedSegmentStream(data, segment, keyHex, ivHex, chunkSize)
     };
   }
@@ -969,6 +1057,79 @@ export class NodusClient {
       }
     }
     throw lastError;
+  }
+
+  async _verifyDirectManifest(manifest) {
+    if (!manifest || typeof manifest !== "object" || !/^[a-f0-9]{64}$/i.test(manifest.manifestSha256 || "")) {
+      throw new Error("Direct manifest is missing its integrity hash");
+    }
+    const { manifestSha256, ...unsigned } = manifest;
+    const actual = await NodusCrypto.sha256Hex(new TextEncoder().encode(JSON.stringify(unsigned)));
+    if (actual !== manifestSha256.toLowerCase()) throw new Error("Direct manifest integrity check failed");
+  }
+
+  _parsePlainRange(range, size) {
+    if (!range) return null;
+    const value = typeof range === "string" ? range.replace(/^bytes=/i, "") : `${range.start}-${range.end ?? ""}`;
+    const match = /^(\d+)-(\d*)$/.exec(value);
+    if (!match) throw new Error("Invalid plaintext range");
+    const start = Number(match[1]);
+    const end = match[2] === "" ? size - 1 : Number(match[2]);
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || end >= size) throw new Error("Plaintext range is outside the asset");
+    return { start, end };
+  }
+
+  async _waitForUploadControl(control) {
+    if (control instanceof NodusUploadControl) await control.waitUntilReady();
+  }
+
+  _isCancellation(error, control) {
+    return control instanceof NodusUploadControl && control.cancelled || error?.message === "Upload cancelled";
+  }
+
+  _emitUploadProgress(options, progress) {
+    if (typeof options.onProgress !== "function") return;
+    const elapsedSeconds = Math.max(0.001, (Date.now() - progress.startedAt) / 1000);
+    const bytesPerSecond = progress.uploadedBytes / elapsedSeconds;
+    const bytesRemaining = Math.max(0, progress.totalBytes - progress.uploadedBytes);
+    options.onProgress({
+      ...progress,
+      bytesPerSecond,
+      bytesRemaining,
+      estimatedSecondsRemaining: bytesPerSecond > 0 ? bytesRemaining / bytesPerSecond : null
+    });
+  }
+
+  _friendlyUploadError(error) {
+    const message = String(error?.message || "Upload failed");
+    if (/quota/i.test(message)) return "Storage quota exceeded. Free space or upgrade the organization plan, then resume the upload.";
+    if (/expired/i.test(message)) return "The upload session expired. Start a new upload session and keep your local key envelope available.";
+    if (/publisher/i.test(message) || /network|fetch failed/i.test(message)) return "The storage publisher is temporarily unavailable. Keep the upload reference and retry when the connection is restored.";
+    if (/cancelled/i.test(message)) return "Upload cancelled. The reserved quota was released.";
+    return message;
+  }
+
+  _resumeStoragePrefix() {
+    return `nodus:upload-reference:${this.organizationId || "default"}:`;
+  }
+
+  _saveUploadReference(upload, kind) {
+    if (!this.resumeStorage || !upload?.uploadId) return;
+    const reference = {
+      uploadId: upload.uploadId,
+      assetId: upload.assetId || null,
+      kind,
+      originalName: upload.originalName,
+      originalSize: upload.originalSize,
+      expiresAt: upload.expiresAt,
+      createdAt: new Date().toISOString()
+    };
+    try { this.resumeStorage.setItem(`${this._resumeStoragePrefix()}${upload.uploadId}`, JSON.stringify(reference)); } catch {}
+  }
+
+  _removeUploadReference(uploadId) {
+    if (!this.resumeStorage || !uploadId) return;
+    try { this.resumeStorage.removeItem(`${this._resumeStoragePrefix()}${uploadId}`); } catch {}
   }
 
   async _readPublisherResponse(response) {
