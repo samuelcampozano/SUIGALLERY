@@ -89,6 +89,7 @@ export class DirectUploadManager {
         status: "pending",
         blobId: null,
         ciphertextSha256: null,
+        chunkSha256s: null,
         authorizedAt: null,
         uploadedAt: null,
         verificationState: "pending"
@@ -168,7 +169,7 @@ export class DirectUploadManager {
     return { uploadId: session.uploadId, segmentIndex: segment.index, ciphertextSize: segment.ciphertextSize, ...segment.authorization };
   }
 
-  async completeSegment(uploadId, index, { blobId, ciphertextSha256, publisherResponse = null, receipt = null, verified = false } = {}, context = null) {
+  async completeSegment(uploadId, index, { blobId, ciphertextSha256, chunkSha256s = null, publisherResponse = null, receipt = null, verified = false } = {}, context = null) {
     return this.withUploadLock(uploadId, async () => {
       const session = await this.read(uploadId);
       this.assertAccess(session, context);
@@ -176,6 +177,9 @@ export class DirectUploadManager {
       const segment = this.segment(session, index);
       if (!blobId || !/^[A-Za-z0-9_-]{16,256}$/.test(blobId)) throw new Error("Invalid Walrus blob ID");
       if (ciphertextSha256 && !/^[a-f0-9]{64}$/i.test(ciphertextSha256)) throw new Error("Invalid ciphertext SHA-256");
+      if (!Array.isArray(chunkSha256s) || chunkSha256s.length !== segment.chunkCount || chunkSha256s.some((hash) => !/^[a-f0-9]{64}$/i.test(hash || ""))) {
+        throw new Error("Verified SHA-256 hashes are required for every encrypted chunk");
+      }
       if (!segment.authorization || segment.authorization.ciphertextSha256 !== ciphertextSha256) throw new Error("Segment completion does not match its authorized checksum");
       if (!verified || !receipt) throw new Error("An independently verified publisher receipt is required");
       if (segment.status === "completed") {
@@ -185,6 +189,7 @@ export class DirectUploadManager {
       segment.status = "completed";
       segment.blobId = blobId;
       segment.ciphertextSha256 = ciphertextSha256 || null;
+      segment.chunkSha256s = chunkSha256s.map((hash) => hash.toLowerCase());
       segment.publisherResponse = this.safePublisherResponse(publisherResponse);
       segment.receipt = { blobId: receipt.blobId, jti: receipt.jti, issuedAt: receipt.iat, expiresAt: receipt.exp };
       segment.verificationState = verified ? "verified" : "pending";
@@ -373,7 +378,7 @@ export class DirectUploadManager {
   }
 
   buildManifest(session) {
-    return {
+    const manifest = {
       version: 1,
       assetId: session.completedAsset?.id || session.assetId || `direct_${session.uploadId}`,
       originalName: session.originalName,
@@ -396,8 +401,13 @@ export class DirectUploadManager {
         chunkCount: segment.chunkCount,
         blobId: segment.blobId,
         ciphertextSha256: segment.ciphertextSha256,
+        chunkSha256s: segment.chunkSha256s,
         verificationState: segment.verificationState
       }))
+    };
+    return {
+      ...manifest,
+      manifestSha256: crypto.createHash("sha256").update(JSON.stringify(manifest)).digest("hex")
     };
   }
 

@@ -797,6 +797,7 @@ app.post("/api/assets/direct-uploads/:uploadId/segments/:segmentIndex/complete",
     const upload = await directUploads.completeSegment(req.params.uploadId, req.params.segmentIndex, {
       blobId: receipt.blobId,
       ciphertextSha256: req.body?.ciphertextSha256,
+      chunkSha256s: req.body?.chunkSha256s,
       publisherResponse: req.body?.publisherResponse,
       receipt,
       verified: true

@@ -761,6 +761,13 @@ export class AuthTenantStore {
           [crypto.randomUUID(), organizationId, assetId, recipientIds.get(entry.recipientAddress), entry.recipientType, entry.algorithm, JSON.stringify(entry.ephemeralPublicKey), entry.iv, entry.ciphertext]
         );
       }
+      await this.insertUploadAudit(client, {
+        organizationId,
+        userId: ownerUserId,
+        assetId,
+        eventType: "asset.shared",
+        metadata: { recipientCount: normalized.filter((entry) => entry.recipientType === "user").length }
+      });
       await client.query("COMMIT");
       return { assetId, envelopeCount: normalized.length };
     } catch (error) {

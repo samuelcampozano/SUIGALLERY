@@ -147,6 +147,7 @@ async function run() {
     assert(manifestResponse.status === 200 && manifestBody.manifest.segments.length === 2, "Exposes an ordered encrypted-segment manifest");
     assert(manifestBody.manifest.segments.every((segment) => segment.verificationState === "verified"), "Finalizes only independently verified publisher receipts");
     assert(manifestBody.manifest.segments.every((segment) => Number.isInteger(segment.chunkStart) && Number.isInteger(segment.chunkCount)), "Manifest preserves authenticated chunk boundaries for streamed decryption");
+    assert(/^[a-f0-9]{64}$/.test(manifestBody.manifest.manifestSha256), "Includes a deterministic manifest integrity hash");
 
     const plaintextStream = await client.stream(result.id);
     const reader = plaintextStream.getReader();
@@ -157,6 +158,16 @@ async function run() {
       recoveredParts.push(Buffer.from(value));
     }
     assert(Buffer.concat(recoveredParts).equals(data), "Streams publisher ciphertext through the gateway and decrypts it on-device chunk by chunk");
+
+    const rangedStream = await client.stream(result.id, { range: "bytes=1048573-1048585" });
+    const rangedReader = rangedStream.getReader();
+    const rangedParts = [];
+    while (true) {
+      const { value, done } = await rangedReader.read();
+      if (done) break;
+      rangedParts.push(Buffer.from(value));
+    }
+    assert(Buffer.concat(rangedParts).equals(data.subarray(1048573, 1048586)), "Decrypts a requested plaintext byte range using authenticated chunk boundaries");
 
     const assetsResponse = await fetch(`${gatewayUrl}/api/assets`);
     const assetsBody = await assetsResponse.json();
