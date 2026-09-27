@@ -455,7 +455,15 @@ app.delete("/api/orgs/:orgId/members/:memberAddress", requireTenant, async (req,
     if (!isValidSolanaAddress(memberAddress)) return res.status(400).json({ success: false, error: "memberAddress must be a valid Solana address" });
     try {
       const removed = await authTenantStore.removeMembership({ organizationId: orgId, address: memberAddress });
-      return res.json({ success: true, removed });
+      return res.json({
+        success: true,
+        removed: true,
+        keyRotationRequired: removed.revokedEnvelopeAssetIds.length > 0,
+        rotationRequiredAssetIds: removed.revokedEnvelopeAssetIds,
+        warning: removed.revokedEnvelopeAssetIds.length
+          ? "Existing ciphertext must be re-encrypted client-side before revoked access can be considered strongly revoked."
+          : null
+      });
     } catch (error) {
       const status = error.message === "Organization member not found" ? 404 : 400;
       return res.status(status).json({ success: false, error: error.message });
@@ -722,6 +730,44 @@ app.get("/api/orgs/:orgId/key-recipients", requireTenant, requireTenantEnvelopeS
   try {
     const recipients = await authTenantStore.listOrganizationKeyRecipients({ organizationId: req.tenant.organizationId });
     return res.json({ success: true, organizationId: req.tenant.organizationId, recipients });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/api/key-rotations/pending", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  if (req.auth.role !== "owner") return res.status(403).json({ success: false, error: "Only organization owners may inspect key rotations" });
+  try {
+    const rotations = await authTenantStore.listPendingKeyRotations({ organizationId: req.tenant.organizationId, ownerUserId: req.auth.userId });
+    return res.json({ success: true, organizationId: req.tenant.organizationId, rotations });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// The client must first decrypt and re-encrypt the content with a new data key,
+// upload it as replacementAssetId, and create envelopes for remaining members.
+// The server never receives a plaintext or data key during this revocation flow.
+app.post("/api/key-rotations/:rotationId/complete", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  if (req.auth.role !== "owner") return res.status(403).json({ success: false, error: "Only organization owners may complete key rotations" });
+  if (!isValidFileId(req.body?.replacementAssetId)) return res.status(400).json({ success: false, error: "A valid replacementAssetId is required" });
+  try {
+    const rotation = await authTenantStore.validateKeyRotation({
+      organizationId: req.tenant.organizationId,
+      rotationId: req.params.rotationId,
+      ownerUserId: req.auth.userId,
+      replacementAssetId: req.body.replacementAssetId
+    });
+    await walrus.deletePhoto(rotation.sourceAssetId, req.tenant);
+    await authTenantStore.finalizeKeyRotation({
+      organizationId: req.tenant.organizationId,
+      rotationId: req.params.rotationId,
+      ownerUserId: req.auth.userId,
+      replacementAssetId: req.body.replacementAssetId,
+      sourceAssetId: rotation.sourceAssetId
+    });
+    cacheManager.evict(`${req.tenant.organizationId}:${rotation.sourceAssetId}`);
+    return res.json({ success: true, rotation });
   } catch (error) {
     return res.status(400).json({ success: false, error: error.message });
   }
@@ -1080,6 +1126,7 @@ app.post(["/api/photos/batch-delete", "/api/assets/batch-delete"], requireTenant
   for (const fileId of validIds) {
     try {
       await walrus.deletePhoto(fileId, req.tenant);
+      if (authTenantStore) await authTenantStore.deleteKeyEnvelopeAsset({ organizationId: req.tenant.organizationId, assetId: fileId });
       cacheManager.evict(`${req.tenant?.organizationId || "development"}:${fileId}`);
       results.push({ fileId, success: true });
     } catch (err) {

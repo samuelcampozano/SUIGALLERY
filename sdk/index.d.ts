@@ -202,6 +202,8 @@ export declare class NodusClient {
   getOrganizationKeyRecipients(orgId: string): Promise<any[]>;
   protectAssetKey(assetId: string, options?: { recipientAddresses?: string[]; organizationId?: string | null }): Promise<any>;
   recoverAssetKey(assetId: string, options?: { recoveryKit?: RecoveryKit; passphrase?: string; recoveryPrivateKey?: JsonWebKey }): Promise<string>;
+  listPendingKeyRotations(): Promise<Array<{ id: string; assetId: string; revokedAddress: string; createdAt: string }>>;
+  rotateAssetAfterRevocation(options: { rotationId: string; assetId: string; name?: string; type?: string; description?: string; tags?: string[] }): Promise<any>;
   listOrganizations(address?: string): Promise<Organization[]>;
   createOrganization(params: { orgId: string; name?: string; ownerAddress: string; storageCapBytes?: number }): Promise<Organization>;
   getOrganization(orgId: string): Promise<Organization>;

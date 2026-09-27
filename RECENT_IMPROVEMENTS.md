@@ -172,6 +172,17 @@ Entregue na branch `codex/web-zero-custody-auth`, pendente de merge na `dev`.
 - Após cada upload, a interface grava um envelope ECDH/AES-GCM para o próprio usuário. Ao retornar à aplicação, recupera a chave de dados por esse envelope antes de decifrar o ciphertext no browser.
 - O backend rejeita `key`, `keyHex`, chaves privadas e chaves de recuperação também nos fluxos resumível e de publisher direto, impedindo persistência acidental de material secreto.
 
+## 8. Crypto-shredding e rotação forte por tenant
+
+Entregue na branch `codex/crypto-shredding-hardening`, pendente de merge na `dev`.
+
+- Delete individual e em lote removem o ciphertext do bucket, descartam o cache local e apagam os envelopes persistidos daquele asset e organização.
+- Ao remover uma membership, os envelopes do membro são revogados imediatamente e cada asset afetado recebe uma tarefa de rotação pendente no PostgreSQL.
+- Rotação forte é client-side: o SDK decifra o asset localmente, gera nova chave de dados, recriptografa e envia um asset substituto com envelopes para todos os membros ativos. Somente depois o gateway destrói o asset e os envelopes antigos.
+- O serviço nunca recebe a chave de dados nem plaintext durante a rotação. A conclusão da rotação recusa um substituto que não tenha envelope para cada membro ativo.
+- Limite documentado: a revogação não apaga cópias que um destinatário já decifrou ou exportou; ela bloqueia novos acessos pelo Nodus e torna o ciphertext anterior irrecuperável no serviço após a rotação.
+- A suíte PostgreSQL cobre revogação de sessão/envelope após remover membro, criação da tarefa de rotação e limpeza de envelopes no batch delete.
+
 ## 5. CORS restrito e autenticação uniforme de organizações
 
 Em implementação na branch `codex/cors-uniform-auth`.
