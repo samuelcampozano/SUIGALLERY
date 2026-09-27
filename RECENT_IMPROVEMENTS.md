@@ -19,6 +19,15 @@ Este documento registra as melhorias integradas na branch `dev` e as entregas pr
 | Pronto para merge em `dev` | Streaming verificado, ranges e controles de upload | `687d440` |
 | Pronto para merge em `dev` | M0 zero-custody: bloqueio de chaves brutas e fail-closed por envelopes | `5fa4a70` |
 | Pronto para merge em `dev` | Provisionamento administrativo e ciclo de vida de tenants | `46d99df`, branch `codex/tenant-provisioning-admin` |
+| Pronto para merge em `dev` | Convites e aceite de membros por SIWS | branch `codex/tenant-invitations` |
+
+## 14. Convites e aceite de membros
+
+Entregue na branch `codex/tenant-invitations`, pendente de merge na `dev`.
+
+- Owner/admin cria convite de uso único para um endereço Solana, com papel e expiração configuráveis; apenas o hash do token é persistido.
+- O destinatário aceita o convite após assinar um desafio SIWS recente com o endereço convidado. A membership e a sessão bearer são criadas somente depois da prova criptográfica.
+- Convites pendentes podem ser consultados e revogados por owner/admin. Expirados, revogados, aceitos ou vinculados a outro endereço não concedem acesso.
 
 ## 13. Provisionamento administrativo de tenants
 

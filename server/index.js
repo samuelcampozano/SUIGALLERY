@@ -668,6 +668,44 @@ app.delete("/api/orgs/:orgId/members/:memberAddress", requireTenant, async (req,
   }
 });
 
+// Invitations are scoped to the active organization. Their token is returned
+// once to the inviter and is consumed only after the invited address proves
+// possession through a fresh SIWS challenge.
+app.get("/api/orgs/:orgId/invitations", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  if (req.params.orgId !== req.tenant.organizationId || !['owner', 'admin'].includes(req.auth.role)) return res.status(403).json({ success: false, error: "Insufficient organization role" });
+  try { return res.json({ success: true, invitations: await authTenantStore.listInvitations({ organizationId: req.tenant.organizationId }) }); }
+  catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+
+app.post("/api/orgs/:orgId/invitations", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  if (req.params.orgId !== req.tenant.organizationId || !['owner', 'admin'].includes(req.auth.role)) return res.status(403).json({ success: false, error: "Insufficient organization role" });
+  const recipientAddress = req.body?.recipientAddress;
+  if (!isValidSolanaAddress(recipientAddress)) return res.status(400).json({ success: false, error: "recipientAddress must be a valid Solana address" });
+  try {
+    const { invitation, token } = await authTenantStore.createInvitation({ organizationId: req.tenant.organizationId, invitedBy: req.auth.userId, recipientAddress, role: req.body?.role || "viewer", ttlSeconds: req.body?.ttlSeconds });
+    return res.status(201).json({ success: true, invitation, acceptanceToken: token });
+  } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+
+app.delete("/api/orgs/:orgId/invitations/:invitationId", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  if (req.params.orgId !== req.tenant.organizationId || !['owner', 'admin'].includes(req.auth.role)) return res.status(403).json({ success: false, error: "Insufficient organization role" });
+  try { await authTenantStore.revokeInvitation({ organizationId: req.tenant.organizationId, invitationId: req.params.invitationId }); return res.json({ success: true, revoked: true }); }
+  catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+
+app.post("/api/org-invitations/accept", async (req, res) => {
+  const { token, address, signature, message } = req.body || {};
+  if (!authTenantStore) return res.status(503).json({ success: false, error: "Persistent tenant authentication is required for invitation acceptance" });
+  if (typeof token !== "string" || token.length < 32 || !isValidSolanaAddress(address)) return res.status(400).json({ success: false, error: "A valid invitation token and Solana address are required" });
+  const verified = verifySolanaSignature(address, signature, message);
+  if (!verified.valid) return res.status(401).json({ success: false, error: verified.error });
+  try {
+    const accepted = await authTenantStore.acceptInvitation({ token, address });
+    const session = await authTenantStore.createSession({ address, organizationId: accepted.organizationId });
+    return res.json({ success: true, organizationId: accepted.organizationId, role: accepted.role, accessToken: session.token, expiresAt: session.expiresAt });
+  } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+
 // ==========================================
 // RESUMABLE ENCRYPTED UPLOADS
 // ==========================================
