@@ -44,6 +44,12 @@ services:
         sync: false
       - key: NODUS_ALLOWED_ORIGINS
         sync: false
+      - key: NODUS_PROVISIONING_ADMIN_TOKEN
+        sync: false
+      - key: NODUS_TENANT_PROVISIONER_URL
+        sync: false
+      - key: NODUS_TENANT_PROVISIONER_TOKEN
+        sync: false
 
   # ------------------------------------------------------
   # 2. PRODUCTION ENVIRONMENT (Branch: main)
@@ -76,4 +82,10 @@ services:
       - key: CONSOLE_WEB_ACCOUNT_ADDRESS
         sync: false
       - key: NODUS_ALLOWED_ORIGINS
+        sync: false
+      - key: NODUS_PROVISIONING_ADMIN_TOKEN
+        sync: false
+      - key: NODUS_TENANT_PROVISIONER_URL
+        sync: false
+      - key: NODUS_TENANT_PROVISIONER_TOKEN
         sync: false

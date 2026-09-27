@@ -14,6 +14,10 @@ services:
       - ./server/migrations/001_auth_tenants.sql:/docker-entrypoint-initdb.d/001_auth_tenants.sql:ro
       - ./server/migrations/002_tenant_key_envelopes.sql:/docker-entrypoint-initdb.d/002_tenant_key_envelopes.sql:ro
       - ./server/migrations/003_key_rotation_tasks.sql:/docker-entrypoint-initdb.d/003_key_rotation_tasks.sql:ro
+      - ./server/migrations/004_tenant_asset_catalog.sql:/docker-entrypoint-initdb.d/004_tenant_asset_catalog.sql:ro
+      - ./server/migrations/004_upload_control_plane.sql:/docker-entrypoint-initdb.d/004_upload_control_plane.sql:ro
+      - ./server/migrations/005_upload_payloads.sql:/docker-entrypoint-initdb.d/005_upload_payloads.sql:ro
+      - ./server/migrations/006_tenant_provisioning.sql:/docker-entrypoint-initdb.d/006_tenant_provisioning.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nodus -d nodus"]
       interval: 5s
