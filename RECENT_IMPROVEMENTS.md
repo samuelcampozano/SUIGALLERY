@@ -21,6 +21,16 @@ Este documento registra as melhorias integradas na branch `dev` e as entregas pr
 | Pronto para merge em `dev` | Provisionamento administrativo e ciclo de vida de tenants | `46d99df`, branch `codex/tenant-provisioning-admin` |
 | Pronto para merge em `dev` | Convites e aceite de membros por SIWS | branch `codex/tenant-invitations` |
 | Pronto para merge em `dev` | API keys por organização com escopos | `6d2f906`, branch `codex/api-keys-foundation` |
+| Pronto para merge em `dev` | Idempotência pública por tenant e identidade | branch `codex/public-idempotency` |
+
+## 16. Idempotência pública por tenant e identidade
+
+Entregue na branch `codex/public-idempotency`, pendente de merge na `dev`.
+
+- Requests mutáveis selecionados podem usar `Idempotency-Key`; o registro persistente vincula tenant, usuário ou API key, operação e hash do payload.
+- Repetições idênticas devolvem a resposta original; reutilização da mesma chave com outro payload, ou enquanto a requisição ainda está em andamento, retorna conflito.
+- Uploads, finalizações, mutações de assets, batch delete, envelopes e rotação de chaves estão cobertos; chaves e payloads brutos não são persistidos.
+- A origem CORS aceita o header `Idempotency-Key`. A suíte `npm run test:idempotency` valida replay e conflito quando `DATABASE_URL` estiver disponível.
 
 ## 15. API keys por organização com escopos
 
