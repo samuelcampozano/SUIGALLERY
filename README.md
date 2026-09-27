@@ -151,6 +151,18 @@ const upload = await nodus.put(fileBuffer, {
 });
 console.log(`Anchored on Walrus Blob: ${upload.blob_id}`);
 
+// Files above 20 MiB automatically use encrypted resumable upload.
+// A Blob/File is read and encrypted one chunk at a time, so the entire file
+// is never loaded into browser memory.
+const largeUpload = await nodus.put(largeVideoFile, {
+  name: "project-archive.mp4",
+  type: "video/mp4",
+  chunkSize: 8 * 1024 * 1024,
+  onProgress: ({ uploadedBytes, totalBytes }) => {
+    console.log(`${Math.round((uploadedBytes / totalBytes) * 100)}% uploaded`);
+  }
+});
+
 // 2. Zero-Knowledge Private Search (100% on-device, zero cloud queries)
 const results = await nodus.search("contract", { type: "application/pdf" });
 
@@ -164,7 +176,7 @@ await nodus.delete(upload.id);
 // 5. Cross-Chain Solana Authentication & Anchor Organization PDAs
 const challenge = await nodus.getSolanaChallenge("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM");
 // Sign challenge.message with Phantom / Solflare / Ed25519 keypair...
-const session = await nodus.verifySolanaAuth("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", signatureBase58, challenge.message);
+const session = await nodus.verifySolanaAuth("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", signatureBase58, challenge.message, "acme-corp");
 
 // 6. Anchor Multi-Tenant Organization Management
 const org = await nodus.createOrganization({
@@ -175,6 +187,10 @@ const org = await nodus.createOrganization({
 console.log(`Anchor Org PDA: ${org.orgPda}`);
 ```
 
+In a production tenant deployment, `verifySolanaAuth` returns a short-lived `accessToken` after the address is verified as a member of the selected pre-provisioned organization. The SDK retains that token for subsequent asset, upload, manifest, and deletion requests; do not persist it in browser local storage. Configure `POSTGRES_PASSWORD` and `DATABASE_URL` only in an untracked `.env` file, then apply `server/migrations/001_auth_tenants.sql` before enabling production mode.
+
+Set `NODUS_ALLOWED_ORIGINS` to the comma-separated HTTPS origins of the browser applications allowed to call the API. Production rejects all cross-origin browser requests when this value is absent.
+
 ---
 
 ## 🧪 API Reference
@@ -184,6 +200,11 @@ console.log(`Anchor Org PDA: ${org.orgPda}`);
 | `GET` | `/api/status` | Space quota, bucket metadata, and Seal policy |
 | `GET` | `/api/photos` or `/api/assets` | List all assets anchored in the bucket with encryption metadata |
 | `POST` | `/api/photos/upload` or `/api/assets/upload` | Ingest client-encrypted AES-256-GCM ciphertext payload |
+| `POST` | `/api/assets/uploads` | Create an encrypted resumable-upload session (up to 500 GiB) |
+| `GET` | `/api/assets/uploads/:uploadId` | Read received and missing parts to resume a session |
+| `PUT` | `/api/assets/uploads/:uploadId/parts/:partNumber` | Upload one ciphertext part with `x-part-sha256` checksum |
+| `POST` | `/api/assets/uploads/:uploadId/complete` | Assemble, verify and anchor every uploaded part |
+| `DELETE` | `/api/assets/uploads/:uploadId` | Abort an upload and remove staged ciphertext |
 | `GET` | `/api/photos/:id/stream` or `/api/assets/:id/stream` | Stream ciphertext blob with decryption headers (`x-nodus-encrypted`) |
 | `PATCH` | `/api/photos/:id` or `/api/assets/:id` | Update asset name, caption, and tags |
 | `DELETE`| `/api/photos/:id` or `/api/assets/:id` | Delete asset and trigger crypto-shredding |
@@ -207,6 +228,25 @@ console.log(`Anchor Org PDA: ${org.orgPda}`);
 - **No Master Key Custody**: Decentralized storage node operators and protocol developers hold no master keys. Key recovery requires threshold consensus verification against Move smart contracts.
 - **On-Device Cryptographic Key Generation**: Ephemeral vault identities and AES keys are generated directly inside the user's browser memory via the standard WebCrypto API, eliminating server-side key custody risks.
 - **Edge-First Local Compute**: Search indexing, metadata extraction, and facial clustering run locally on-device (client-side WebAssembly / WebGPU), ensuring sensitive biometric vectors or telemetry are never centralized.
+
+### Resumable uploads
+
+The gateway supports encrypted multipart sessions for files from 1 byte up to 500 GiB. The SDK automatically chooses this protocol above 20 MiB, using 8 MiB chunks by default. Each part is encrypted independently with AES-256-GCM, checksum-verified by the gateway, persisted to a session directory, and can be retried without re-uploading prior parts. A session expires after 24 hours if it is not completed.
+
+The legacy resumable route assembles ciphertext sequentially on local disk before passing it to the Walrus adapter. For production-scale workloads, use the direct authenticated publisher flow. The gateway becomes a control plane: it issues a short-lived, one-time JWT per encrypted segment and stores only session/manifest metadata. Ciphertext is sent from the browser directly to the configured Walrus publisher and never passes through the Nodus server.
+
+```js
+const upload = await nodus.put(largeVideoFile, {
+  name: "archive.mp4",
+  type: "video/mp4",
+  directPublisher: true,
+  chunkSize: 8 * 1024 * 1024,
+  segmentSize: 64 * 1024 * 1024,
+  epochs: 2
+});
+```
+
+Each segment becomes one Walrus blob; Nodus returns a logical asset plus an ordered manifest. This is required for files larger than a single Walrus blob. The AES key stays with the client and is never sent to the control plane or stored in the manifest. Configure `NODUS_PUBLISHER_URL`, `NODUS_PUBLISHER_JWT_SECRET`, and a distinct `NODUS_PUBLISHER_RECEIPT_SECRET` before enabling this option outside tests. The publisher must consume each JWT `jti` exactly once and return an HMAC-SHA256 signed receipt binding the `jti`, upload ID, segment index, ciphertext SHA-256, ciphertext size, and Walrus blob ID; Nodus refuses to finalize an asset without verified receipts for every segment.
 
 ---
 

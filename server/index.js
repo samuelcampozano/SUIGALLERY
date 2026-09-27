@@ -8,6 +8,10 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { walrus, DEFAULT_SPACE_ID, DEFAULT_BUCKET_ID } from "./walrus-client.js";
+import { ResumableUploadManager, RESUMABLE_UPLOAD_LIMITS } from "./resumable-upload.js";
+import { DirectUploadManager, DIRECT_UPLOAD_MAX_SEGMENT_SIZE } from "./direct-upload-manager.js";
+import { AuthenticatedPublisher } from "./authenticated-publisher.js";
+import { AuthTenantStore } from "./auth-tenant-store.js";
 import {
   validateMagicBytes,
   validateCiphertextPayload,
@@ -19,6 +23,7 @@ import {
 import {
   generateAuthChallenge,
   verifySolanaSignature,
+  isValidSolanaAddress,
   generateDemoSolanaSession,
   createOrganization,
   getOrganization,
@@ -34,10 +39,58 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const tempStorageDir = path.join(rootDir, "temp_storage");
+const resumableUploadDir = path.join(tempStorageDir, "resumable_uploads");
+const directUploadDir = path.join(tempStorageDir, "direct_uploads");
 
 // Ensure temp_storage directory exists
 if (!fs.existsSync(tempStorageDir)) {
   fs.mkdirSync(tempStorageDir, { recursive: true });
+}
+const resumableUploads = new ResumableUploadManager({ rootDir: resumableUploadDir });
+const directUploads = new DirectUploadManager({ rootDir: directUploadDir });
+const authenticatedPublisher = new AuthenticatedPublisher();
+const authTenantStore = process.env.DATABASE_URL ? new AuthTenantStore() : null;
+if (authTenantStore) {
+  authTenantStore.init().catch((err) => {
+    console.error("❌ [Server] Failed to initialize PostgreSQL tenant store:", err.message);
+  });
+}
+
+function configuredOrigins() {
+  const configured = (process.env.NODUS_ALLOWED_ORIGINS || "").split(",").map((origin) => origin.trim()).filter(Boolean);
+  if (configured.length) return new Set(configured);
+  if (process.env.NODE_ENV === "production") return new Set();
+  return new Set(["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "http://127.0.0.1:5173"]);
+}
+
+const allowedOrigins = configuredOrigins();
+const corsOptions = {
+  origin(origin, callback) {
+    // Browser requests from this application and non-browser clients without an
+    // Origin header are allowed; cross-origin browsers must be explicitly listed.
+    if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+    return callback(new Error("Origin is not allowed by CORS policy"));
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Authorization", "Content-Type", "X-Part-SHA256"],
+  maxAge: 600
+};
+
+async function requireTenant(req, res, next) {
+  // Development keeps legacy demos usable; production must never fall back to a global bucket.
+  if (!authTenantStore) {
+    if (process.env.NODE_ENV === "production") return res.status(503).json({ success: false, error: "Tenant authentication is not configured" });
+    return next();
+  }
+  const token = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) return res.status(401).json({ success: false, error: "Bearer token required" });
+  try {
+    const context = await authTenantStore.resolve(token);
+    if (!context) return res.status(401).json({ success: false, error: "Session expired, revoked, or invalid" });
+    req.auth = { userId: context.user_id, address: context.solana_address, role: context.role };
+    req.tenant = { organizationId: context.organization_id, spaceId: context.space_id, bucketId: context.bucket_id, sealPolicyId: context.seal_policy_id, quotaBytes: Number(context.quota_bytes) };
+    return next();
+  } catch (error) { return next(error); }
 }
 
 // Initialize Decrypted Cache Lifecycle Manager (10-minute TTL)
@@ -49,6 +102,8 @@ cacheManager.cleanupOrphanedFiles(tempStorageDir);
 // Periodic sweep: clean expired cache files every 5 minutes
 const pruneInterval = setInterval(() => {
   cacheManager.prune();
+  resumableUploads.pruneExpired();
+  directUploads.pruneExpired();
 }, 5 * 60 * 1000);
 if (typeof pruneInterval.unref === "function") {
   pruneInterval.unref();
@@ -76,7 +131,7 @@ app.use(
 );
 
 // 2. Cross-Origin Resource Sharing
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json({ limit: "2mb" }));
 
 // 3. Rate Limiters
@@ -85,6 +140,8 @@ const apiLimiter = rateLimit({
   max: 500, // Limit each IP to 500 requests per window
   standardHeaders: true,
   legacyHeaders: false,
+  // Multipart part uploads use their own, less restrictive limiter below.
+  skip: (req) => req.method === "PUT" && /^\/api\/(assets|photos)\/uploads\/[0-9a-f-]+\/parts\/\d+$/.test(req.path),
   message: { success: false, error: "Too many requests. Please try again later." }
 });
 
@@ -94,6 +151,14 @@ const uploadLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: "Upload rate limit exceeded. Please wait a few minutes." }
+});
+
+const resumablePartLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: "Too many upload parts. Please retry shortly." }
 });
 
 app.use("/api/", apiLimiter);
@@ -116,6 +181,11 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 } // 50 MB max
+});
+
+const resumablePartBody = express.raw({
+  type: "application/octet-stream",
+  limit: `${RESUMABLE_UPLOAD_LIMITS.MAX_PART_SIZE / (1024 * 1024)}mb`
 });
 
 // Helper to determine Content-Type
@@ -198,6 +268,10 @@ app.get("/api/status", async (req, res) => {
         visibility: bucket?.visibility || "private",
         seal_policy_id: bucket?.seal_policy_id || "active",
         file_count: bucket?.file_count || 0
+      },
+      direct_publisher: {
+        configured: authenticatedPublisher.isConfigured(),
+        max_segment_bytes: DIRECT_UPLOAD_MAX_SEGMENT_SIZE
       }
     });
   } catch (err) {
@@ -239,6 +313,13 @@ app.post("/api/auth/solana/verify", (req, res) => {
   // Retrieve user's organizations
   const userOrgs = listUserOrganizations(address);
 
+  const organizationId = req.body.organizationId;
+  if (authTenantStore) {
+    if (!organizationId) return res.status(400).json({ success: false, error: "organizationId is required for tenant authentication" });
+    return authTenantStore.createSession({ address, organizationId })
+      .then((session) => res.json({ success: true, address, provider: "solana", scheme: "ed25519", verifiedAt: result.verifiedAt, organizations: userOrgs, accessToken: session.token, expiresAt: session.expiresAt, tenant: session.tenant, role: session.role }))
+      .catch((error) => res.status(403).json({ success: false, error: error.message }));
+  }
   res.json({
     success: true,
     address,
@@ -259,8 +340,16 @@ app.post("/api/auth/solana/demo", (req, res) => {
   }
 });
 
-// List user organizations (or default demo orgs)
-app.get("/api/orgs", (req, res) => {
+// List only organizations that the authenticated principal can access.
+app.get("/api/orgs", requireTenant, async (req, res, next) => {
+  if (authTenantStore) {
+    try {
+      const organizations = await authTenantStore.listOrganizations(req.auth.userId);
+      return res.json({ success: true, organizations });
+    } catch (error) {
+      return next(error);
+    }
+  }
   const address = req.headers["x-solana-address"] || req.query.address;
   if (address) {
     const orgs = listUserOrganizations(address);
@@ -270,8 +359,12 @@ app.get("/api/orgs", (req, res) => {
   res.json({ success: true, organizations: defaultOrg ? [defaultOrg] : [] });
 });
 
-// Create organization with Anchor Org PDA
-app.post("/api/orgs", (req, res) => {
+// Production organizations are pre-provisioned with a storage context. This
+// legacy helper remains only for the zero-environment development demo.
+app.post("/api/orgs", requireTenant, (req, res) => {
+  if (authTenantStore) {
+    return res.status(501).json({ success: false, error: "Organizations must be pre-provisioned by an administrator" });
+  }
   const { orgId, name, ownerAddress, storageCapBytes } = req.body;
   if (!orgId || !ownerAddress) {
     return res.status(400).json({ success: false, error: "orgId and ownerAddress are required" });
@@ -285,9 +378,18 @@ app.post("/api/orgs", (req, res) => {
   }
 });
 
-// Get organization details and PDA proof
-app.get("/api/orgs/:orgId", (req, res) => {
+// Get organization details only when the authenticated user is a member.
+app.get("/api/orgs/:orgId", requireTenant, async (req, res, next) => {
   const { orgId } = req.params;
+  if (authTenantStore) {
+    try {
+      const organization = await authTenantStore.getOrganizationForUser({ organizationId: orgId, userId: req.auth.userId });
+      if (!organization) return res.status(404).json({ success: false, error: `Organization '${orgId}' not found` });
+      return res.json({ success: true, organization });
+    } catch (error) {
+      return next(error);
+    }
+  }
   const org = getOrganization(orgId);
   if (!org) {
     return res.status(404).json({ success: false, error: `Organization '${orgId}' not found` });
@@ -295,10 +397,22 @@ app.get("/api/orgs/:orgId", (req, res) => {
   res.json({ success: true, organization: org });
 });
 
-// Add or update organization member (derives Member PDA)
-app.post("/api/orgs/:orgId/members", (req, res) => {
+// Add/update a member only as an admin/owner in the active organization.
+app.post("/api/orgs/:orgId/members", requireTenant, async (req, res, next) => {
   const { orgId } = req.params;
   const { memberAddress, role, callerAddress } = req.body;
+
+  if (authTenantStore) {
+    if (orgId !== req.tenant.organizationId) return res.status(403).json({ success: false, error: "Organization does not match the active tenant" });
+    if (!['owner', 'admin'].includes(req.auth.role)) return res.status(403).json({ success: false, error: "Insufficient organization role" });
+    if (!isValidSolanaAddress(memberAddress)) return res.status(400).json({ success: false, error: "memberAddress must be a valid Solana address" });
+    try {
+      const member = await authTenantStore.addMembership({ organizationId: orgId, address: memberAddress, role: role || "viewer" });
+      return res.json({ success: true, member });
+    } catch (error) {
+      return next(error);
+    }
+  }
 
   if (!memberAddress || !callerAddress) {
     return res.status(400).json({ success: false, error: "memberAddress and callerAddress are required" });
@@ -313,10 +427,23 @@ app.post("/api/orgs/:orgId/members", (req, res) => {
   }
 });
 
-// Remove organization member
-app.delete("/api/orgs/:orgId/members/:memberAddress", (req, res) => {
+// Remove a member only as an admin/owner in the active organization.
+app.delete("/api/orgs/:orgId/members/:memberAddress", requireTenant, async (req, res, next) => {
   const { orgId, memberAddress } = req.params;
   const callerAddress = req.headers["x-solana-address"] || req.query.callerAddress;
+
+  if (authTenantStore) {
+    if (orgId !== req.tenant.organizationId) return res.status(403).json({ success: false, error: "Organization does not match the active tenant" });
+    if (!['owner', 'admin'].includes(req.auth.role)) return res.status(403).json({ success: false, error: "Insufficient organization role" });
+    if (!isValidSolanaAddress(memberAddress)) return res.status(400).json({ success: false, error: "memberAddress must be a valid Solana address" });
+    try {
+      const removed = await authTenantStore.removeMembership({ organizationId: orgId, address: memberAddress });
+      return res.json({ success: true, removed });
+    } catch (error) {
+      const status = error.message === "Organization member not found" ? 404 : 400;
+      return res.status(status).json({ success: false, error: error.message });
+    }
+  }
 
   if (!callerAddress) {
     return res.status(400).json({ success: false, error: "callerAddress is required" });
@@ -331,10 +458,227 @@ app.delete("/api/orgs/:orgId/members/:memberAddress", (req, res) => {
   }
 });
 
-// 2. List Assets in Bucket
-app.get(["/api/photos", "/api/assets"], async (req, res) => {
+// ==========================================
+// RESUMABLE ENCRYPTED UPLOADS
+// ==========================================
+
+// Create an upload session. The client supplies ciphertext size because each AES-GCM
+// chunk carries its own authentication tag and can be safely retried independently.
+app.post(["/api/assets/uploads", "/api/photos/uploads"], requireTenant, uploadLimiter, (req, res) => {
+  const {
+    originalName,
+    originalType,
+    originalSize,
+    encryptedSize,
+    partSize,
+    description,
+    tags,
+    encryption
+  } = req.body || {};
+
   try {
-    const rawFiles = await walrus.listPhotos();
+    const parsedTags = Array.isArray(tags)
+      ? tags
+      : typeof tags === "string"
+        ? tags.split(",").map((tag) => tag.trim())
+        : [];
+    const session = resumableUploads.create({
+      originalName: sanitizeString(originalName, 128),
+      originalType: sanitizeString(originalType, 255),
+      originalSize,
+      encryptedSize,
+      partSize,
+      description: sanitizeString(description, 512),
+      tags: sanitizeTags(parsedTags),
+      encryption,
+      organizationId: req.tenant?.organizationId
+    });
+    res.status(201).json({ success: true, upload: session });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Query received parts after an interrupted browser session or network failure.
+app.get(["/api/assets/uploads/:uploadId", "/api/photos/uploads/:uploadId"], requireTenant, (req, res) => {
+  try {
+    const session = resumableUploads.get(req.params.uploadId, req.tenant?.organizationId);
+    res.json({ success: true, upload: session });
+  } catch (err) {
+    const status = err.message === "Upload session not found" ? 404 : 400;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+// Store exactly one authenticated ciphertext part. The checksum makes retries
+// idempotent and prevents corrupt parts from being assembled.
+app.put(
+  ["/api/assets/uploads/:uploadId/parts/:partNumber", "/api/photos/uploads/:uploadId/parts/:partNumber"],
+  requireTenant, resumablePartLimiter,
+  resumablePartBody,
+  (req, res) => {
+    try {
+      const result = resumableUploads.writePart(
+        req.params.uploadId,
+        req.params.partNumber,
+        req.body,
+        req.headers["x-part-sha256"],
+        req.tenant?.organizationId
+      );
+      res.status(result.duplicate ? 200 : 201).json({ success: true, ...result });
+    } catch (err) {
+      const status = err.message === "Upload session not found" ? 404 : 400;
+      res.status(status).json({ success: false, error: err.message });
+    }
+  }
+);
+
+// Assemble ciphertext sequentially on disk, verify all parts, then hand the completed
+// blob to the existing Walrus adapter. This uses constant memory regardless of upload size.
+app.post(["/api/assets/uploads/:uploadId/complete", "/api/photos/uploads/:uploadId/complete"], requireTenant, uploadLimiter, async (req, res) => {
+  const { uploadId } = req.params;
+  try {
+    const { session, assembledPath, ciphertextSha256 } = await resumableUploads.assemble(uploadId, req.tenant?.organizationId);
+    const validation = await validateCiphertextPayload(assembledPath, session.encryption);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+
+    const result = await walrus.uploadPhoto({
+      localPath: assembledPath,
+      fileName: session.originalName,
+      description: session.description,
+      tags: session.tags,
+      encryption: {
+        ...session.encryption,
+        originalName: session.originalName,
+        originalType: session.originalType,
+        originalSize: session.originalSize,
+        ciphertextSha256
+      },
+      tenant: req.tenant
+    });
+    const completed = resumableUploads.markCompleted(uploadId, result, ciphertextSha256, req.tenant?.organizationId);
+    res.json({ success: true, upload: completed, asset: result, result });
+  } catch (err) {
+    try { resumableUploads.markRetryable(uploadId, req.tenant?.organizationId); } catch {}
+    console.error(`❌ [ResumableUpload] Completion failed for ${uploadId}:`, err.message);
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Explicit cancellation immediately removes staged ciphertext and session metadata.
+app.delete(["/api/assets/uploads/:uploadId", "/api/photos/uploads/:uploadId"], requireTenant, (req, res) => {
+  try {
+    resumableUploads.abort(req.params.uploadId, req.tenant?.organizationId);
+    res.json({ success: true, aborted: true });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// DIRECT AUTHENTICATED PUBLISHER UPLOADS
+// ==========================================
+// These endpoints are control-plane only: ciphertext flows from the browser
+// directly to the Walrus publisher and never enters this Express process.
+app.post("/api/assets/direct-uploads", requireTenant, uploadLimiter, (req, res) => {
+  const { originalName, originalType, originalSize, segmentSize, description, tags, encryption, epochs } = req.body || {};
+  try {
+    const parsedTags = Array.isArray(tags) ? tags : typeof tags === "string" ? tags.split(",").map((tag) => tag.trim()) : [];
+    const upload = directUploads.create({
+      originalName: sanitizeString(originalName, 128),
+      originalType: sanitizeString(originalType, 255),
+      originalSize,
+      segmentSize,
+      description: sanitizeString(description, 512),
+      tags: sanitizeTags(parsedTags),
+      encryption,
+      epochs,
+      tenant: req.tenant
+    });
+    res.status(201).json({ success: true, upload, publisherConfigured: authenticatedPublisher.isConfigured() });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/assets/direct-uploads/:uploadId", requireTenant, (req, res) => {
+  try {
+    res.json({ success: true, upload: directUploads.get(req.params.uploadId, req.tenant?.organizationId) });
+  } catch (err) {
+    res.status(err.message === "Upload session not found" ? 404 : 400).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/assets/direct-uploads/:uploadId/segments/:segmentIndex/authorize", requireTenant, uploadLimiter, (req, res) => {
+  try {
+    authenticatedPublisher.assertConfigured();
+    const { session, segment } = directUploads.authorizeSegment(req.params.uploadId, req.params.segmentIndex, req.tenant?.organizationId);
+    const ciphertextSha256 = req.body?.ciphertextSha256;
+    const authorization = authenticatedPublisher.authorize({
+      uploadId: session.uploadId,
+      segment,
+      epochs: session.epochs,
+      ciphertextSha256,
+      sendObjectTo: req.body?.sendObjectTo || null
+    });
+    directUploads.saveAuthorization(session.uploadId, segment.index, authorization, req.tenant?.organizationId);
+    res.json({ success: true, authorization });
+  } catch (err) {
+    const status = err.message === "Authenticated publisher is not configured" ? 503 : err.message === "Upload session not found" ? 404 : 400;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/assets/direct-uploads/:uploadId/segments/:segmentIndex/complete", requireTenant, uploadLimiter, (req, res) => {
+  try {
+    authenticatedPublisher.assertConfigured();
+    const context = directUploads.completionContext(req.params.uploadId, req.params.segmentIndex, req.tenant?.organizationId);
+    const receipt = authenticatedPublisher.verifyReceipt(req.body?.receipt, context);
+    const upload = directUploads.completeSegment(req.params.uploadId, req.params.segmentIndex, {
+      blobId: receipt.blobId,
+      ciphertextSha256: req.body?.ciphertextSha256,
+      publisherResponse: req.body?.publisherResponse,
+      receipt,
+      verified: true
+    }, req.tenant?.organizationId);
+    res.json({ success: true, upload });
+  } catch (err) {
+    res.status(err.message === "Upload session not found" ? 404 : 400).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/assets/direct-uploads/:uploadId/finalize", requireTenant, uploadLimiter, (req, res) => {
+  try {
+    const result = directUploads.finalize(req.params.uploadId, req.tenant?.organizationId);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(err.message === "Upload session not found" ? 404 : 400).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/assets/direct-uploads/:uploadId/manifest", requireTenant, (req, res) => {
+  try {
+    res.json({ success: true, manifest: directUploads.manifest(req.params.uploadId, req.tenant?.organizationId) });
+  } catch (err) {
+    res.status(err.message === "Upload session not found" ? 404 : 400).json({ success: false, error: err.message });
+  }
+});
+
+app.delete("/api/assets/direct-uploads/:uploadId", requireTenant, (req, res) => {
+  try {
+    directUploads.abort(req.params.uploadId, req.tenant?.organizationId);
+    res.json({ success: true, aborted: true });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 2. List Assets in Bucket
+app.get(["/api/photos", "/api/assets"], requireTenant, async (req, res) => {
+  try {
+    const rawFiles = await walrus.listPhotos(req.tenant?.bucketId);
     const photos = (Array.isArray(rawFiles) ? rawFiles : []).map((file) => ({
       id: file.id,
       name: file.name,
@@ -351,9 +695,21 @@ app.get(["/api/photos", "/api/assets"], async (req, res) => {
       original_name: file.original_name || file.name,
       original_type: file.original_type || getContentType(file.name),
       original_size: file.original_size || file.size,
+      encryption_mode: file.encryption_mode || "aes-gcm-v1",
+      chunk_size: file.chunk_size || null,
+      chunk_count: file.chunk_count || null,
       tags: Array.isArray(file.tags) ? file.tags : [],
       description: file.description || ""
     }));
+
+    // Logical large files are manifests whose ciphertext segments live directly
+    // on Walrus; they are not Console/MCP file records.
+    photos.push(...directUploads.listAssets(req.tenant?.organizationId).map((asset) => ({
+      ...asset,
+      blob_id: null,
+      stream_url: null,
+      download_url: null
+    })));
 
     // Sort newest first
     photos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
@@ -370,7 +726,7 @@ app.get(["/api/photos", "/api/assets"], async (req, res) => {
 });
 
 // 3. Upload Asset (Zero-Knowledge Ciphertext Ingestion)
-app.post(["/api/photos/upload", "/api/assets/upload"], uploadLimiter, upload.any(), async (req, res) => {
+app.post(["/api/photos/upload", "/api/assets/upload"], requireTenant, uploadLimiter, upload.any(), async (req, res) => {
   const uploadedFile = req.file || (req.files && req.files[0]);
   if (!uploadedFile) {
     return res.status(400).json({ success: false, error: "No asset file uploaded" });
@@ -443,7 +799,7 @@ app.post(["/api/photos/upload", "/api/assets/upload"], uploadLimiter, upload.any
       fileName: sanitizedName,
       description: sanitizedDesc,
       tags: combinedTags,
-      encryption: encryption || undefined
+      encryption: encryption || undefined, tenant: req.tenant
     });
 
     // Clean up temp upload file
@@ -471,7 +827,7 @@ app.post(["/api/photos/upload", "/api/assets/upload"], uploadLimiter, upload.any
 });
 
 // 4. Stream Ciphertext Stream (with TTL Cache & Zero Server-Side Plaintext)
-app.get(["/api/photos/:fileId/stream", "/api/assets/:fileId/stream"], async (req, res) => {
+app.get(["/api/photos/:fileId/stream", "/api/assets/:fileId/stream"], requireTenant, async (req, res) => {
   const { fileId } = req.params;
   const shouldDownload = req.query.download === "true";
 
@@ -480,22 +836,23 @@ app.get(["/api/photos/:fileId/stream", "/api/assets/:fileId/stream"], async (req
   }
 
   try {
-    const files = await walrus.listPhotos();
+    const files = await walrus.listPhotos(req.tenant?.bucketId);
     const matched = files.find((f) => f.id === fileId);
     if (!matched) {
       return res.status(404).json({ success: false, error: `File not found: ${fileId}` });
     }
 
-    let cachedPath = cacheManager.get(fileId);
+    const cacheKey = `${req.tenant?.organizationId || "development"}:${fileId}`;
+    let cachedPath = cacheManager.get(cacheKey);
 
     // If not in cache or file was pruned, fetch from Walrus
     if (!cachedPath || !fs.existsSync(cachedPath)) {
       const destFilename = `stream_${fileId}_${Date.now()}.bin`;
       const destPath = path.join(tempStorageDir, destFilename);
 
-      await walrus.downloadAndDecryptPhoto({ fileId, destPath });
+      await walrus.downloadAndDecryptPhoto({ fileId, destPath, tenant: req.tenant });
       cachedPath = destPath;
-      cacheManager.set(fileId, cachedPath);
+      cacheManager.set(cacheKey, cachedPath);
     }
 
     const filename = matched.original_name || matched.name || `asset_${fileId}.bin`;
@@ -507,6 +864,10 @@ app.get(["/api/photos/:fileId/stream", "/api/assets/:fileId/stream"], async (req
     if (matched.key) res.setHeader("x-nodus-key", matched.key);
     if (matched.original_type) res.setHeader("x-nodus-original-type", matched.original_type);
     if (matched.original_name) res.setHeader("x-nodus-original-name", encodeURIComponent(matched.original_name));
+    if (matched.encryption_mode) res.setHeader("x-nodus-encryption-mode", matched.encryption_mode);
+    if (matched.chunk_size) res.setHeader("x-nodus-chunk-size", String(matched.chunk_size));
+    if (matched.chunk_count) res.setHeader("x-nodus-chunk-count", String(matched.chunk_count));
+    if (matched.original_size) res.setHeader("x-nodus-original-size", String(matched.original_size));
 
     if (shouldDownload) {
       res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
@@ -523,7 +884,7 @@ app.get(["/api/photos/:fileId/stream", "/api/assets/:fileId/stream"], async (req
 });
 
 // 5. Delete Asset (Crypto-Shredding)
-app.delete(["/api/photos/:fileId", "/api/assets/:fileId"], async (req, res) => {
+app.delete(["/api/photos/:fileId", "/api/assets/:fileId"], requireTenant, async (req, res) => {
   const { fileId } = req.params;
 
   if (!isValidFileId(fileId)) {
@@ -531,10 +892,10 @@ app.delete(["/api/photos/:fileId", "/api/assets/:fileId"], async (req, res) => {
   }
 
   try {
-    await walrus.deletePhoto(fileId);
+    await walrus.deletePhoto(fileId, req.tenant);
 
     // Immediately evict and unlink decrypted cache from disk
-    cacheManager.evict(fileId);
+    cacheManager.evict(`${req.tenant?.organizationId || "development"}:${fileId}`);
 
     res.json({ success: true, message: `Asset ${fileId} deleted from Walrus` });
   } catch (err) {
@@ -544,7 +905,7 @@ app.delete(["/api/photos/:fileId", "/api/assets/:fileId"], async (req, res) => {
 });
 
 // 6. Update Asset Metadata (Sanitized Rename, Tags, Description)
-app.patch(["/api/photos/:fileId", "/api/assets/:fileId"], async (req, res) => {
+app.patch(["/api/photos/:fileId", "/api/assets/:fileId"], requireTenant, async (req, res) => {
   const { fileId } = req.params;
   const { name, description, tags } = req.body;
 
@@ -561,7 +922,7 @@ app.patch(["/api/photos/:fileId", "/api/assets/:fileId"], async (req, res) => {
       fileId,
       name: cleanName,
       description: cleanDesc,
-      tags: cleanTags
+      tags: cleanTags, tenant: req.tenant
     });
 
     res.json({
@@ -576,7 +937,7 @@ app.patch(["/api/photos/:fileId", "/api/assets/:fileId"], async (req, res) => {
 });
 
 // 7. Batch Delete Assets
-app.post(["/api/photos/batch-delete", "/api/assets/batch-delete"], async (req, res) => {
+app.post(["/api/photos/batch-delete", "/api/assets/batch-delete"], requireTenant, async (req, res) => {
   const { fileIds } = req.body;
   if (!Array.isArray(fileIds) || fileIds.length === 0) {
     return res.status(400).json({ success: false, error: "fileIds array required" });
@@ -591,8 +952,8 @@ app.post(["/api/photos/batch-delete", "/api/assets/batch-delete"], async (req, r
   const results = [];
   for (const fileId of validIds) {
     try {
-      await walrus.deletePhoto(fileId);
-      cacheManager.evict(fileId);
+      await walrus.deletePhoto(fileId, req.tenant);
+      cacheManager.evict(`${req.tenant?.organizationId || "development"}:${fileId}`);
       results.push({ fileId, success: true });
     } catch (err) {
       results.push({ fileId, success: false, error: err.message });
@@ -613,6 +974,14 @@ app.use((req, res) => {
   } else {
     res.status(404).json({ success: false, error: "Endpoint not found" });
   }
+});
+
+// CORS rejection is intentional and should not be exposed as a generic 500.
+app.use((error, req, res, next) => {
+  if (error?.message === "Origin is not allowed by CORS policy") {
+    return res.status(403).json({ success: false, error: error.message });
+  }
+  return next(error);
 });
 
 // Start Server only if executed directly and not in test mode
