@@ -9,6 +9,7 @@
     "test:security": "node test/test-security.js",
     "test:api": "node test/test-api.js",
     "test:zero-plaintext": "node test/test-zero-plaintext.js",
+    "test:m0-zero-custody": "node test/test-m0-zero-custody.js",
     "test:resumable": "node test/test-resumable-upload.js && node test/test-resumable-api.js",
     "test:resumable-api": "node test/test-resumable-api.js",
     "test:direct-publisher": "node test/test-direct-publisher.js",
