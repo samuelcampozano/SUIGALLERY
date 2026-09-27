@@ -12,7 +12,6 @@ import { walrus, DEFAULT_SPACE_ID, DEFAULT_BUCKET_ID } from "./walrus-client.js"
 import { ResumableUploadManager, RESUMABLE_UPLOAD_LIMITS } from "./resumable-upload.js";
 import { DirectUploadManager, DIRECT_UPLOAD_MAX_SEGMENT_SIZE } from "./direct-upload-manager.js";
 import { AuthenticatedPublisher } from "./authenticated-publisher.js";
-import { KeyEnvelopeStore } from "./key-envelope-store.js";
 import { AuthTenantStore } from "./auth-tenant-store.js";
 import {
   validateMagicBytes,
@@ -34,7 +33,6 @@ import {
   removeOrganizationMember,
   listOrganizationMembers,
   verifyOrgPermission,
-  isSessionAuthenticated,
   deriveOrgPDA,
   deriveMemberPDA,
   NODUS_SOLANA_PROGRAM_ID_STR
@@ -46,7 +44,6 @@ const rootDir = path.resolve(__dirname, "..");
 const tempStorageDir = path.join(rootDir, "temp_storage");
 const resumableUploadDir = path.join(tempStorageDir, "resumable_uploads");
 const directUploadDir = path.join(tempStorageDir, "direct_uploads");
-const keyEnvelopeFile = path.join(tempStorageDir, "key_envelopes.json");
 
 // Ensure temp_storage directory exists
 if (!fs.existsSync(tempStorageDir)) {
@@ -55,7 +52,6 @@ if (!fs.existsSync(tempStorageDir)) {
 const resumableUploads = new ResumableUploadManager({ rootDir: resumableUploadDir });
 const directUploads = new DirectUploadManager({ rootDir: directUploadDir });
 const authenticatedPublisher = new AuthenticatedPublisher();
-const keyEnvelopes = new KeyEnvelopeStore({ filePath: keyEnvelopeFile });
 const authTenantStore = process.env.DATABASE_URL ? new AuthTenantStore() : null;
 if (authTenantStore) {
   authTenantStore.init().catch((err) => {
@@ -120,14 +116,11 @@ if (typeof pruneInterval.unref === "function") {
 
 const app = express();
 
-function requireAuthenticatedAddress(req) {
-  const address = req.headers["x-solana-address"];
-  if (!isValidSolanaAddress(address) || !isSessionAuthenticated(address)) {
-    const error = new Error("An active verified Solana session is required");
-    error.status = 401;
-    throw error;
+function requireTenantEnvelopeStore(req, res, next) {
+  if (!authTenantStore || !req.auth || !req.tenant) {
+    return res.status(503).json({ success: false, error: "Persistent tenant authentication is required for key envelopes" });
   }
-  return address;
+  return next();
 }
 
 // 1. Security Headers (Helmet + Custom Content Security Policy)
@@ -336,7 +329,7 @@ app.post("/api/auth/solana/verify", (req, res) => {
   if (authTenantStore) {
     if (!organizationId) return res.status(400).json({ success: false, error: "organizationId is required for tenant authentication" });
     return authTenantStore.createSession({ address, organizationId })
-      .then((session) => res.json({ success: true, address, provider: "solana", scheme: "ed25519", verifiedAt: result.verifiedAt, organizations: userOrgs, accessToken: session.token, expiresAt: session.expiresAt, tenant: session.tenant, role: session.role }))
+      .then((session) => res.json({ success: true, address, provider: "solana", scheme: "ed25519", verifiedAt: result.verifiedAt, organizations: userOrgs, accessToken: session.token, expiresAt: session.expiresAt, tenant: { organizationId, ...session.tenant }, role: session.role }))
       .catch((error) => res.status(403).json({ success: false, error: error.message }));
   }
   res.json({
@@ -470,7 +463,6 @@ app.delete("/api/orgs/:orgId/members/:memberAddress", requireTenant, async (req,
 
   try {
     const removed = removeOrganizationMember({ orgId, memberAddress, callerAddress });
-    if (removed) keyEnvelopes.revokeOrganizationRecipient(orgId, memberAddress);
     res.json({ success: true, removed });
   } catch (err) {
     const status = err.message.startsWith("Unauthorized") ? 403 : 400;
@@ -690,70 +682,58 @@ app.get("/api/assets/direct-uploads/:uploadId/manifest", requireTenant, (req, re
 // CLIENT-SIDE KEY ENVELOPE DIRECTORY
 // ==========================================
 // The directory contains only public encryption identities and ciphertext
-// envelopes. It is deliberately unable to decrypt an asset.
-app.post("/api/key-identities/:address", (req, res) => {
+// envelopes. Every operation is scoped to the organization in the bearer token.
+app.post("/api/key-identities/:address", requireTenant, requireTenantEnvelopeStore, async (req, res, next) => {
   try {
-    const caller = requireAuthenticatedAddress(req);
-    if (caller !== req.params.address) throw Object.assign(new Error("A user may only register their own encryption identity"), { status: 403 });
-    const identity = keyEnvelopes.registerIdentity(caller, req.body || {});
-    res.status(201).json({ success: true, identity });
-  } catch (err) {
-    res.status(err.status || 400).json({ success: false, error: err.message });
+    if (req.params.address !== req.auth.address) return res.status(403).json({ success: false, error: "A user may only register their own encryption identity" });
+    const identity = await authTenantStore.registerKeyIdentity({ userId: req.auth.userId, payload: req.body || {} });
+    return res.status(201).json({ success: true, identity: { address: req.auth.address, ...identity } });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
   }
 });
 
-// Public keys are intentionally discoverable so a sender can encrypt locally
-// for a recipient. Private keys are never accepted or returned.
-app.get("/api/key-identities/:address", (req, res) => {
-  if (!isValidSolanaAddress(req.params.address)) return res.status(400).json({ success: false, error: "Invalid Solana address" });
-  const identity = keyEnvelopes.getIdentity(req.params.address);
-  if (!identity) return res.status(404).json({ success: false, error: "Encryption identity not found" });
-  res.json({ success: true, identity });
-});
-
-app.get("/api/orgs/:orgId/key-recipients", (req, res) => {
+// A public identity is discoverable only by members of the active organization.
+app.get("/api/key-identities/:address", requireTenant, requireTenantEnvelopeStore, async (req, res, next) => {
   try {
-    const caller = requireAuthenticatedAddress(req);
-    if (!verifyOrgPermission(req.params.orgId, caller, "viewer")) throw Object.assign(new Error("Not authorized for this organization"), { status: 403 });
-    const recipients = listOrganizationMembers(req.params.orgId)
-      .map((member) => ({ ...member, identity: keyEnvelopes.getIdentity(member.member) }))
-      .filter((member) => member.identity);
-    res.json({ success: true, organizationId: req.params.orgId, recipients });
-  } catch (err) {
-    res.status(err.status || 400).json({ success: false, error: err.message });
+    if (!isValidSolanaAddress(req.params.address)) return res.status(400).json({ success: false, error: "Invalid Solana address" });
+    const recipient = await authTenantStore.getOrganizationKeyRecipient({ organizationId: req.tenant.organizationId, address: req.params.address });
+    if (!recipient) return res.status(404).json({ success: false, error: "Encryption identity not found" });
+    return res.json({ success: true, identity: recipient });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
   }
 });
 
-app.post("/api/assets/:assetId/key-envelopes", (req, res) => {
+app.get("/api/orgs/:orgId/key-recipients", requireTenant, requireTenantEnvelopeStore, async (req, res, next) => {
+  if (req.params.orgId !== req.tenant.organizationId) return res.status(403).json({ success: false, error: "Organization does not match the active tenant" });
+  try {
+    const recipients = await authTenantStore.listOrganizationKeyRecipients({ organizationId: req.tenant.organizationId });
+    return res.json({ success: true, organizationId: req.tenant.organizationId, recipients });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+app.post("/api/assets/:assetId/key-envelopes", requireTenant, requireTenantEnvelopeStore, async (req, res, next) => {
   try {
     if (!isValidFileId(req.params.assetId)) throw new Error("Invalid asset ID");
-    const caller = requireAuthenticatedAddress(req);
-    const envelopes = req.body?.envelopes;
-    for (const envelope of envelopes || []) {
-      if (!envelope.organizationId) continue;
-      if (!verifyOrgPermission(envelope.organizationId, caller, "contributor")) {
-        throw Object.assign(new Error("Only organization contributors may share an asset with that organization"), { status: 403 });
-      }
-      if (!verifyOrgPermission(envelope.organizationId, envelope.recipientAddress, "viewer")) {
-        throw new Error("Envelope recipient is not an organization member");
-      }
-    }
-    const asset = keyEnvelopes.putEnvelopes(req.params.assetId, caller, envelopes);
-    res.status(201).json({ success: true, asset });
-  } catch (err) {
-    res.status(err.status || 400).json({ success: false, error: err.message });
+    if (!['owner', 'admin', 'contributor'].includes(req.auth.role)) return res.status(403).json({ success: false, error: "Only organization contributors may share an asset" });
+    const asset = await authTenantStore.putKeyEnvelopes({ organizationId: req.tenant.organizationId, assetId: req.params.assetId, ownerUserId: req.auth.userId, envelopes: req.body?.envelopes });
+    return res.status(201).json({ success: true, asset });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
   }
 });
 
-app.get("/api/assets/:assetId/key-envelopes", (req, res) => {
+app.get("/api/assets/:assetId/key-envelopes", requireTenant, requireTenantEnvelopeStore, async (req, res, next) => {
   try {
     if (!isValidFileId(req.params.assetId)) throw new Error("Invalid asset ID");
-    const caller = requireAuthenticatedAddress(req);
-    const result = keyEnvelopes.envelopesForRecipient(req.params.assetId, caller);
+    const result = await authTenantStore.envelopesForRecipient({ organizationId: req.tenant.organizationId, assetId: req.params.assetId, recipientUserId: req.auth.userId });
     if (!result) return res.status(404).json({ success: false, error: "Key envelopes not found" });
-    res.json({ success: true, ...result });
-  } catch (err) {
-    res.status(err.status || 400).json({ success: false, error: err.message });
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
   }
 });
 
@@ -799,13 +779,13 @@ app.get("/api/assets/:assetId/direct-manifest", requireTenant, (req, res) => {
   }
 });
 
-app.delete("/api/assets/direct-uploads/:uploadId", requireTenant, (req, res) => {
+app.delete("/api/assets/direct-uploads/:uploadId", requireTenant, async (req, res, next) => {
   try {
     directUploads.abort(req.params.uploadId, req.tenant?.organizationId);
-    keyEnvelopes.deleteAsset(`direct_${req.params.uploadId}`);
+    if (authTenantStore) await authTenantStore.deleteKeyEnvelopeAsset({ organizationId: req.tenant.organizationId, assetId: `direct_${req.params.uploadId}` });
     res.json({ success: true, aborted: true });
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+  } catch (error) {
+    return next(error);
   }
 });
 
@@ -1018,7 +998,7 @@ app.get(["/api/photos/:fileId/stream", "/api/assets/:fileId/stream"], requireTen
 });
 
 // 5. Delete Asset (Crypto-Shredding)
-app.delete(["/api/photos/:fileId", "/api/assets/:fileId"], requireTenant, async (req, res) => {
+app.delete(["/api/photos/:fileId", "/api/assets/:fileId"], requireTenant, async (req, res, next) => {
   const { fileId } = req.params;
 
   if (!isValidFileId(fileId)) {
@@ -1027,7 +1007,7 @@ app.delete(["/api/photos/:fileId", "/api/assets/:fileId"], requireTenant, async 
 
   try {
     await walrus.deletePhoto(fileId, req.tenant);
-    keyEnvelopes.deleteAsset(fileId);
+    if (authTenantStore) await authTenantStore.deleteKeyEnvelopeAsset({ organizationId: req.tenant.organizationId, assetId: fileId });
 
     // Immediately evict and unlink decrypted cache from disk
     cacheManager.evict(`${req.tenant?.organizationId || "development"}:${fileId}`);

@@ -42,6 +42,8 @@ services:
         sync: false
       - key: CONSOLE_WEB_ACCOUNT_ADDRESS
         sync: false
+      - key: NODUS_ALLOWED_ORIGINS
+        sync: false
 
   # ------------------------------------------------------
   # 2. PRODUCTION ENVIRONMENT (Branch: main)
@@ -72,4 +74,6 @@ services:
       - key: CONSOLE_SERVICE_PRIVATE_KEY
         sync: false
       - key: CONSOLE_WEB_ACCOUNT_ADDRESS
+        sync: false
+      - key: NODUS_ALLOWED_ORIGINS
         sync: false
