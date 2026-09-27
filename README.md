@@ -85,8 +85,8 @@ graph TD
 
 ### 1. Clone & Configure
 ```bash
-git clone https://github.com/samuelcampozano/SUIGALLERY.git
-cd SUIGALLERY
+git clone https://github.com/samuelcampozano/nodus.git
+cd nodus
 
 # Copy environment template
 cp .env.example .env
@@ -114,15 +114,21 @@ npm run dev
 ```
 
 ### 4. Run Automated Test Suites
-Run the automated test suites verifying backend security defenses, API endpoints, zero-plaintext privacy, developer SDK, private search, on-chain Sui Mainnet policies, crypto-shredding, and Solana identity:
+Run the automated test suites verifying backend security defenses, API endpoints, zero-plaintext privacy, developer SDK, private search, on-chain Sui Mainnet policies, crypto-shredding, Solana identity, and resumable direct publisher:
 ```bash
-# Run all 7 test suites end-to-end
+# Run all 15 test suites end-to-end
 npm test
 
 # Run individual suites
 npm run test:security       # Magic bytes validation, path traversal defense, XSS escaping, cache TTL
 npm run test:api            # REST endpoints, rate limiting, and HTTP security headers
 npm run test:zero-plaintext # Validates zero plaintext disk/memory leaks, enforces ciphertext, 404 on wallet endpoint
+npm run test:m0-zero-custody # Enforces strict zero-custody boundaries on upload routes
+npm run test:resumable      # Resumable encrypted multipart upload and chunk assembly
+npm run test:direct-publisher # Authenticated direct publisher stream and HMAC receipts
+npm run test:key-envelopes  # Client-side ECDH P-256 key envelopes & emergency account recovery
+npm run test:tenant-provisioning # Atomic tenant, storage context, and operator provisioning
+npm run test:web-zero-custody # In-browser zero-custody WebCrypto verification
 npm run test:sdk            # Developer SDK operations: put, get, private search, and crypto-shredding
 npm run test:onchain        # Sui Mainnet GraphQL Move policy and custodian verification
 npm run test:shred          # End-to-end live crypto-shredding and bit-for-bit validation
