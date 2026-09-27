@@ -31,14 +31,16 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 
 **Objetivo:** garantir que o caminho de upload e download usado pelo usuario final seja realmente zero-custody.
 
-- [ ] Desativar em producao qualquer rota legada que aceite `key`, `keyHex`, chave privada ou recovery key no request.
-- [ ] Garantir que a aplicacao web use somente key envelopes nos uploads simples, retomaveis e diretos.
-- [ ] Testar que logs, sessao de upload, PostgreSQL, headers HTTP e respostas da API nao contem chave AES em texto puro.
-- [ ] Validar que o fluxo de recuperacao de chave funciona apos fechar e reabrir o navegador, usando apenas o envelope cifrado.
-- [ ] Documentar claramente o limite de revogacao: nao e possivel apagar copias que um destinatario ja decifrou/exportou.
-- [ ] Executar uma revisao de seguranca independente do fluxo ECDH, envelopes, AAD e rotacao de chaves.
+**Status:** implementacao tecnica e validacao automatizada concluidas na branch `codex/m0-zero-custody-hardening`; a auditoria independente formal continua pendente.
 
-**Criterio de saida:** teste automatizado de zero-custody passa em todos os modos de upload e uma revisao manual confirma que nenhuma chave bruta chega ao gateway.
+- [x] Desativar em producao qualquer rota legada que aceite `key`, `keyHex`, chave privada ou recovery key no request.
+- [x] Garantir que a aplicacao web use somente key envelopes nos uploads simples, retomaveis e diretos.
+- [x] Testar que logs, sessao de upload, PostgreSQL, headers HTTP e respostas da API nao contem chave AES em texto puro.
+- [x] Validar que o fluxo de recuperacao de chave funciona apos fechar e reabrir o navegador, usando apenas o envelope cifrado.
+- [x] Documentar claramente o limite de revogacao: nao e possivel apagar copias que um destinatario ja decifrou/exportou.
+- [ ] Executar uma revisao de seguranca independente do fluxo ECDH, envelopes, AAD e rotacao de chaves. A revisao tecnica interna esta em [`SECURITY_REVIEW_M0.md`](SECURITY_REVIEW_M0.md); falta sign-off externo independente.
+
+**Criterio tecnico de saida:** `test/test-m0-zero-custody.js`, uploads retomaveis, publisher direto, SDK e contrato web passaram; a revisao interna confirma que nenhuma chave bruta chega ao gateway. O encerramento formal do M0 depende somente do sign-off da revisao independente.
 
 ## M1 - Finalizar upload grande em ambiente real
 
@@ -184,4 +186,3 @@ As entregas abaixo nao devem voltar para a lista pendente sem uma regressao comp
 - [x] Catalogo persistente, pastas, versoes e eventos de auditoria.
 - [x] Crypto-shredding e tarefas de rotacao apos revogacao de membro.
 - [x] CORS restrito e autorizacao uniforme nas rotas protegidas.
-
