@@ -56,7 +56,7 @@
           </button>
           <button class="btn btn-secondary demo-nav-btn" id="instantDemoBtn" title="Instant 1-Click Sovereign Demo">
             <i data-lucide="sparkles"></i>
-            <span>1-Click Demo</span>
+            <span data-i18n="demo_btn">1-Click Demo</span>
           </button>
 
           <!-- Authenticated State: User Profile Pill -->
@@ -70,6 +70,26 @@
             </div>
             <i data-lucide="chevron-down" class="chevron-icon"></i>
           </button>
+        </div>
+
+        <!-- Theme Selector Dropdown -->
+        <div class="theme-dropdown" id="themeDropdown">
+          <button class="btn btn-ghost theme-btn" id="themeBtn" title="Select Theme">
+            <i data-lucide="moon" id="themeIcon"></i>
+            <span class="current-theme-code" id="currentThemeCode" data-i18n="theme_dark">Dark</span>
+            <i data-lucide="chevron-down" class="chevron-icon"></i>
+          </button>
+          <div class="theme-menu hidden" id="themeMenu">
+            <button class="theme-option active" data-theme="dark">
+              <span>🌙</span> <span data-i18n="theme_dark">Dark</span>
+            </button>
+            <button class="theme-option" data-theme="light">
+              <span>☀️</span> <span data-i18n="theme_light">Light</span>
+            </button>
+            <button class="theme-option" data-theme="midnight">
+              <span>🌌</span> <span data-i18n="theme_midnight">Midnight</span>
+            </button>
+          </div>
         </div>
 
         <!-- Language Selector Dropdown -->
@@ -88,6 +108,12 @@
             </button>
             <button class="lang-option" data-lang="pt">
               <span class="flag">🇧🇷</span> Português
+            </button>
+            <button class="lang-option" data-lang="zh">
+              <span class="flag">🇨🇳</span> 简体中文
+            </button>
+            <button class="lang-option" data-lang="fr">
+              <span class="flag">🇫🇷</span> Français
             </button>
           </div>
         </div>
@@ -158,19 +184,19 @@
     <!-- Timeline Controls & Filter Bar -->
     <section class="controls-bar">
       <div class="tag-chips-wrapper" id="tagChips">
-        <button class="tag-chip active" data-tag="all">All</button>
-        <button class="tag-chip" data-tag="photo">Photos</button>
-        <button class="tag-chip" data-tag="nodus">Nodus</button>
+        <button class="tag-chip active" data-tag="all" data-i18n="tag_all">All</button>
+        <button class="tag-chip" data-tag="photo" data-i18n="tag_photos">Photos</button>
+        <button class="tag-chip" data-tag="nodus" data-i18n="tag_nodus">Nodus</button>
       </div>
 
       <div class="sort-select-wrapper">
         <div class="select-wrapper">
           <i data-lucide="arrow-up-down" class="sort-icon"></i>
           <select id="sortSelect" class="sort-select">
-            <option value="newest" selected>Newest First</option>
-            <option value="oldest">Oldest First</option>
-            <option value="name">Name (A-Z)</option>
-            <option value="size">Size (Largest)</option>
+            <option value="newest" selected data-i18n="sort_newest">Newest First</option>
+            <option value="oldest" data-i18n="sort_oldest">Oldest First</option>
+            <option value="name" data-i18n="sort_name">Name (A-Z)</option>
+            <option value="size" data-i18n="sort_size">Size (Largest)</option>
           </select>
         </div>
 
@@ -254,7 +280,7 @@
         <div class="sidebar-meta-list">
           <div class="privacy-status-pill">
             <i data-lucide="shield-check"></i>
-            <span>Encrypted & Anchored on Walrus</span>
+            <span data-i18n="privacy_status">Encrypted & Anchored on Walrus</span>
           </div>
 
           <div class="meta-grid">
@@ -270,7 +296,7 @@
 
           <!-- 3 Compact On-Chain Verification Buttons -->
           <div class="explorer-proof-section">
-            <span class="meta-label">On-Chain Verification</span>
+            <span class="meta-label" data-i18n="onchain_verification">On-Chain Verification</span>
             <div class="explorer-buttons-row">
               <a id="walruscanLink" href="#" target="_blank" class="explorer-mini-btn" title="Verify storage on Walruscan">
                 <i data-lucide="cloud"></i> <span>Walruscan</span>
@@ -289,7 +315,7 @@
             <summary class="tech-drawer-summary">
               <span class="tech-drawer-summary-left">
                 <i data-lucide="hash"></i>
-                <span>Technical Details</span>
+                <span data-i18n="tech_details">Technical Details</span>
               </span>
               <i data-lucide="chevron-down" class="tech-drawer-icon"></i>
             </summary>
@@ -323,7 +349,7 @@
 
         <div class="sidebar-actions">
           <button id="shareBtn" class="btn btn-primary btn-block">
-            <i data-lucide="share-2"></i> <span>Share Memory</span>
+            <i data-lucide="share-2"></i> <span data-i18n="share_memory_btn">Share Memory</span>
           </button>
           <a id="downloadBtn" href="#" class="btn btn-secondary btn-block">
             <i data-lucide="download"></i> <span data-i18n="download_btn">Download Original</span>
@@ -349,31 +375,31 @@
         <div class="header-icon-title">
           <div class="vault-modal-icon"><i data-lucide="share-2"></i></div>
           <div>
-            <h3>Share Sovereign Memory</h3>
-            <p class="modal-subtitle">Share access with friends or wrap an encrypted key envelope.</p>
+            <h3 data-i18n="share_modal_title">Share Sovereign Memory</h3>
+            <p class="modal-subtitle" data-i18n="share_modal_subtitle">Share access with friends or wrap an encrypted key envelope.</p>
           </div>
         </div>
         <button class="btn-close" id="shareModalClose"><i data-lucide="x"></i></button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label>Direct Decrypted Share Link</label>
+          <label data-i18n="share_link_label">Direct Decrypted Share Link</label>
           <div class="tech-mini-val" style="background: var(--bg-surface); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between;">
             <code id="shareLinkInput" class="mono-code" style="font-size: 0.85rem; word-break: break-all;">--</code>
             <button class="copy-btn" id="copyShareLinkBtn" title="Copy Share Link"><i data-lucide="copy"></i></button>
           </div>
-          <span style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; display: block;">Anyone with this link can view the high-resolution media.</span>
+          <span data-i18n="share_link_help" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; display: block;">Anyone with this link can view the high-resolution media.</span>
         </div>
         <div class="form-group" style="margin-top: 1rem;">
-          <label>Wrap for Teammate (Solana Address)</label>
-          <input type="text" id="shareRecipientInput" class="form-input" placeholder="Enter recipient Solana address...">
+          <label data-i18n="share_wrap_label">Wrap for Teammate (Solana Address)</label>
+          <input type="text" id="shareRecipientInput" class="form-input" data-i18n-placeholder="share_recipient_placeholder" placeholder="Enter recipient Solana address...">
           <button class="btn btn-secondary btn-sm" id="wrapRecipientBtn" style="margin-top: 8px;">
-            <i data-lucide="shield"></i> <span>Protect with Recipient Key Envelope</span>
+            <i data-lucide="shield"></i> <span data-i18n="share_wrap_btn">Protect with Recipient Key Envelope</span>
           </button>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="shareCloseBtn">Close</button>
+        <button class="btn btn-secondary" id="shareCloseBtn" data-i18n="close">Close</button>
       </div>
     </div>
   </div>
@@ -414,7 +440,7 @@
       <div class="modal-header auth-modal-header">
         <div class="auth-brand-badge">
           <div class="logo-icon-sm"><i data-lucide="shield-check"></i></div>
-          <span class="auth-badge-label">Zero-Knowledge Sovereign Identity</span>
+          <span class="auth-badge-label" data-i18n="auth_badge_label">Zero-Knowledge Sovereign Identity</span>
         </div>
         <button class="btn-close" id="zkLoginModalClose"><i data-lucide="x"></i></button>
       </div>
@@ -447,7 +473,7 @@
               <div class="auth-card-icon"><i data-lucide="wallet"></i></div>
               <div class="auth-card-info">
                 <span class="auth-card-title">Sui Wallet</span>
-                <span class="auth-card-desc">Browser extension</span>
+                <span class="auth-card-desc" data-i18n="auth_wallet_desc">Browser extension</span>
               </div>
             </button>
 
@@ -463,7 +489,7 @@
               <div class="auth-card-icon"><i data-lucide="sparkles"></i></div>
               <div class="auth-card-info">
                 <span class="auth-card-title">Guest Passkey</span>
-                <span class="auth-card-desc">100% on-device</span>
+                <span class="auth-card-desc" data-i18n="auth_guest_desc">100% on-device</span>
               </div>
             </button>
           </div>
@@ -505,8 +531,8 @@
             </div>
             <p id="modalUserEmail" class="account-email">alex@gmail.com</p>
             <div class="account-meta-chips">
-              <span class="meta-chip">🔒 End-to-End Encrypted</span>
-              <span class="meta-chip">🌊 Walrus Sovereign Vault</span>
+              <span class="meta-chip" data-i18n="chip_e2e">🔒 End-to-End Encrypted</span>
+              <span class="meta-chip" data-i18n="chip_vault">🌊 Walrus Sovereign Vault</span>
             </div>
           </div>
         </div>
@@ -516,20 +542,20 @@
           <summary class="tech-drawer-summary">
             <span class="tech-drawer-summary-left">
               <i data-lucide="cpu"></i>
-              <span>Advanced Blockchain Details</span>
+              <span data-i18n="advanced_blockchain_details">Advanced Blockchain Details</span>
             </span>
             <i data-lucide="chevron-down" class="tech-drawer-icon"></i>
           </summary>
           <div class="tech-drawer-content">
             <div class="tech-mini-item">
-              <span class="tech-mini-label" id="modalAddressLabel">Derived Sui Address</span>
+              <span class="tech-mini-label" id="modalAddressLabel" data-i18n="modal_derived_address">Derived Sui Address</span>
               <div class="tech-mini-val">
                 <code id="modalSuiAddress" class="mono-code">0x...</code>
                 <button class="copy-btn" id="copyAddressBtn" title="Copy Address"><i data-lucide="copy"></i></button>
               </div>
             </div>
             <div class="tech-mini-item">
-              <span class="tech-mini-label">Signature Scheme</span>
+              <span class="tech-mini-label" data-i18n="modal_sig_scheme">Signature Scheme</span>
               <div class="tech-mini-val">
                 <code id="modalSigScheme" class="mono-code">zkLogin (ZKS)</code>
               </div>
@@ -563,7 +589,7 @@
           </button>
           <button class="btn btn-secondary btn-block" id="exportVaultsBtn">
             <i data-lucide="download"></i>
-            <span>Export Keypair Backup (JSON)</span>
+            <span data-i18n="export_keypair">Export Keypair Backup (JSON)</span>
           </button>
           <button class="btn btn-danger btn-block" id="signOutBtn" style="margin-top: 4px;">
             <i data-lucide="log-out"></i>
@@ -626,7 +652,7 @@
             <div class="dock-onchain-proof hidden" id="dockOnchainProof">
               <div class="dock-proof-title">
                 <i data-lucide="shield-check"></i>
-                <span>Anchored on Sui & Walrus</span>
+                <span data-i18n="dock_proof_anchored">Anchored on Sui & Walrus</span>
               </div>
               <div class="dock-proof-actions">
                 <a id="dockWalruscanLink" href="#" target="_blank" class="dock-proof-btn" title="Inspect Blob on Walruscan">
