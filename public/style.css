@@ -596,7 +596,14 @@ body {
   align-items: center;
   gap: 0.5rem;
   overflow-x: auto;
-  padding-bottom: 2px;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tag-chips-wrapper::-webkit-scrollbar {
+  display: none;
 }
 
 .tag-chip {
@@ -1862,6 +1869,20 @@ body.select-mode .photo-select-checkbox {
     padding: 0.6rem 1rem;
   }
 
+  .controls-bar {
+    gap: 0.75rem;
+  }
+
+  .tag-chips-wrapper {
+    width: 100%;
+    padding-bottom: 6px;
+  }
+
+  .demo-nav-btn {
+    padding: 0.45rem 0.65rem;
+    font-size: 0.78rem;
+  }
+
   /* Mobile Floating Upload Dock */
   .upload-dock {
     right: 0.75rem;
@@ -1872,13 +1893,46 @@ body.select-mode .photo-select-checkbox {
   }
 }
 
+@media (max-width: 640px) {
+  .controls-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+  }
+
+  .sort-select-wrapper {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .select-wrapper {
+    flex: 1;
+  }
+
+  .sort-select {
+    width: 100%;
+  }
+}
+
 @media (max-width: 480px) {
   .logo-text { display: none; }
+  .demo-nav-btn span { display: none; }
+  .demo-nav-btn { padding: 0.5rem; }
+  
+  .photo-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
   .status-badge span#statusText {
     max-width: 110px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .lightbox-container {
+    grid-template-rows: 50vh 50vh;
   }
 }
 

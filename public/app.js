@@ -702,8 +702,41 @@ document.addEventListener("DOMContentLoaded", () => {
     return result;
   }
 
-  function apiFetch(input, init = {}) {
-    return fetch(input, { ...init, headers: apiHeaders(init.headers) });
+  async function apiFetch(input, init = {}, retries = 2, backoffMs = 350) {
+    const headers = apiHeaders(init.headers);
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), init.timeoutMs || 35000);
+        const response = await fetch(input, {
+          ...init,
+          headers,
+          signal: init.signal || controller.signal
+        });
+        clearTimeout(timeout);
+
+        // If session was revoked or expired on server (401), clean up gracefully
+        if (response.status === 401 && state.currentUser?.accessToken) {
+          console.warn("⚠️ [Auth] Session expired or invalid (HTTP 401). Resetting credentials.");
+          signOut();
+          showToast("Session expired. Please sign in again.", "warning");
+          return response;
+        }
+
+        // Retry on 502/503/504 transient gateway responses
+        if ([502, 503, 504].includes(response.status) && attempt < retries) {
+          await new Promise((r) => setTimeout(r, backoffMs * Math.pow(2, attempt)));
+          continue;
+        }
+
+        return response;
+      } catch (err) {
+        if (attempt >= retries || err.name === "AbortError") {
+          throw err;
+        }
+        await new Promise((r) => setTimeout(r, backoffMs * Math.pow(2, attempt)));
+      }
+    }
   }
 
   // The device encryption private key is stored as a non-extractable CryptoKey
@@ -1864,6 +1897,30 @@ document.addEventListener("DOMContentLoaded", () => {
   lightboxCloseBtn.addEventListener("click", closeLightbox);
   lightboxBackdrop.addEventListener("click", closeLightbox);
 
+  // Mobile Touch Gestures for Smooth Lightbox Browsing
+  let touchStartX = 0;
+  let touchStartY = 0;
+  if (lightboxViewport) {
+    lightboxViewport.addEventListener("touchstart", (e) => {
+      touchStartX = e.changedTouches[0].screenX;
+      touchStartY = e.changedTouches[0].screenY;
+    }, { passive: true });
+
+    lightboxViewport.addEventListener("touchend", (e) => {
+      const touchEndX = e.changedTouches[0].screenX;
+      const touchEndY = e.changedTouches[0].screenY;
+      const diffX = touchEndX - touchStartX;
+      const diffY = touchEndY - touchStartY;
+      if (Math.abs(diffX) > 45 && Math.abs(diffX) > Math.abs(diffY)) {
+        if (diffX < 0) {
+          navigateLightbox(1); // Swipe left -> Next photo
+        } else {
+          navigateLightbox(-1); // Swipe right -> Previous photo
+        }
+      }
+    }, { passive: true });
+  }
+
   document.addEventListener("keydown", (e) => {
     // If user is focused on an input/textarea, ignore shortcut navigation
     if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
@@ -2129,16 +2186,36 @@ document.addEventListener("DOMContentLoaded", () => {
         const plaintext = await file.slice(start, end).arrayBuffer();
         const ciphertext = await NodusCrypto.encryptChunk(plaintext, key, ivHex, partNumber);
         const checksum = await NodusCrypto.sha256Hex(ciphertext);
-        const partRes = await apiFetch(`/api/assets/uploads/${uploadId}/parts/${partNumber}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "x-part-sha256": checksum
-          },
-          body: ciphertext
-        });
-        const partData = await partRes.json();
-        if (!partRes.ok || !partData.success) throw new Error(partData.error || `Failed to upload part ${partNumber + 1}`);
+        let partUploaded = false;
+        let partAttempts = 0;
+        let lastPartErr = null;
+        while (!partUploaded && partAttempts < 3) {
+          partAttempts++;
+          try {
+            const partRes = await apiFetch(`/api/assets/uploads/${uploadId}/parts/${partNumber}`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/octet-stream",
+                "x-part-sha256": checksum
+              },
+              body: ciphertext
+            });
+            const partData = await partRes.json();
+            if (partRes.ok && partData.success) {
+              partUploaded = true;
+            } else {
+              throw new Error(partData.error || `Part ${partNumber + 1} rejected`);
+            }
+          } catch (partErr) {
+            lastPartErr = partErr;
+            if (partAttempts < 3) {
+              await new Promise((r) => setTimeout(r, 600 * partAttempts));
+            }
+          }
+        }
+        if (!partUploaded) {
+          throw new Error(lastPartErr?.message || `Failed to upload part ${partNumber + 1}`);
+        }
         onProgress?.({ uploadedBytes: end, totalBytes: file.size, partNumber, chunkCount });
       }
 
@@ -2480,7 +2557,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Search filter
+  // Search filter with 120ms debounce for smoother typing and low DOM overhead
+  let searchDebounceTimer = null;
   searchInput.addEventListener("input", (e) => {
     state.searchQuery = e.target.value;
     if (state.searchQuery.length > 0) {
@@ -2488,7 +2566,10 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       clearSearchBtn.classList.add("hidden");
     }
-    renderPhotos();
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      renderPhotos();
+    }, 120);
   });
 
   clearSearchBtn.addEventListener("click", () => {
@@ -2504,6 +2585,19 @@ document.addEventListener("DOMContentLoaded", () => {
     Promise.all([fetchPhotos(), fetchStatus()]).finally(() => {
       refreshBtn.classList.remove("spinning");
     });
+  });
+
+  // Network Reconnection & Asynchrony Safety
+  window.addEventListener("online", () => {
+    showToast("Internet connection restored. Synchronizing catalog...", "success");
+    if (state.currentUser) {
+      fetchPhotos();
+      fetchStatus();
+    }
+  });
+
+  window.addEventListener("offline", () => {
+    showToast("Internet connection lost. Switched to offline view.", "warning");
   });
 
   // Initial Boot
