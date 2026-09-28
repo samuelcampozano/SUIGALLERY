@@ -6,6 +6,7 @@ import process from "node:process";
 import crypto from "node:crypto";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { fileURLToPath } from "node:url";
+import { directWalrusAdapter } from "./walrus-direct-adapter.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -163,9 +164,17 @@ class WalrusClientManager {
     if (this.isMockMode()) {
       return { ok: true, mode: "sandbox" };
     }
-    const client = await this.getClient();
-    const res = await client.callTool({ name: "ping_console", arguments: {} });
-    return this.parseMcpResponse(res);
+    try {
+      const client = await this.getClient();
+      const res = await client.callTool({ name: "ping_console", arguments: {} });
+      return this.parseMcpResponse(res);
+    } catch (err) {
+      const testnet = await directWalrusAdapter.checkHealth(4000);
+      if (testnet.ok) {
+        return { ok: true, mode: "direct_walrus_testnet", endpoint: directWalrusAdapter.aggregatorUrl };
+      }
+      return { ok: false, error: err.message };
+    }
   }
 
   async getStorageUsage() {
@@ -305,10 +314,19 @@ class WalrusClientManager {
       console.log("✅ [WalrusClient] Upload completed successfully:", parsed);
       return parsed;
     } catch (err) {
-      console.warn("⚠️ [WalrusClient] MCP upload failed, activating sovereign sandbox fallback:", err.message);
+      console.warn("⚠️ [WalrusClient] MCP upload failed, attempting direct Walrus Testnet publisher:", err.message);
+      let directUploadResult = null;
+      try {
+        directUploadResult = await directWalrusAdapter.storeBlob(localPath, { epochs: 1, deletable: true });
+        console.log(`🌊 [WalrusClient] Direct Walrus Testnet upload succeeded: ${directUploadResult.blobId}`);
+      } catch (directErr) {
+        console.warn("⚠️ [WalrusClient] Direct Walrus Testnet upload failed, falling back to local sandbox:", directErr.message);
+      }
+
       const stat = fs.existsSync(localPath) ? fs.statSync(localPath) : { size: 65536 };
       const fileId = "sandbox_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
-      const blobId = "mock_blob_" + Date.now();
+      const blobId = directUploadResult?.blobId || ("mock_blob_" + Date.now());
+      const suiObjectId = directUploadResult?.suiObjectId || null;
 
       const mockBlobsDir = path.resolve("./temp_storage/mock_blobs");
       if (!fs.existsSync(mockBlobsDir)) fs.mkdirSync(mockBlobsDir, { recursive: true });
@@ -324,6 +342,7 @@ class WalrusClientManager {
         id: fileId,
         name: fileName,
         blob_id: blobId,
+        sui_object_id: suiObjectId,
         size: stat.size,
         content_type: encryption.originalType || "image/png",
         created_at: new Date().toISOString(),
@@ -337,10 +356,11 @@ class WalrusClientManager {
         encryption_mode: encryption.mode || "aes-gcm-v1",
         chunk_size: encryption.chunkSize || null,
         chunk_count: encryption.chunkCount || null,
-        storage_path: storagePath
+        storage_path: storagePath,
+        storage_kind: directUploadResult ? "walrus_testnet_direct" : "sandbox"
       };
       this.mockFiles.unshift(newFile);
-      return { fileId, id: fileId, name: fileName, blobId, blob_id: blobId, state: "completed", pending: false, ...newFile };
+      return { fileId, id: fileId, name: fileName, blobId, blob_id: blobId, suiObjectId, state: "completed", pending: false, ...newFile };
     }
   }
 
@@ -357,11 +377,20 @@ class WalrusClientManager {
 
       if (file.storage_path && fs.existsSync(file.storage_path)) {
         fs.copyFileSync(file.storage_path, destPath);
-      } else if (file.id === "demo_photo_1") {
-        fs.writeFileSync(destPath, this.demoCiphertext);
-      } else {
-        fs.writeFileSync(destPath, this.demoCiphertext);
+        return { fileId, destPath, success: true };
       }
+
+      // If file has a real Walrus testnet blob ID, retrieve it from the public aggregator
+      if (file.blob_id && !file.blob_id.startsWith("mock_blob_") && !file.blob_id.startsWith("7X9jPuF1K8ZQq")) {
+        try {
+          await directWalrusAdapter.readBlob(file.blob_id, destPath);
+          return { fileId, destPath, success: true };
+        } catch (aggErr) {
+          console.warn("⚠️ [WalrusClient] Direct aggregator fetch failed:", aggErr.message);
+        }
+      }
+
+      fs.writeFileSync(destPath, this.demoCiphertext);
       return { fileId, destPath, success: true };
     }
 
