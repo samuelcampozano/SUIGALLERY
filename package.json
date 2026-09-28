@@ -23,6 +23,7 @@
     "test:onchain": "node test/test-onchain.js",
     "test:shred": "node test-crypto-shredding.js",
     "test:solana": "node test/test-solana.js",
+    "test:walrus-fallback": "node test/test-walrus-testnet-fallback.js",
     "test-connection": "node test-connection.js",
     "mcp:install": "npx -y @mysten-incubation/walrus-console-mcp@beta install",
     "mcp:ping": "node -e \"import('./test-connection.js').then(m => m.testConnection())\""
