@@ -38,12 +38,13 @@
             <span class="brand-name">Nodus</span>
             <span class="brand-tag" data-i18n="brand_tag">WALRUS PROTOCOL</span>
           </div>
+        </div>
       </div>
 
       <div class="nav-right">
         <!-- Auth Container: zkLogin Button (when unauthenticated) OR User Profile Pill (when authenticated) -->
         <div class="auth-nav-container" id="authNavContainer">
-          <!-- Unauthenticated State: Sign In with zkLogin Button -->
+          <!-- Unauthenticated State: Sign In with zkLogin Button & 1-Click Demo -->
           <button class="btn btn-primary zklogin-nav-btn" id="loginTriggerBtn">
             <svg class="google-icon" viewBox="0 0 24 24" width="16" height="16">
               <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"/>
@@ -51,7 +52,11 @@
               <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3 0-.8.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12.3 1.9 7.9l3.7-2.9z"/>
               <path fill="#34A853" d="M12 23.5c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.3L1.9 16.5C3.7 20.2 7.5 23.5 12 23.5z"/>
             </svg>
-            <span data-i18n="signin_zklogin">Sign In with zkLogin</span>
+            <span data-i18n="signin_zklogin">Sign In</span>
+          </button>
+          <button class="btn btn-secondary demo-nav-btn" id="instantDemoBtn" title="Instant 1-Click Sovereign Demo">
+            <i data-lucide="sparkles"></i>
+            <span>1-Click Demo</span>
           </button>
 
           <!-- Authenticated State: User Profile Pill -->
@@ -231,6 +236,8 @@
       <div class="lightbox-viewport" id="lightboxViewport">
         <button class="lightbox-nav-btn lightbox-prev" id="lightboxPrevBtn" title="Previous photo (←)"><i data-lucide="chevron-left"></i></button>
         <img id="lightboxImg" src="" alt="Encrypted preview" class="lightbox-image">
+        <video id="lightboxVideo" controls playsinline class="lightbox-video hidden"></video>
+        <audio id="lightboxAudio" controls class="lightbox-audio hidden"></audio>
         <button class="lightbox-nav-btn lightbox-next" id="lightboxNextBtn" title="Next photo (→)"><i data-lucide="chevron-right"></i></button>
         <button class="lightbox-zoom-btn" id="lightboxZoomBtn" title="Toggle Zoom / Fullscreen"><i data-lucide="maximize-2"></i></button>
       </div>
@@ -315,6 +322,9 @@
         </div>
 
         <div class="sidebar-actions">
+          <button id="shareBtn" class="btn btn-primary btn-block">
+            <i data-lucide="share-2"></i> <span>Share Memory</span>
+          </button>
           <a id="downloadBtn" href="#" class="btn btn-secondary btn-block">
             <i data-lucide="download"></i> <span data-i18n="download_btn">Download Original</span>
           </a>
@@ -328,6 +338,43 @@
           </div>
         </div>
       </aside>
+    </div>
+  </div>
+
+  <!-- Share Memory Modal -->
+  <div class="modal-dialog hidden" id="shareModal">
+    <div class="modal-backdrop" id="shareModalBackdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="header-icon-title">
+          <div class="vault-modal-icon"><i data-lucide="share-2"></i></div>
+          <div>
+            <h3>Share Sovereign Memory</h3>
+            <p class="modal-subtitle">Share access with friends or wrap an encrypted key envelope.</p>
+          </div>
+        </div>
+        <button class="btn-close" id="shareModalClose"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Direct Decrypted Share Link</label>
+          <div class="tech-mini-val" style="background: var(--bg-surface); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between;">
+            <code id="shareLinkInput" class="mono-code" style="font-size: 0.85rem; word-break: break-all;">--</code>
+            <button class="copy-btn" id="copyShareLinkBtn" title="Copy Share Link"><i data-lucide="copy"></i></button>
+          </div>
+          <span style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; display: block;">Anyone with this link can view the high-resolution media.</span>
+        </div>
+        <div class="form-group" style="margin-top: 1rem;">
+          <label>Wrap for Teammate (Solana Address)</label>
+          <input type="text" id="shareRecipientInput" class="form-input" placeholder="Enter recipient Solana address...">
+          <button class="btn btn-secondary btn-sm" id="wrapRecipientBtn" style="margin-top: 8px;">
+            <i data-lucide="shield"></i> <span>Protect with Recipient Key Envelope</span>
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="shareCloseBtn">Close</button>
+      </div>
     </div>
   </div>
 

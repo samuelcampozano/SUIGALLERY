@@ -1634,6 +1634,40 @@ body.select-mode .photo-select-checkbox {
   transition: transform 0.2s ease;
 }
 
+.lightbox-video {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-md);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+  outline: none;
+  background: #000;
+}
+
+.lightbox-audio {
+  width: 90%;
+  max-width: 500px;
+  border-radius: 30px;
+  outline: none;
+  filter: drop-shadow(0 10px 25px rgba(0, 0, 0, 0.5));
+}
+
+.demo-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, rgba(56, 139, 253, 0.15), rgba(77, 162, 255, 0.25));
+  border: 1px solid rgba(56, 139, 253, 0.4);
+  color: var(--sui-cyan);
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.demo-nav-btn:hover {
+  background: linear-gradient(135deg, rgba(56, 139, 253, 0.3), rgba(77, 162, 255, 0.4));
+  border-color: var(--sui-cyan);
+  transform: translateY(-1px);
+}
+
 .lightbox-sidebar {
   padding: 1.75rem;
   display: flex;

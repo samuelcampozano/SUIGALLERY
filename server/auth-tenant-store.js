@@ -15,7 +15,8 @@ function isP256PublicJwk(value) {
 export class AuthTenantStore {
   constructor({ databaseUrl = process.env.DATABASE_URL } = {}) {
     if (!databaseUrl) throw new Error("DATABASE_URL is required for authenticated tenant mode");
-    const isSsl = databaseUrl.includes("render.com") || databaseUrl.includes("sslmode=require") || process.env.NODE_ENV === "production";
+    const isLocal = databaseUrl.includes("@postgres:") || databaseUrl.includes("localhost") || databaseUrl.includes("127.0.0.1");
+    const isSsl = !isLocal && (databaseUrl.includes("render.com") || databaseUrl.includes("sslmode=require") || process.env.NODE_ENV === "production");
     this.pool = new Pool({
       connectionString: databaseUrl,
       ssl: isSsl ? { rejectUnauthorized: false } : false

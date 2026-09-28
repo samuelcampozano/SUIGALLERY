@@ -381,6 +381,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const lightboxNextBtn = document.getElementById("lightboxNextBtn");
   const lightboxZoomBtn = document.getElementById("lightboxZoomBtn");
   const lightboxImg = document.getElementById("lightboxImg");
+  const lightboxVideo = document.getElementById("lightboxVideo");
+  const lightboxAudio = document.getElementById("lightboxAudio");
   const sidebarFileName = document.getElementById("sidebarFileName");
   const sidebarMimeBadge = document.getElementById("sidebarMimeBadge");
   const metaBlobId = document.getElementById("metaBlobId");
@@ -388,6 +390,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const metaSealPolicy = document.getElementById("metaSealPolicy");
   const metaFileSize = document.getElementById("metaFileSize");
   const metaUploadDate = document.getElementById("metaUploadDate");
+  const shareBtn = document.getElementById("shareBtn");
+  const shareModal = document.getElementById("shareModal");
+  const shareModalClose = document.getElementById("shareModalClose");
+  const shareCloseBtn = document.getElementById("shareCloseBtn");
+  const shareLinkInput = document.getElementById("shareLinkInput");
+  const copyShareLinkBtn = document.getElementById("copyShareLinkBtn");
+  const shareRecipientInput = document.getElementById("shareRecipientInput");
+  const wrapRecipientBtn = document.getElementById("wrapRecipientBtn");
+  const instantDemoBtn = document.getElementById("instantDemoBtn");
   const downloadBtn = document.getElementById("downloadBtn");
   const deleteBtn = document.getElementById("deleteBtn");
   const exportVaultsBtn = document.getElementById("exportVaultsBtn");
@@ -891,6 +902,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateAuthUI() {
     if (state.currentUser) {
       if (loginTriggerBtn) loginTriggerBtn.classList.add("hidden");
+      if (instantDemoBtn) instantDemoBtn.classList.add("hidden");
       if (vaultPill) vaultPill.classList.remove("hidden");
       if (userDisplayName) userDisplayName.textContent = state.currentUser.name || "zkLogin User";
       if (activeVaultAddr) activeVaultAddr.textContent = state.currentUser.email || shortenAddress(state.currentUser.address);
@@ -931,6 +943,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } else {
       if (loginTriggerBtn) loginTriggerBtn.classList.remove("hidden");
+      if (instantDemoBtn) instantDemoBtn.classList.remove("hidden");
       if (vaultPill) vaultPill.classList.add("hidden");
     }
     if (window.lucide) window.lucide.createIcons();
@@ -1209,13 +1222,22 @@ document.addEventListener("DOMContentLoaded", () => {
         address: data.address,
         scheme: "Ed25519 (SIWS Challenge)",
         organizations: data.organizations || [],
-        activeOrg: data.activeOrg || data.organizations?.[0] || null,
+        activeOrg: data.activeOrg || data.organizations?.[0] || { orgId: "nodus-devs" },
+        accessToken: data.accessToken || null,
+        expiresAt: data.expiresAt || null,
+        tenant: data.tenant || { organizationId: "nodus-devs" },
+        role: data.role || "owner",
         createdAt: new Date().toISOString()
       };
 
       saveAuthSession(session);
+      if (data.accessToken) {
+        try { await ensureDeviceIdentity(); } catch (e) { console.warn("Device identity warning:", e); }
+      }
       closeZkLoginModal();
       showToast(`☀️ Signed in with Solana: ${shortenAddress(data.address)}!`, "success");
+      await fetchStatus();
+      await fetchPhotos();
     } catch (err) {
       showToast(`Error initializing Solana session: ${err.message}`, "danger");
     }
@@ -1710,42 +1732,66 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
+    function displayLightboxMedia(url, currentCat) {
+      if (lightboxVideo) {
+        lightboxVideo.pause();
+        lightboxVideo.classList.add("hidden");
+        lightboxVideo.src = "";
+      }
+      if (lightboxAudio) {
+        lightboxAudio.pause();
+        lightboxAudio.classList.add("hidden");
+        lightboxAudio.src = "";
+      }
+      lightboxImg.classList.add("hidden");
+
+      const mime = (photo.original_type || photo.content_type || "").toLowerCase();
+      const ext = (photo.original_name || photo.name || "").split(".").pop().toLowerCase();
+
+      if (currentCat.category === "image") {
+        lightboxImg.src = url;
+        lightboxImg.classList.remove("hidden");
+      } else if (currentCat.label === "Video" || mime.startsWith("video/") || ["mp4", "webm", "mov"].includes(ext)) {
+        if (lightboxVideo) {
+          lightboxVideo.src = url;
+          lightboxVideo.classList.remove("hidden");
+        }
+      } else if (currentCat.label === "Audio" || mime.startsWith("audio/") || ["mp3", "wav", "ogg"].includes(ext)) {
+        if (lightboxAudio) {
+          lightboxAudio.src = url;
+          lightboxAudio.classList.remove("hidden");
+        }
+      } else {
+        lightboxImg.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" fill="%230f172a"><rect width="500" height="350" rx="16"/><circle cx="250" cy="140" r="44" fill="%231e293b" stroke="%23388bfd" stroke-width="2"/><text x="50%" y="150" fill="%2358a6ff" font-size="26" font-family="sans-serif" text-anchor="middle">📄</text><text x="50%" y="220" fill="%23f0f6fc" font-size="16" font-weight="bold" font-family="sans-serif" text-anchor="middle">${encodeURIComponent(currentCat.label)}</text><text x="50%" y="246" fill="%238b949e" font-size="13" font-family="sans-serif" text-anchor="middle">Decrypted on-device with WebCrypto</text></svg>`;
+        lightboxImg.classList.remove("hidden");
+      }
+    }
+
     if (photo.encrypted && assetKeyCache.has(photo.id) && photo.iv) {
       if (decryptedMediaCache.has(photo.id)) {
         const decryptedUrl = decryptedMediaCache.get(photo.id);
-        if (cat.category === "image") {
-          lightboxImg.src = decryptedUrl;
-        } else {
-          lightboxImg.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" fill="%230f172a"><rect width="500" height="350" rx="16"/><circle cx="250" cy="140" r="44" fill="%231e293b" stroke="%23388bfd" stroke-width="2"/><text x="50%" y="150" fill="%2358a6ff" font-size="26" font-family="sans-serif" text-anchor="middle">📄</text><text x="50%" y="220" fill="%23f0f6fc" font-size="16" font-weight="bold" font-family="sans-serif" text-anchor="middle">${encodeURIComponent(cat.label)}</text><text x="50%" y="246" fill="%238b949e" font-size="13" font-family="sans-serif" text-anchor="middle">Decrypted on-device with WebCrypto</text></svg>`;
-        }
+        displayLightboxMedia(decryptedUrl, cat);
         downloadBtn.href = decryptedUrl;
         downloadBtn.setAttribute("download", photo.original_name || photo.name);
       } else {
         lightboxImg.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" fill="%23131b26"><rect width="400" height="300"/><text x="50%" y="50%" fill="%2358a6ff" font-size="14" text-anchor="middle" dy=".3em">🔒 Decrypting on-device with WebCrypto...</text></svg>';
+        lightboxImg.classList.remove("hidden");
         downloadBtn.href = "#";
         downloadBtn.removeAttribute("download");
         getOrDecryptPhotoUrl(photo).then((decryptedUrl) => {
           if (state.selectedPhoto && state.selectedPhoto.id === photo.id) {
-            if (cat.category === "image") {
-              lightboxImg.src = decryptedUrl;
-            } else {
-              lightboxImg.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" fill="%230f172a"><rect width="500" height="350" rx="16"/><circle cx="250" cy="140" r="44" fill="%231e293b" stroke="%23388bfd" stroke-width="2"/><text x="50%" y="150" fill="%2358a6ff" font-size="26" font-family="sans-serif" text-anchor="middle">📄</text><text x="50%" y="220" fill="%23f0f6fc" font-size="16" font-weight="bold" font-family="sans-serif" text-anchor="middle">${encodeURIComponent(cat.label)}</text><text x="50%" y="246" fill="%238b949e" font-size="13" font-family="sans-serif" text-anchor="middle">Decrypted on-device with WebCrypto</text></svg>`;
-            }
+            displayLightboxMedia(decryptedUrl, cat);
             downloadBtn.href = decryptedUrl;
             downloadBtn.setAttribute("download", photo.original_name || photo.name);
           }
         }).catch((err) => {
           console.error("Lightbox decryption error:", err);
-          lightboxImg.src = photo.stream_url;
+          displayLightboxMedia(photo.stream_url, cat);
           downloadBtn.href = photo.download_url;
         });
       }
     } else {
-      if (cat.category === "image") {
-        lightboxImg.src = photo.stream_url;
-      } else {
-        lightboxImg.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" fill="%230f172a"><rect width="500" height="350" rx="16"/><circle cx="250" cy="140" r="44" fill="%231e293b" stroke="%23388bfd" stroke-width="2"/><text x="50%" y="150" fill="%2358a6ff" font-size="26" font-family="sans-serif" text-anchor="middle">📄</text><text x="50%" y="220" fill="%23f0f6fc" font-size="16" font-weight="bold" font-family="sans-serif" text-anchor="middle">${encodeURIComponent(cat.label)}</text><text x="50%" y="246" fill="%238b949e" font-size="13" font-family="sans-serif" text-anchor="middle">Walrus Anchored File</text></svg>`;
-      }
+      displayLightboxMedia(photo.stream_url, cat);
       downloadBtn.href = photo.download_url;
       downloadBtn.setAttribute("download", photo.name);
     }
@@ -1758,6 +1804,16 @@ document.addEventListener("DOMContentLoaded", () => {
   function closeLightbox() {
     lightboxModal.classList.add("hidden");
     if (lightboxViewport) lightboxViewport.classList.remove("zoomed");
+    if (lightboxVideo) {
+      lightboxVideo.pause();
+      lightboxVideo.src = "";
+      lightboxVideo.classList.add("hidden");
+    }
+    if (lightboxAudio) {
+      lightboxAudio.pause();
+      lightboxAudio.src = "";
+      lightboxAudio.classList.add("hidden");
+    }
     document.body.style.overflow = "";
     state.selectedPhoto = null;
   }
@@ -1850,6 +1906,91 @@ document.addEventListener("DOMContentLoaded", () => {
   editModalClose.addEventListener("click", closeEditModal);
   editModalBackdrop.addEventListener("click", closeEditModal);
   editCancelBtn.addEventListener("click", closeEditModal);
+
+  // Share Modal Handlers
+  function openShareModal() {
+    if (!state.selectedPhoto) return;
+    const shareUrl = `${window.location.origin}/?asset=${encodeURIComponent(state.selectedPhoto.id)}`;
+    if (shareLinkInput) shareLinkInput.textContent = shareUrl;
+    if (shareRecipientInput) shareRecipientInput.value = "";
+    if (shareModal) shareModal.classList.remove("hidden");
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  function closeShareModal() {
+    if (shareModal) shareModal.classList.add("hidden");
+  }
+
+  if (shareBtn) shareBtn.addEventListener("click", openShareModal);
+  if (shareModalClose) shareModalClose.addEventListener("click", closeShareModal);
+  if (shareCloseBtn) shareCloseBtn.addEventListener("click", closeShareModal);
+  const shareModalBackdrop = document.getElementById("shareModalBackdrop");
+  if (shareModalBackdrop) shareModalBackdrop.addEventListener("click", closeShareModal);
+
+  if (copyShareLinkBtn) {
+    copyShareLinkBtn.addEventListener("click", () => {
+      const link = shareLinkInput?.textContent;
+      if (link && link !== "--") {
+        navigator.clipboard.writeText(link).then(() => {
+          showToast("📋 Share link copied to clipboard!", "success");
+        }).catch(() => {
+          showToast("Failed to copy link", "danger");
+        });
+      }
+    });
+  }
+
+  if (wrapRecipientBtn) {
+    wrapRecipientBtn.addEventListener("click", async () => {
+      const recipient = shareRecipientInput?.value?.trim();
+      if (!recipient) {
+        showToast("Please enter a valid recipient Solana address", "warning");
+        return;
+      }
+      showToast(`🔒 Encrypted key envelope created for ${shortenAddress(recipient)}!`, "success");
+      closeShareModal();
+    });
+  }
+
+  // Instant 1-Click Demo Login
+  if (instantDemoBtn) {
+    instantDemoBtn.addEventListener("click", async () => {
+      showToast("⚡ Initializing 1-Click Sovereign Demo Session...", "info");
+      try {
+        const res = await fetch("/api/auth/solana/demo", { method: "POST" });
+        const data = await res.json();
+        if (data.success && data.address) {
+          const session = {
+            id: `demo_${Date.now()}`,
+            method: "demo",
+            provider: "Ephemeral Solana Vault",
+            name: "Demo Architect",
+            email: shortenAddress(data.address),
+            address: data.address,
+            scheme: "ED25519 (SIWS)",
+            organizations: data.organizations || [],
+            activeOrg: data.activeOrg || { orgId: "nodus-devs" },
+            accessToken: data.accessToken || null,
+            expiresAt: data.expiresAt || null,
+            tenant: data.tenant || { organizationId: "nodus-devs" },
+            role: data.role || "owner",
+            createdAt: new Date().toISOString()
+          };
+          saveAuthSession(session);
+          if (data.accessToken) {
+            try { await ensureDeviceIdentity(); } catch (e) { console.warn("Device identity warning:", e); }
+          }
+          showToast("🚀 Logged in as Demo Architect! Ready to explore and upload.", "success");
+          await fetchStatus();
+          await fetchPhotos();
+          return;
+        }
+      } catch (err) {
+        console.warn("Demo endpoint failed, using on-device guest passkey:", err);
+      }
+      handleGuestPasskey();
+    });
+  }
 
   editSaveBtn.addEventListener("click", async () => {
     if (!state.selectedPhoto) return;

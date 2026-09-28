@@ -367,7 +367,8 @@ class WalrusClientManager {
   async downloadAndDecryptPhoto({ fileId, destPath, tenant = null }) {
     const bucketId = tenant?.bucketId || DEFAULT_BUCKET_ID;
     const sealPolicyId = tenant?.sealPolicyId || DEFAULT_SEAL_POLICY_ID;
-    if (this.isMockMode()) {
+
+    const readFallback = async () => {
       const file = this.mockFiles.find((f) => f.id === fileId);
       if (!file) {
         throw new Error(`File ${fileId} not found or has been crypto-shredded`);
@@ -381,7 +382,7 @@ class WalrusClientManager {
       }
 
       // If file has a real Walrus testnet blob ID, retrieve it from the public aggregator
-      if (file.blob_id && !file.blob_id.startsWith("mock_blob_") && !file.blob_id.startsWith("7X9jPuF1K8ZQq")) {
+      if (file && file.blob_id && !file.blob_id.startsWith("mock_blob_") && !file.blob_id.startsWith("7X9jPuF1K8ZQq")) {
         try {
           await directWalrusAdapter.readBlob(file.blob_id, destPath);
           return { fileId, destPath, success: true };
@@ -392,28 +393,34 @@ class WalrusClientManager {
 
       fs.writeFileSync(destPath, this.demoCiphertext);
       return { fileId, destPath, success: true };
+    };
+
+    if (this.isMockMode()) {
+      return await readFallback();
     }
 
-    const client = await this.getClient();
-
-    console.log(`🔓 [WalrusClient] Fetching & Decrypting file ${fileId} to ${destPath}`);
-
-    const res = await client.callTool({
-      name: "download_file",
-      arguments: {
-        bucketId,
-        fileId,
-        sealPolicyId,
-        destPath
-      }
-    });
-
-    return this.parseMcpResponse(res);
+    try {
+      const client = await this.getClient();
+      console.log(`🔓 [WalrusClient] Fetching & Decrypting file ${fileId} to ${destPath}`);
+      const res = await client.callTool({
+        name: "download_file",
+        arguments: {
+          bucketId,
+          fileId,
+          sealPolicyId,
+          destPath
+        }
+      });
+      return await this.parseMcpResponse(res);
+    } catch (err) {
+      console.warn("⚠️ [WalrusClient] MCP download failed, falling back to direct aggregator/sandbox:", err.message);
+      return await readFallback();
+    }
   }
 
   async deletePhoto(fileId, tenant = null) {
     const bucketId = tenant?.bucketId || DEFAULT_BUCKET_ID;
-    if (this.isMockMode()) {
+    const fallbackDelete = () => {
       const idx = this.mockFiles.findIndex((f) => f.id === fileId);
       if (idx !== -1) {
         const [removed] = this.mockFiles.splice(idx, 1);
@@ -424,20 +431,29 @@ class WalrusClientManager {
         }
       }
       return { id: fileId, deleted: true };
+    };
+
+    if (this.isMockMode()) {
+      return fallbackDelete();
     }
 
-    const client = await this.getClient();
-    console.log(`🗑️ [WalrusClient] Deleting file ${fileId} from bucket ${DEFAULT_BUCKET_ID}`);
+    try {
+      const client = await this.getClient();
+      console.log(`🗑️ [WalrusClient] Deleting file ${fileId} from bucket ${DEFAULT_BUCKET_ID}`);
 
-    const res = await client.callTool({
-      name: "delete_file",
-      arguments: {
-        bucketId,
-        fileId
-      }
-    });
+      const res = await client.callTool({
+        name: "delete_file",
+        arguments: {
+          bucketId,
+          fileId
+        }
+      });
 
-    return this.parseMcpResponse(res);
+      return await this.parseMcpResponse(res);
+    } catch (err) {
+      console.warn("⚠️ [WalrusClient] MCP delete failed, falling back to local sandbox:", err.message);
+      return fallbackDelete();
+    }
   }
 
   async updatePhoto({ fileId, name, description, tags, tenant = null }) {

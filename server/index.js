@@ -517,9 +517,49 @@ app.post("/api/auth/solana/verify", (req, res) => {
 });
 
 // Instant Ephemeral Solana Session for zero-env demoing / testing without browser extension
-app.post("/api/auth/solana/demo", (req, res) => {
+app.post("/api/auth/solana/demo", async (req, res) => {
   try {
     const session = generateDemoSolanaSession();
+    if (authTenantStore) {
+      const orgId = "nodus-devs";
+      const client = await authTenantStore.pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          "INSERT INTO organizations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+          [orgId, "Nodus Sovereign Developers"]
+        );
+        await client.query(
+          "INSERT INTO tenant_storage_contexts (organization_id, space_id, bucket_id, seal_policy_id, quota_bytes, active) VALUES ($1, $2, $3, $4, $5, true) ON CONFLICT (organization_id) DO UPDATE SET active = true",
+          [orgId, DEFAULT_SPACE_ID, DEFAULT_BUCKET_ID, "active", 50000000000]
+        );
+        const userId = crypto.randomUUID();
+        await client.query(
+          "INSERT INTO users (id, solana_address) VALUES ($1, $2) ON CONFLICT (solana_address) DO NOTHING",
+          [userId, session.address]
+        );
+        const user = await client.query("SELECT id FROM users WHERE solana_address = $1", [session.address]);
+        await client.query(
+          "INSERT INTO memberships (organization_id, user_id, role) VALUES ($1, $2, 'owner') ON CONFLICT (organization_id, user_id) DO UPDATE SET role = 'owner'",
+          [orgId, user.rows[0].id]
+        );
+        await client.query("COMMIT");
+      } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+      } finally {
+        client.release();
+      }
+      const tenantSession = await authTenantStore.createSession({ address: session.address, organizationId: orgId });
+      return res.json({
+        success: true,
+        ...session,
+        accessToken: tenantSession.token,
+        expiresAt: tenantSession.expiresAt,
+        tenant: { organizationId: orgId, ...tenantSession.tenant },
+        role: tenantSession.role
+      });
+    }
     res.json({ success: true, ...session });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -1460,12 +1500,26 @@ app.get(["/api/photos/:fileId/stream", "/api/assets/:fileId/stream"], requireTen
   }
 
   try {
+    let catalogAsset = null;
     if (authTenantStore) {
-      const catalogAsset = await authTenantStore.getCatalogAsset({ organizationId: req.tenant.organizationId, assetId: fileId });
+      catalogAsset = await authTenantStore.getCatalogAsset({ organizationId: req.tenant.organizationId, assetId: fileId });
       if (!catalogAsset || catalogAsset.storageKind !== "walrus") return res.status(404).json({ success: false, error: "File not found" });
     }
     const files = await walrus.listPhotos(req.tenant?.bucketId);
-    const matched = files.find((f) => f.id === fileId);
+    let matched = files.find((f) => f.id === fileId);
+    if (!matched && catalogAsset) {
+      matched = {
+        id: catalogAsset.id,
+        name: catalogAsset.name,
+        original_name: catalogAsset.name,
+        content_type: catalogAsset.contentType,
+        original_type: catalogAsset.contentType,
+        size: catalogAsset.byteSize,
+        original_size: catalogAsset.byteSize,
+        encrypted: true,
+        iv: null
+      };
+    }
     if (!matched) {
       return res.status(404).json({ success: false, error: `File not found: ${fileId}` });
     }
