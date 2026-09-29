@@ -2810,7 +2810,7 @@ body.select-mode .photo-select-checkbox {
 
 .auth-secondary-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.6rem;
   margin-bottom: 1.25rem;
 }
@@ -2975,5 +2975,439 @@ body.select-mode .photo-select-checkbox {
   border-radius: var(--radius-full);
   color: var(--text-tertiary);
 }
+
+/* ==========================================================================
+   Google zkLogin Interactive Dialog & Persona Cards
+   ========================================================================== */
+.google-persona-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.google-persona-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.google-persona-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--brand-sui);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(77, 162, 255, 0.15);
+}
+
+.google-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4285f4, #34a853);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.google-persona-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.google-persona-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.google-persona-email {
+  font-size: 0.74rem;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.google-persona-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  background: rgba(77, 162, 255, 0.12);
+  border: 1px solid rgba(77, 162, 255, 0.25);
+  color: var(--brand-sui);
+  border-radius: var(--radius-full);
+}
+
+.custom-email-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.input-with-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-with-icon i,
+.input-with-icon svg {
+  position: absolute;
+  left: 0.85rem;
+  width: 16px;
+  height: 16px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.input-with-icon .form-input {
+  width: 100%;
+  padding-left: 2.4rem;
+}
+
+/* ==========================================================================
+   Multi-Wallet Selector Modal (Slush, Sui Wallet, etc.)
+   ========================================================================== */
+.wallet-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+
+.wallet-option-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0.9rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+}
+
+.wallet-option-card:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--border-active);
+}
+
+.wallet-card-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.wallet-logo-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wallet-logo-badge svg {
+  width: 20px;
+  height: 20px;
+}
+
+.wallet-logo-badge.slush-logo {
+  background: linear-gradient(135deg, #00d2ff, #3a7bd5);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(0, 210, 255, 0.3);
+}
+
+.wallet-logo-badge.sui-logo {
+  background: linear-gradient(135deg, #4da2ff, #2962ff);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(77, 162, 255, 0.3);
+}
+
+.wallet-card-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.wallet-card-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wallet-card-status {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}
+
+.wallet-card-status.detected {
+  color: var(--accent-success);
+  font-weight: 500;
+}
+
+.wallet-action-btn {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.85rem;
+}
+
+.wallet-install-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.75rem 0.9rem;
+  background: rgba(77, 162, 255, 0.05);
+  border: 1px solid rgba(77, 162, 255, 0.2);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.wallet-install-banner svg {
+  width: 16px;
+  height: 16px;
+  color: var(--brand-sui);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.wallet-download-links {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+}
+
+.download-link {
+  color: var(--brand-sui);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.75rem;
+  transition: color 0.15s ease;
+}
+
+.download-link:hover {
+  text-decoration: underline;
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   Sovereign Seed Phrase (BIP-39 Mnemonic) Modal
+   ========================================================================== */
+.seed-modal-content {
+  max-width: 480px !important;
+}
+
+.seed-tabs {
+  display: flex;
+  gap: 0.4rem;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.25rem;
+  border-radius: var(--radius-sm);
+  margin-bottom: 1.15rem;
+  border: 1px solid var(--border-subtle);
+}
+
+.seed-tab {
+  flex: 1;
+  padding: 0.45rem 0.5rem;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.seed-tab.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.seed-alert-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.65rem 0.85rem;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  color: #fbbf24;
+  line-height: 1.4;
+  margin-bottom: 1rem;
+}
+
+.seed-alert-box svg {
+  width: 16px;
+  height: 16px;
+  color: #f59e0b;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.seed-words-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 440px) {
+  .seed-words-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.seed-word-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.65rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82rem;
+}
+
+.seed-word-num {
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  min-width: 18px;
+}
+
+.seed-word-val {
+  color: var(--text-primary);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.seed-controls {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.seed-derived-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.65rem 0.85rem;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.derived-label {
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.derived-address {
+  font-size: 0.74rem;
+  color: var(--brand-sui);
+  font-family: var(--font-mono, monospace);
+  word-break: break-all;
+}
+
+.seed-textarea {
+  width: 100%;
+  height: 90px;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  resize: none;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.seed-textarea:focus {
+  border-color: var(--brand-sui);
+}
+
+.seed-validation-status {
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}
+
+.seed-validation-status.valid {
+  color: var(--accent-success);
+}
+
+.seed-validation-status.invalid {
+  color: var(--accent-danger, #ef4444);
+}
+
+.seed-input-instruction {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+/* Light Theme overrides for new components */
+body.light-theme .google-persona-card {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+body.light-theme .google-persona-card:hover {
+  background: #f8fafc;
+  border-color: #3b82f6;
+}
+
+body.light-theme .wallet-option-card {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .seed-word-item {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .seed-tabs {
+  background: #f1f5f9;
+}
+
+body.light-theme .seed-tab.active {
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .seed-derived-preview {
+  background: #f8fafc;
+}
+
+body.light-theme .seed-textarea {
+  background: #ffffff;
+}
+
 
 
