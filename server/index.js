@@ -499,9 +499,8 @@ app.post("/api/auth/solana/verify", (req, res) => {
   // Retrieve user's organizations
   const userOrgs = listUserOrganizations(address);
 
-  const organizationId = req.body.organizationId;
+  const organizationId = req.body.organizationId || "nodus-devs";
   if (authTenantStore) {
-    if (!organizationId) return res.status(400).json({ success: false, error: "organizationId is required for tenant authentication" });
     return authTenantStore.createSession({ address, organizationId })
       .then((session) => res.json({ success: true, address, provider: "solana", scheme: "ed25519", verifiedAt: result.verifiedAt, organizations: userOrgs, accessToken: session.token, expiresAt: session.expiresAt, tenant: { organizationId, ...session.tenant }, role: session.role }))
       .catch((error) => res.status(403).json({ success: false, error: error.message }));

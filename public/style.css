@@ -3409,5 +3409,126 @@ body.light-theme .seed-textarea {
   background: #ffffff;
 }
 
+/* ==========================================================================
+   Solana Multi-Wallet Selector Modal (Phantom, Solflare, Backpack)
+   ========================================================================== */
+.solana-brand-badge {
+  background: linear-gradient(135deg, rgba(153, 69, 255, 0.15), rgba(20, 241, 149, 0.15)) !important;
+  border-color: rgba(20, 241, 149, 0.3) !important;
+}
+
+.solana-logo-bg {
+  background: linear-gradient(135deg, #9945ff, #14f195) !important;
+  color: #05080e !important;
+}
+
+.solana-badge-text {
+  color: #14f195 !important;
+}
+
+.wallet-logo-badge.phantom-logo {
+  background: linear-gradient(135deg, #ab9ff2, #7c3aed);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(124, 58, 237, 0.35);
+}
+
+.wallet-logo-badge.solflare-logo {
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(249, 115, 22, 0.35);
+}
+
+.wallet-logo-badge.backpack-logo {
+  background: linear-gradient(135deg, #e11d48, #be123c);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(225, 29, 72, 0.35);
+}
+
+.solana-org-drawer {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.85rem;
+  overflow: hidden;
+}
+
+.solana-org-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.solana-org-summary::-webkit-details-marker {
+  display: none;
+}
+
+.solana-org-summary span {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.solana-org-summary svg {
+  width: 14px;
+  height: 14px;
+  color: #14f195;
+}
+
+.solana-org-summary strong {
+  color: var(--text-primary);
+}
+
+.drawer-arrow {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.2s ease;
+}
+
+.solana-org-drawer[open] .drawer-arrow {
+  transform: rotate(180deg);
+}
+
+.solana-org-content {
+  padding: 0.75rem 0.85rem;
+  border-top: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.solana-org-field-label {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+  margin-bottom: 0.35rem;
+}
+
+.solana-install-banner {
+  background: rgba(20, 241, 149, 0.05) !important;
+  border-color: rgba(20, 241, 149, 0.25) !important;
+}
+
+.solana-install-banner svg {
+  color: #14f195 !important;
+}
+
+.solana-link {
+  color: #14f195 !important;
+}
+
+body.light-theme .solana-org-drawer {
+  background: #f8fafc;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .solana-org-content {
+  background: #ffffff;
+}
+
+
 
 

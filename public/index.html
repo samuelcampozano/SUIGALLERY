@@ -741,6 +741,110 @@
     </div>
   </div>
 
+  <!-- Solana Multi-Wallet Selector Modal (Phantom, Solflare, Backpack, etc.) -->
+  <div class="modal-dialog hidden" id="solanaWalletModal">
+    <div class="modal-backdrop" id="solanaWalletModalBackdrop"></div>
+    <div class="modal-content auth-modal-content">
+      <div class="modal-header auth-modal-header">
+        <div class="auth-brand-badge solana-brand-badge">
+          <div class="logo-icon-sm solana-logo-bg"><i data-lucide="sun"></i></div>
+          <span class="auth-badge-label solana-badge-text">Solana SIWS & Wallet Standard</span>
+        </div>
+        <button class="btn-close" id="solanaWalletModalClose"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="modal-body auth-modal-body">
+        <h2 class="auth-title">Connect Solana Wallet</h2>
+        <p class="auth-subtitle">
+          Sign-In with Solana (SIWS). Authenticate cryptographically via Ed25519 and anchor into Walrus decentralized storage.
+        </p>
+
+        <!-- Solana Wallet Options List -->
+        <div class="wallet-options-list" id="solanaWalletOptionsList">
+          <!-- Phantom Card -->
+          <div class="wallet-option-card" id="walletCardPhantom">
+            <div class="wallet-card-left">
+              <div class="wallet-logo-badge phantom-logo">
+                <i data-lucide="ghost"></i>
+              </div>
+              <div class="wallet-card-info">
+                <span class="wallet-card-name">Phantom</span>
+                <span class="wallet-card-status" id="phantomWalletStatus">Scanning...</span>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-outline wallet-action-btn" id="connectPhantomBtn">Connect</button>
+          </div>
+
+          <!-- Solflare Card -->
+          <div class="wallet-option-card" id="walletCardSolflare">
+            <div class="wallet-card-left">
+              <div class="wallet-logo-badge solflare-logo">
+                <i data-lucide="flame"></i>
+              </div>
+              <div class="wallet-card-info">
+                <span class="wallet-card-name">Solflare</span>
+                <span class="wallet-card-status" id="solflareWalletStatus">Scanning...</span>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-outline wallet-action-btn" id="connectSolflareBtn">Connect</button>
+          </div>
+
+          <!-- Backpack Card -->
+          <div class="wallet-option-card" id="walletCardBackpack">
+            <div class="wallet-card-left">
+              <div class="wallet-logo-badge backpack-logo">
+                <i data-lucide="briefcase"></i>
+              </div>
+              <div class="wallet-card-info">
+                <span class="wallet-card-name">Backpack</span>
+                <span class="wallet-card-status" id="backpackWalletStatus">Scanning...</span>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-outline wallet-action-btn" id="connectBackpackBtn">Connect</button>
+          </div>
+
+          <!-- Dynamic Solana Wallets Container -->
+          <div id="dynamicSolanaWalletsContainer"></div>
+        </div>
+
+        <!-- Optional Organization Configuration Drawer -->
+        <details class="solana-org-drawer">
+          <summary class="solana-org-summary">
+            <span><i data-lucide="building-2"></i> Organization: <strong id="activeSolanaOrgLabel">nodus-devs</strong></span>
+            <i data-lucide="chevron-down" class="drawer-arrow"></i>
+          </summary>
+          <div class="solana-org-content">
+            <label class="solana-org-field-label">Target Tenant ID (default: nodus-devs)</label>
+            <input type="text" id="solanaOrgInput" class="form-input" placeholder="nodus-devs" value="nodus-devs">
+          </div>
+        </details>
+
+        <!-- Fallback if no extension is installed -->
+        <div class="wallet-install-banner solana-install-banner" id="noSolanaWalletNotice">
+          <i data-lucide="info"></i>
+          <div>
+            <span>No Solana wallet detected in browser?</span>
+            <div class="wallet-download-links">
+              <a href="https://phantom.app" target="_blank" class="download-link solana-link">Get Phantom ↗</a>
+              <a href="https://solflare.com" target="_blank" class="download-link solana-link">Get Solflare ↗</a>
+              <a href="https://backpack.app" target="_blank" class="download-link solana-link">Get Backpack ↗</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="auth-divider">
+          <span>or connect without extension</span>
+        </div>
+
+        <!-- 1-Click Instant Demo / Ephemeral Keypair -->
+        <button class="btn btn-secondary btn-block" id="solana1ClickDemoBtn">
+          <i data-lucide="sparkles"></i>
+          <span>1-Click Solana Keypair Demo (Instant SIWS)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Sovereign Account & Vault Profile Modal -->
   <div class="modal-dialog hidden" id="vaultModal">
     <div class="modal-backdrop" id="vaultModalBackdrop"></div>

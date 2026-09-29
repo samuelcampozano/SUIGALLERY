@@ -752,6 +752,25 @@ document.addEventListener("DOMContentLoaded", () => {
   const importedDerivedAddress = document.getElementById("importedDerivedAddress");
   const submitImportSeedBtn = document.getElementById("submitImportSeedBtn");
 
+  // Solana Multi-Wallet Modal Elements
+  const solanaWalletModal = document.getElementById("solanaWalletModal");
+  const solanaWalletModalClose = document.getElementById("solanaWalletModalClose");
+  const solanaWalletModalBackdrop = document.getElementById("solanaWalletModalBackdrop");
+  const walletCardPhantom = document.getElementById("walletCardPhantom");
+  const phantomWalletStatus = document.getElementById("phantomWalletStatus");
+  const connectPhantomBtn = document.getElementById("connectPhantomBtn");
+  const walletCardSolflare = document.getElementById("walletCardSolflare");
+  const solflareWalletStatus = document.getElementById("solflareWalletStatus");
+  const connectSolflareBtn = document.getElementById("connectSolflareBtn");
+  const walletCardBackpack = document.getElementById("walletCardBackpack");
+  const backpackWalletStatus = document.getElementById("backpackWalletStatus");
+  const connectBackpackBtn = document.getElementById("connectBackpackBtn");
+  const dynamicSolanaWalletsContainer = document.getElementById("dynamicSolanaWalletsContainer");
+  const activeSolanaOrgLabel = document.getElementById("activeSolanaOrgLabel");
+  const solanaOrgInput = document.getElementById("solanaOrgInput");
+  const noSolanaWalletNotice = document.getElementById("noSolanaWalletNotice");
+  const solana1ClickDemoBtn = document.getElementById("solana1ClickDemoBtn");
+
   // Account Profile Modal Elements
   const vaultModal = document.getElementById("vaultModal");
   const vaultModalClose = document.getElementById("vaultModalClose");
@@ -1477,6 +1496,22 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function openSolanaWalletModal() {
+    if (solanaWalletModal) {
+      solanaWalletModal.classList.remove("hidden");
+      document.body.style.overflow = "hidden";
+      refreshSolanaWalletStatus();
+      if (window.lucide) window.lucide.createIcons();
+    }
+  }
+
+  function closeSolanaWalletModal() {
+    if (solanaWalletModal) {
+      solanaWalletModal.classList.add("hidden");
+      document.body.style.overflow = "";
+    }
+  }
+
   function saveAuthSession(session) {
     state.currentUser = session;
     const { accessToken, ...nonSensitiveSession } = session;
@@ -1519,12 +1554,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     for (let index = digits.length - 1; index >= 0; index--) encoded += alphabet[digits[index]];
     return encoded;
-  }
-
-  function promptForOrganization() {
-    const previous = state.currentUser?.tenant?.organizationId || "";
-    const organizationId = prompt("Informe o ID da organização pré-provisionada para esta sessão:", previous);
-    return organizationId?.trim() || null;
   }
 
   // ==========================================
@@ -1948,71 +1977,204 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast("⚡ Signed in as Guest Explorer!", "success");
   }
 
-  // Connect Solana Wallet Handler (SIWS & Phantom / Solflare support)
-  async function handleConnectSolanaWallet() {
-    try {
-      if (window.solana && (window.solana.isPhantom || window.solana.publicKey)) {
-        showToast("Connecting to Solana Wallet...", "info");
-        const resp = await window.solana.connect();
-        const address = resp.publicKey ? resp.publicKey.toString() : window.solana.publicKey.toString();
-        const organizationId = promptForOrganization();
-        if (!organizationId) return;
+  // ==========================================
+  // SOLANA MULTI-WALLET (PHANTOM, SOLFLARE, BACKPACK) & SIWS
+  // ==========================================
+  function refreshSolanaWalletStatus() {
+    const isPhantomDetected = Boolean(
+      window.phantom?.solana ||
+      (window.solana?.isPhantom ? window.solana : null) ||
+      standardWallets.has("Phantom")
+    );
 
-        // 1. Request SIWS Challenge from Nodus Engine
-        const challengeRes = await fetch("/api/auth/solana/challenge", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address, domain: window.location.hostname || "nodus.cloud" })
-        });
-        const challenge = await challengeRes.json();
-        if (!challenge.success) throw new Error(challenge.error || "Failed to obtain SIWS challenge");
+    const isSolflareDetected = Boolean(
+      window.solflare ||
+      (window.solana?.isSolflare ? window.solana : null) ||
+      standardWallets.has("Solflare")
+    );
 
-        // 2. Cryptographic Ed25519 signature via wallet
-        const encodedMsg = new TextEncoder().encode(challenge.message);
-        const signed = await window.solana.signMessage(encodedMsg, "utf8");
-        const sigBytes = signed.signature || signed;
-        const signature = encodeBase58(sigBytes);
+    const isBackpackDetected = Boolean(
+      window.backpack ||
+      standardWallets.has("Backpack")
+    );
 
-        // 3. Verify on server and load Anchor organization
-        const verifyRes = await fetch("/api/auth/solana/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address, signature, message: challenge.message, organizationId })
-        });
-        const verifyData = await verifyRes.json();
-        if (!verifyData.success) throw new Error(verifyData.error || "Cryptographic verification failed");
-
-        const session = {
-          id: `sol_${Date.now()}`,
-          method: "solana_siws",
-          provider: "Solana (Phantom)",
-          name: "Solana Pioneer",
-          email: shortenAddress(address),
-          address,
-          scheme: "Ed25519 (SIWS Challenge)",
-          organizations: verifyData.organizations || [],
-          activeOrg: { orgId: verifyData.tenant?.organizationId || organizationId },
-          tenant: verifyData.tenant,
-          accessToken: verifyData.accessToken,
-          expiresAt: verifyData.expiresAt,
-          createdAt: new Date().toISOString()
-        };
-
-        saveAuthSession(session);
-        await ensureDeviceIdentity();
-        closeZkLoginModal();
-        showToast(`☀️ Signed in with Solana: ${shortenAddress(address)}`, "success");
-        return;
+    if (phantomWalletStatus && connectPhantomBtn) {
+      if (isPhantomDetected) {
+        phantomWalletStatus.textContent = "Detected • Ready to Connect";
+        phantomWalletStatus.className = "wallet-card-status detected";
+        connectPhantomBtn.textContent = "Connect";
+        connectPhantomBtn.className = "btn btn-sm btn-primary wallet-action-btn";
+      } else {
+        phantomWalletStatus.textContent = "Browser Extension / Mobile";
+        phantomWalletStatus.className = "wallet-card-status";
+        connectPhantomBtn.textContent = "Connect / Install";
+        connectPhantomBtn.className = "btn btn-sm btn-outline wallet-action-btn";
       }
-    } catch (err) {
-      console.warn("Solana extension flow error:", err);
-      showToast(`Solana sign-in cancelled or failed: ${err.message}`, "danger");
-      return;
     }
 
-    // Zero-Env Demo Fallback: Real on-device/server Ed25519 Keypair SIWS flow
+    if (solflareWalletStatus && connectSolflareBtn) {
+      if (isSolflareDetected) {
+        solflareWalletStatus.textContent = "Detected • Ready to Connect";
+        solflareWalletStatus.className = "wallet-card-status detected";
+        connectSolflareBtn.textContent = "Connect";
+        connectSolflareBtn.className = "btn btn-sm btn-primary wallet-action-btn";
+      } else {
+        solflareWalletStatus.textContent = "Browser Extension";
+        solflareWalletStatus.className = "wallet-card-status";
+        connectSolflareBtn.textContent = "Connect / Install";
+        connectSolflareBtn.className = "btn btn-sm btn-outline wallet-action-btn";
+      }
+    }
+
+    if (backpackWalletStatus && connectBackpackBtn) {
+      if (isBackpackDetected) {
+        backpackWalletStatus.textContent = "Detected • Ready to Connect";
+        backpackWalletStatus.className = "wallet-card-status detected";
+        connectBackpackBtn.textContent = "Connect";
+        connectBackpackBtn.className = "btn btn-sm btn-primary wallet-action-btn";
+      } else {
+        backpackWalletStatus.textContent = "xNFT / Web3 Wallet";
+        backpackWalletStatus.className = "wallet-card-status";
+        connectBackpackBtn.textContent = "Connect / Install";
+        connectBackpackBtn.className = "btn btn-sm btn-outline wallet-action-btn";
+      }
+    }
+
+    if (noSolanaWalletNotice) {
+      if (isPhantomDetected || isSolflareDetected || isBackpackDetected) {
+        noSolanaWalletNotice.classList.add("hidden");
+      } else {
+        noSolanaWalletNotice.classList.remove("hidden");
+      }
+    }
+
+    // Dynamic third-party Solana wallets from Wallet Standard
+    if (dynamicSolanaWalletsContainer) {
+      dynamicSolanaWalletsContainer.innerHTML = "";
+      for (const [name, wallet] of standardWallets.entries()) {
+        const lower = name.toLowerCase();
+        if (lower.includes("phantom") || lower.includes("solflare") || lower.includes("backpack") || lower.includes("sui") || lower.includes("slush")) continue;
+        const hasSolanaChain = wallet.chains?.some((c) => c.startsWith("solana:"));
+        const hasSolanaFeature = Object.keys(wallet.features || {}).some((f) => f.startsWith("solana:"));
+        if (!hasSolanaChain && !hasSolanaFeature) continue;
+
+        const card = document.createElement("div");
+        card.className = "wallet-option-card";
+        card.innerHTML = `
+          <div class="wallet-card-left">
+            <div class="wallet-logo-badge" style="background: rgba(20, 241, 149, 0.15); color: #14f195;">
+              <i data-lucide="sun"></i>
+            </div>
+            <div class="wallet-card-info">
+              <span class="wallet-card-name">${name}</span>
+              <span class="wallet-card-status detected">Detected Standard Wallet</span>
+            </div>
+          </div>
+          <button class="btn btn-sm btn-primary wallet-action-btn">Connect</button>
+        `;
+        const btn = card.querySelector("button");
+        btn.addEventListener("click", () => connectSolanaProvider(name, () => wallet, ""));
+        dynamicSolanaWalletsContainer.appendChild(card);
+      }
+      if (window.lucide) window.lucide.createIcons();
+    }
+  }
+
+  async function connectSolanaProvider(walletName, getProviderFn, installUrl) {
     try {
-      showToast("Initializing Solana identity...", "info");
+      const provider = getProviderFn();
+      if (!provider) {
+        if (installUrl) {
+          window.open(installUrl, "_blank");
+          showToast(`Opening ${walletName} installation page...`, "info");
+        } else {
+          showToast(`${walletName} is not detected in your browser.`, "danger");
+        }
+        return;
+      }
+
+      showToast(`Connecting to ${walletName}...`, "info");
+      let address = "";
+
+      if (provider.connect) {
+        const resp = await provider.connect();
+        address = resp?.publicKey ? resp.publicKey.toString() : (provider.publicKey ? provider.publicKey.toString() : "");
+      } else if (provider.publicKey) {
+        address = provider.publicKey.toString();
+      }
+
+      if (!address) throw new Error("Could not retrieve Solana public key from wallet");
+
+      const organizationId = solanaOrgInput?.value?.trim() || "nodus-devs";
+
+      // 1. Request SIWS Challenge from Nodus Server
+      const challengeRes = await fetch("/api/auth/solana/challenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, domain: window.location.hostname || "nodus.cloud" })
+      });
+      const challenge = await challengeRes.json();
+      if (!challenge.success) throw new Error(challenge.error || "Failed to obtain SIWS challenge");
+
+      // 2. Cryptographic Ed25519 signature
+      const encodedMsg = new TextEncoder().encode(challenge.message);
+      let signed = null;
+      if (provider.signMessage) {
+        signed = await provider.signMessage(encodedMsg, "utf8");
+      } else if (provider.features?.["solana:signMessage"]) {
+        const res = await provider.features["solana:signMessage"].signMessage({
+          message: encodedMsg,
+          account: provider.accounts?.[0]
+        });
+        signed = res?.[0]?.signature || res?.signature || res;
+      } else {
+        throw new Error(`${walletName} does not support cryptographic message signing`);
+      }
+
+      const sigBytes = signed.signature || signed;
+      const signature = encodeBase58(sigBytes);
+
+      // 3. Verify on server and load Anchor organization
+      const verifyRes = await fetch("/api/auth/solana/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, signature, message: challenge.message, organizationId })
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyData.success) throw new Error(verifyData.error || "Cryptographic verification failed");
+
+      const session = {
+        id: `sol_${Date.now()}`,
+        method: "solana_siws",
+        provider: `Solana (${walletName})`,
+        name: `${walletName} Sovereign`,
+        email: shortenAddress(address),
+        address,
+        scheme: "Ed25519 (SIWS Challenge)",
+        organizations: verifyData.organizations || [],
+        activeOrg: { orgId: verifyData.tenant?.organizationId || organizationId },
+        tenant: verifyData.tenant,
+        accessToken: verifyData.accessToken,
+        expiresAt: verifyData.expiresAt,
+        createdAt: new Date().toISOString()
+      };
+
+      saveAuthSession(session);
+      await ensureDeviceIdentity();
+      closeSolanaWalletModal();
+      closeZkLoginModal();
+      showToast(`☀️ Signed in with ${walletName}: ${shortenAddress(address)}`, "success");
+      await fetchStatus();
+      await fetchPhotos();
+    } catch (err) {
+      console.warn(`[Solana] Connection error for ${walletName}:`, err);
+      showToast(`Solana sign-in cancelled or failed: ${err.message}`, "danger");
+    }
+  }
+
+  async function handleSolana1ClickDemo() {
+    try {
+      showToast("Initializing Solana sovereign demo session...", "info");
       const res = await fetch("/api/auth/solana/demo", { method: "POST" });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
@@ -2020,7 +2182,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const session = {
         id: `sol_demo_${Date.now()}`,
         method: "solana_siws",
-        provider: "Solana (SIWS)",
+        provider: "Solana (SIWS Demo)",
         name: "Solana Pioneer",
         email: shortenAddress(data.address),
         address: data.address,
@@ -2038,6 +2200,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (data.accessToken) {
         try { await ensureDeviceIdentity(); } catch (e) { console.warn("Device identity warning:", e); }
       }
+      closeSolanaWalletModal();
       closeZkLoginModal();
       showToast(`☀️ Signed in with Solana: ${shortenAddress(data.address)}!`, "success");
       await fetchStatus();
@@ -2045,6 +2208,10 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       showToast(`Error initializing Solana session: ${err.message}`, "danger");
     }
+  }
+
+  function handleConnectSolanaWallet() {
+    openSolanaWalletModal();
   }
 
   // Event Listeners for Authentication
@@ -2208,6 +2375,50 @@ document.addEventListener("DOMContentLoaded", () => {
       closeSeedPhraseModal();
       closeZkLoginModal();
       showToast("⚡ Sovereign vault restored successfully from seed phrase!", "success");
+    });
+  }
+
+  // Solana Multi-Wallet Modal Listeners
+  if (solanaWalletModalClose) solanaWalletModalClose.addEventListener("click", closeSolanaWalletModal);
+  if (solanaWalletModalBackdrop) solanaWalletModalBackdrop.addEventListener("click", closeSolanaWalletModal);
+
+  if (connectPhantomBtn) {
+    connectPhantomBtn.addEventListener("click", () => {
+      connectSolanaProvider(
+        "Phantom",
+        () => window.phantom?.solana || (window.solana?.isPhantom ? window.solana : null),
+        "https://phantom.app"
+      );
+    });
+  }
+
+  if (connectSolflareBtn) {
+    connectSolflareBtn.addEventListener("click", () => {
+      connectSolanaProvider(
+        "Solflare",
+        () => window.solflare || (window.solana?.isSolflare ? window.solana : null),
+        "https://solflare.com"
+      );
+    });
+  }
+
+  if (connectBackpackBtn) {
+    connectBackpackBtn.addEventListener("click", () => {
+      connectSolanaProvider(
+        "Backpack",
+        () => window.backpack || (window.solana?.isBackpack ? window.solana : null),
+        "https://backpack.app"
+      );
+    });
+  }
+
+  if (solana1ClickDemoBtn) {
+    solana1ClickDemoBtn.addEventListener("click", handleSolana1ClickDemo);
+  }
+
+  if (solanaOrgInput && activeSolanaOrgLabel) {
+    solanaOrgInput.addEventListener("input", () => {
+      activeSolanaOrgLabel.textContent = solanaOrgInput.value.trim() || "nodus-devs";
     });
   }
 
@@ -3545,6 +3756,7 @@ document.addEventListener("DOMContentLoaded", () => {
     else if (openModal === "google") openGoogleZkModal();
     else if (openModal === "wallets") openWalletSelectorModal();
     else if (openModal === "seed") openSeedPhraseModal();
+    else if (openModal === "solana") openSolanaWalletModal();
   } catch (e) {
     console.warn("Modal auto-open error:", e);
   }
