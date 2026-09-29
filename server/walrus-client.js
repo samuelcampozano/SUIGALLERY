@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { fileURLToPath } from "node:url";
 import { directWalrusAdapter } from "./walrus-direct-adapter.js";
+import { allowsSandboxStorage } from "./deployment-environment.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -67,11 +68,19 @@ class WalrusClientManager {
     if (process.env.NODE_ENV === "test" && process.env.WALRUS_LIVE_TEST !== "true") {
       return true;
     }
+    // A production deployment must use configured storage. Returning mock
+    // assets or accepting writes to local disk would make an outage look like
+    // a successful commercial API request.
+    if (!allowsSandboxStorage()) return false;
     const hasKeys = Boolean(
       process.env.CONSOLE_API_KEY &&
       (process.env.CONSOLE_SERVICE_PRIVATE_KEY || process.env.CONSOLE_CREDENTIAL_BUNDLE)
     );
     return !hasKeys || process.env.WALRUS_MOCK === "true";
+  }
+
+  allowsSandboxFallback() {
+    return allowsSandboxStorage();
   }
 
   async disconnect() {
@@ -169,6 +178,7 @@ class WalrusClientManager {
       const res = await client.callTool({ name: "ping_console", arguments: {} });
       return this.parseMcpResponse(res);
     } catch (err) {
+      if (!this.allowsSandboxFallback()) return { ok: false, error: err.message };
       const testnet = await directWalrusAdapter.checkHealth(4000);
       if (testnet.ok) {
         return { ok: true, mode: "direct_walrus_testnet", endpoint: directWalrusAdapter.aggregatorUrl };
@@ -191,6 +201,7 @@ class WalrusClientManager {
       const res = await client.callTool({ name: "get_storage_usage", arguments: {} });
       return this.parseMcpResponse(res);
     } catch (err) {
+      if (!this.allowsSandboxFallback()) throw err;
       console.warn("⚠️ [WalrusClient] getStorageUsage fallback to sandbox:", err.message);
       return {
         storage_cap: 5000000000,
@@ -221,6 +232,7 @@ class WalrusClientManager {
       this.activeBucket = parsed?.data || parsed;
       return this.activeBucket;
     } catch (err) {
+      if (!this.allowsSandboxFallback()) throw err;
       console.warn("⚠️ [WalrusClient] getBucketDetails fallback to sandbox:", err.message);
       return {
         id: bucketId,
@@ -245,6 +257,7 @@ class WalrusClientManager {
       const parsed = await this.parseMcpResponse(res);
       return parsed?.data || [];
     } catch (err) {
+      if (!this.allowsSandboxFallback()) throw err;
       console.warn("⚠️ [WalrusClient] listPhotos fallback to sandbox:", err.message);
       return this.mockFiles;
     }
@@ -314,6 +327,7 @@ class WalrusClientManager {
       console.log("✅ [WalrusClient] Upload completed successfully:", parsed);
       return parsed;
     } catch (err) {
+      if (!this.allowsSandboxFallback()) throw err;
       console.warn("⚠️ [WalrusClient] MCP upload failed, attempting direct Walrus Testnet publisher:", err.message);
       let directUploadResult = null;
       try {
@@ -413,6 +427,7 @@ class WalrusClientManager {
       });
       return await this.parseMcpResponse(res);
     } catch (err) {
+      if (!this.allowsSandboxFallback()) throw err;
       console.warn("⚠️ [WalrusClient] MCP download failed, falling back to direct aggregator/sandbox:", err.message);
       return await readFallback();
     }
@@ -451,6 +466,7 @@ class WalrusClientManager {
 
       return await this.parseMcpResponse(res);
     } catch (err) {
+      if (!this.allowsSandboxFallback()) throw err;
       console.warn("⚠️ [WalrusClient] MCP delete failed, falling back to local sandbox:", err.message);
       return fallbackDelete();
     }

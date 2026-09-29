@@ -306,15 +306,16 @@ export class NodusSearchIndex {
    * Index or update an asset in the local search index.
    * @param {object} doc
    */
-  indexDocument(doc) {
+  indexDocument(doc, { searchText = "" } = {}) {
     if (!doc || !doc.id) return;
     const tokens = this._tokenize(
-      `${doc.name || ""} ${doc.original_name || ""} ${doc.description || ""} ${(doc.tags || []).join(" ")} ${doc.content_type || ""}`
+      `${doc.name || ""} ${doc.original_name || ""} ${doc.description || ""} ${(doc.tags || []).join(" ")} ${doc.content_type || ""} ${searchText}`
     );
     this.documents.set(doc.id, {
       id: doc.id,
       doc,
-      tokens
+      tokens,
+      semanticTokens: new Set(tokens.flatMap((token) => this._semanticTerms(token)))
     });
   }
 
@@ -327,6 +328,13 @@ export class NodusSearchIndex {
     for (const doc of docs) {
       this.indexDocument(doc);
     }
+  }
+
+  /** Adds extracted plaintext only to this device-local index; it is never uploaded. */
+  indexContent(assetId, text) {
+    const existing = this.documents.get(assetId)?.doc;
+    if (!existing) throw new Error("Index the asset metadata before adding its content");
+    this.indexDocument(existing, { searchText: text });
   }
 
   /**
@@ -352,11 +360,20 @@ export class NodusSearchIndex {
         if (!mime.includes(options.type.toLowerCase())) continue;
       }
 
-      // Tag filter
+      // Metadata filters are evaluated locally after an authenticated tenant
+      // catalog page is fetched. The free-text query itself never leaves here.
       if (options.tag) {
         const tags = Array.isArray(doc.tags) ? doc.tags.map((t) => t.toLowerCase()) : [];
         if (!tags.includes(options.tag.toLowerCase())) continue;
       }
+      if (options.folderId !== undefined && (doc.folderId || null) !== (options.folderId || null)) continue;
+      if (options.owner && doc.ownerAddress !== options.owner && doc.ownerUserId !== options.owner) continue;
+      const createdAt = new Date(doc.createdAt || doc.created_at || 0).getTime();
+      if (options.createdAfter && createdAt < new Date(options.createdAfter).getTime()) continue;
+      if (options.createdBefore && createdAt > new Date(options.createdBefore).getTime()) continue;
+      const size = Number(doc.size ?? doc.original_size ?? 0);
+      if (options.minSize !== undefined && size < Number(options.minSize)) continue;
+      if (options.maxSize !== undefined && size > Number(options.maxSize)) continue;
 
       // If query is empty, return document if it passed filters
       if (rawTokens.length === 0) {
@@ -366,8 +383,9 @@ export class NodusSearchIndex {
 
       // Compute match score
       let matches = 0;
-      for (const qTok of rawTokens) {
-        for (const dTok of item.tokens) {
+      const queryTerms = options.semantic ? rawTokens.flatMap((token) => this._semanticTerms(token)) : rawTokens;
+      for (const qTok of queryTerms) {
+        for (const dTok of options.semantic ? item.semanticTokens : item.tokens) {
           if (dTok.includes(qTok)) {
             matches += dTok === qTok ? 2 : 1;
           }
@@ -391,6 +409,31 @@ export class NodusSearchIndex {
       .replace(/[^\w\s.-]/g, " ")
       .split(/\s+/)
       .filter((t) => t.length >= 2);
+  }
+
+  _semanticTerms(token) {
+    const groups = [
+      ["photo", "image", "picture", "imagem", "foto"],
+      ["document", "doc", "pdf", "contract", "contrato"],
+      ["finance", "financial", "invoice", "receipt", "fatura", "nota"],
+      ["video", "movie", "film", "clip"],
+      ["team", "member", "collaboration", "equipe", "membro"]
+    ];
+    return groups.find((terms) => terms.includes(token)) || [token];
+  }
+
+  static extractText(bytes, type = "") {
+    if (typeof bytes === "string") return bytes.slice(0, 1_000_000);
+    const data = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes;
+    if (!(data instanceof Uint8Array)) return "";
+    // Text, JSON, HTML and XML are indexed directly. PDF and DOCX content
+    // can be supplied by an in-browser extractor through `searchText`; this
+    // conservative fallback indexes only visible UTF-8 runs locally.
+    const decoded = new TextDecoder("utf-8", { fatal: false }).decode(data.slice(0, 1_000_000));
+    if (/^(text\/|application\/(json|xml)|.*(pdf|wordprocessingml))/i.test(type)) {
+      return decoded.replace(/<[^>]+>/g, " ").replace(/[^\x20-\x7EÀ-ÿ\n\r\t]/g, " ");
+    }
+    return "";
   }
 }
 
@@ -474,17 +517,23 @@ export class NodusClient {
 
     const sourceSize = this._sourceSize(data);
     if (options.directPublisher === true) {
-      return this.putDirectPublisher(data, { ...options, name, type, description, tags, encrypt });
+      const result = await this.putDirectPublisher(data, { ...options, name, type, description, tags, encrypt });
+      this._indexSearchText(result, options);
+      return result;
     }
     const resumableThreshold = options.resumableThresholdBytes || DEFAULT_RESUMABLE_THRESHOLD_BYTES;
     // Large objects never traverse the gateway. A caller can explicitly opt out
     // while migrating an older publisher integration, but should not do so for
     // production-scale uploads.
     if (options.directPublisher !== false && options.resumable !== true && sourceSize > resumableThreshold) {
-      return this.putDirectPublisher(data, { ...options, name, type, description, tags, encrypt });
+      const result = await this.putDirectPublisher(data, { ...options, name, type, description, tags, encrypt });
+      this._indexSearchText(result, options);
+      return result;
     }
     if (options.resumable !== false && (options.resumable === true || sourceSize > resumableThreshold)) {
-      return this.putResumable(data, { ...options, name, type, description, tags, encrypt });
+      const result = await this.putResumable(data, { ...options, name, type, description, tags, encrypt });
+      this._indexSearchText(result, options);
+      return result;
     }
 
     // Convert data to Uint8Array
@@ -557,7 +606,7 @@ export class NodusClient {
       if (!record.name) {
         record.name = name;
       }
-      this.searchIndex.indexDocument(record);
+      this.searchIndex.indexDocument(record, { searchText: options.searchText || NodusSearchIndex.extractText(rawBytes, type) });
       if (encrypt && record.id) {
         this.keyCache.set(record.id, keyHex);
         await this._protectOrDiscardUploadedAsset(record.id, options);
@@ -1316,7 +1365,11 @@ export class NodusClient {
    * @returns {Promise<object[]>}
    */
   async list(filters = {}) {
-    const res = await this._fetch(`${this.gatewayUrl}/api/photos`, {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
+    }
+    const res = await this._fetch(`${this.gatewayUrl}/api/photos${params.size ? `?${params}` : ""}`, {
       headers: this._getHeaders()
     });
     if (!res.ok) throw new Error(`Failed to list assets: HTTP ${res.status}`);
@@ -1326,10 +1379,32 @@ export class NodusClient {
     // Automatically index documents for client-side search
     this.searchIndex.indexAll(photos);
 
-    if (filters.tag) {
-      return photos.filter((p) => (p.tags || []).includes(filters.tag));
-    }
     return photos;
+  }
+
+  /** Rebuilds the local index from tenant pages; content is decrypted locally, never re-uploaded. */
+  async rebuildPrivateSearchIndex({ includeContent = false, filters = {} } = {}) {
+    this.searchIndex = new NodusSearchIndex();
+    let cursor = null;
+    let indexed = 0;
+    do {
+      const params = new URLSearchParams({ ...filters, limit: "100" });
+      if (cursor) params.set("cursor", cursor);
+      const response = await this._fetch(`${this.gatewayUrl}/api/photos?${params}`, { headers: this._getHeaders() });
+      if (!response.ok) throw new Error(`Failed to list assets: HTTP ${response.status}`);
+      const body = await response.json();
+      const assets = body.photos || [];
+      this.searchIndex.indexAll(assets);
+      indexed += assets.length;
+      if (includeContent) for (const asset of assets) {
+        try {
+          const recovered = await this.get(asset.id);
+          this.searchIndex.indexContent(asset.id, NodusSearchIndex.extractText(recovered.data, recovered.type));
+        } catch { /* Metadata remains searchable when the local key is unavailable. */ }
+      }
+      cursor = body.nextCursor || null;
+    } while (cursor);
+    return { indexed, includeContent };
   }
 
   /**
@@ -1341,9 +1416,10 @@ export class NodusClient {
    * @returns {Promise<object[]>}
    */
   async search(query, options = {}) {
-    // If index is empty, fetch catalog once to populate
+    // If index is empty, page through the authenticated catalog. This avoids
+    // silently searching only the first 50 assets of a large tenant.
     if (this.searchIndex.documents.size === 0) {
-      await this.list();
+      await this.rebuildPrivateSearchIndex();
     }
     return this.searchIndex.search(query, options);
   }
@@ -1699,7 +1775,12 @@ export class NodusClient {
     if (!record.original_type) record.original_type = defaults.type || "application/octet-stream";
     if (!record.original_name) record.original_name = defaults.name || record.name;
     if (!record.name) record.name = defaults.name || record.original_name;
-    this.searchIndex.indexDocument(record);
+    this.searchIndex.indexDocument(record, { searchText: defaults.searchText || "" });
+  }
+
+  _indexSearchText(result, options = {}) {
+    const record = result?.record || result?.asset || result?.upload?.completedAsset || null;
+    if (record && options.searchText) this._indexRecord(record, { searchText: options.searchText });
   }
 
   _getHeaders(includeJson = true) {

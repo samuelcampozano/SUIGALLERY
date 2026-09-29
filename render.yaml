@@ -4,7 +4,13 @@
 # ========================================================
 
 databases:
-  - name: nodus-db
+  - name: nodus-sandbox-db
+    databaseName: nodus_sandbox
+    user: nodus
+    plan: free
+    region: oregon
+    postgresMajorVersion: "16"
+  - name: nodus-prod-db
     databaseName: nodus
     user: nodus
     plan: free
@@ -28,11 +34,13 @@ services:
         value: 3000
       - key: NODE_ENV
         value: production
+      - key: NODUS_DEPLOYMENT_ENV
+        value: sandbox
       - key: WALRUS_DIRECT_TESTNET_ENABLED
         value: "true"
       - key: DATABASE_URL
         fromDatabase:
-          name: nodus-db
+          name: nodus-sandbox-db
           property: connectionString
       - key: CONSOLE_API_BASE_URL
         value: https://api.console.walrus.xyz
@@ -69,11 +77,13 @@ services:
         value: 3000
       - key: NODE_ENV
         value: production
+      - key: NODUS_DEPLOYMENT_ENV
+        value: production
       - key: WALRUS_DIRECT_TESTNET_ENABLED
-        value: "true"
+        value: "false"
       - key: DATABASE_URL
         fromDatabase:
-          name: nodus-db
+          name: nodus-prod-db
           property: connectionString
       - key: CONSOLE_API_BASE_URL
         value: https://api.console.walrus.xyz
