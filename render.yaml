@@ -16,7 +16,7 @@ services:
   # 1. DEVELOPMENT / STAGING ENVIRONMENT (Branch: dev)
   # ------------------------------------------------------
   - type: web
-    name: suigallery-dev
+    name: nodus-dev
     runtime: docker
     plan: free
     region: oregon
@@ -28,6 +28,8 @@ services:
         value: 3000
       - key: NODE_ENV
         value: production
+      - key: WALRUS_DIRECT_TESTNET_ENABLED
+        value: "true"
       - key: DATABASE_URL
         fromDatabase:
           name: nodus-db
@@ -55,7 +57,7 @@ services:
   # 2. PRODUCTION ENVIRONMENT (Branch: main)
   # ------------------------------------------------------
   - type: web
-    name: suigallery-prod
+    name: nodus-prod
     runtime: docker
     plan: free
     region: oregon
@@ -67,6 +69,8 @@ services:
         value: 3000
       - key: NODE_ENV
         value: production
+      - key: WALRUS_DIRECT_TESTNET_ENABLED
+        value: "true"
       - key: DATABASE_URL
         fromDatabase:
           name: nodus-db
