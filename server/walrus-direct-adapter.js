@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { deploymentEnvironment } from "./deployment-environment.js";
 
 /**
  * DirectWalrusTestnetAdapter
@@ -20,13 +21,17 @@ export class DirectWalrusTestnetAdapter {
     aggregatorUrl = process.env.WALRUS_AGGREGATOR_URL || "https://aggregator.walrus-testnet.walrus.space",
     defaultEpochs = Number(process.env.WALRUS_STORAGE_EPOCHS || 1),
     requestTimeoutMs = Number(process.env.WALRUS_REQUEST_TIMEOUT_MS || 15000),
-    enabled = process.env.WALRUS_DIRECT_TESTNET_ENABLED !== "false"
+    enabled = process.env.WALRUS_DIRECT_TESTNET_ENABLED === "true",
+    environment = deploymentEnvironment()
   } = {}) {
     this.publisherUrl = publisherUrl.replace(/\/+$/, "");
     this.aggregatorUrl = aggregatorUrl.replace(/\/+$/, "");
     this.defaultEpochs = defaultEpochs;
     this.requestTimeoutMs = requestTimeoutMs;
-    this.enabled = enabled;
+    this.environment = environment;
+    // Testnet is an opt-in sandbox integration. It must never become a
+    // production write path merely because a fallback was left configured.
+    this.enabled = Boolean(enabled) && environment !== "production";
   }
 
   /**

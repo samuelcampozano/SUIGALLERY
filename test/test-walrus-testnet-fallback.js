@@ -18,11 +18,14 @@ async function run() {
 
   // [TEST 1] Adapter instantiation and endpoint defaults
   console.log("\n[TEST 1] Adapter Initialization & Defaults");
-  const adapter = new DirectWalrusTestnetAdapter();
+  const adapter = new DirectWalrusTestnetAdapter({ enabled: true, environment: "sandbox" });
   assert(adapter.publisherUrl === "https://publisher.walrus-testnet.walrus.space", "Default publisher URL points to Walrus Testnet");
   assert(adapter.aggregatorUrl === "https://aggregator.walrus-testnet.walrus.space", "Default aggregator URL points to Walrus Testnet");
   assert(adapter.defaultEpochs === 1, "Default storage epochs configured to 1");
-  assert(adapter.enabled === true, "Direct Walrus Testnet adapter is enabled by default");
+  assert(adapter.enabled === true, "Direct Walrus Testnet adapter is enabled explicitly for sandbox");
+
+  const productionAdapter = new DirectWalrusTestnetAdapter({ enabled: true, environment: "production" });
+  assert(productionAdapter.enabled === false, "Production forcibly disables the direct Walrus Testnet adapter");
 
   // [TEST 2] Health Check Liveness Probe
   console.log("\n[TEST 2] Public Walrus Aggregator Liveness Probe");
@@ -81,7 +84,9 @@ async function run() {
   const badAdapter = new DirectWalrusTestnetAdapter({
     publisherUrl: "http://127.0.0.1:59999", // Unused port
     aggregatorUrl: "http://127.0.0.1:59999",
-    requestTimeoutMs: 1000
+    requestTimeoutMs: 1000,
+    enabled: true,
+    environment: "sandbox"
   });
 
   let failedAsExpected = false;

@@ -1,6 +1,6 @@
 # Nodus - Log de Melhorias Recentes
 
-Atualizado em 27 de setembro de 2026.
+Atualizado em 29 de setembro de 2026.
 
 Este documento registra as melhorias integradas na branch `dev` e as entregas prontas para merge nas branches de trabalho.
 
@@ -23,6 +23,41 @@ Este documento registra as melhorias integradas na branch `dev` e as entregas pr
 | Pronto para merge em `dev` | API keys por organização com escopos | `6d2f906`, branch `codex/api-keys-foundation` |
 | Pronto para merge em `dev` | Idempotência pública por tenant e identidade | branch `codex/public-idempotency` |
 | Pronto para merge em `dev` | Contrato OpenAPI, exemplos SDK e webhooks assinados | branch `codex/openapi-signed-webhooks` |
+| Pronto para merge em `dev` | Sandbox/testnet isolado para API comercial (M3) | branch `codex/m3-commercial-api-sandbox` |
+| Pronto para merge em `dev` | Busca privada, filtros e reindexacao por tenant (M4) | branch `codex/m3-commercial-api-sandbox` |
+
+## 19. Busca privada e organizacao por tenant
+
+Entregue na branch `codex/m3-commercial-api-sandbox`, pendente de merge na `dev`.
+
+- O catalogo PostgreSQL passou a filtrar por organizacao, nome/metadados, MIME type, tag, pasta, proprietario, data e tamanho; consultas usam parametros e continuam restritas ao tenant autenticado.
+- `NodusSearchIndex` pesquisa nome, tags, descricao e texto fornecido/extraido no dispositivo. O SDK nunca envia a consulta livre ou o texto extraido ao gateway.
+- Apps podem fornecer texto extraido de PDF/DOCX por `searchText` no upload ou `indexContent(assetId, text)` depois dele. O limite automatico e 1 MiB por asset.
+- A opcao `semantic: true` acrescenta expansao local de sinonimos para categorias comuns, sem embeddings ou plaintext no servidor.
+- `rebuildPrivateSearchIndex({ includeContent: true })` pagina o catalogo, baixa somente ciphertext autorizado, decifra localmente pelos envelopes e recria o indice sem reenviar plaintext.
+- `docs/PRIVATE_SEARCH.md` registra o contrato, os limites e o custo de indice por organizacao.
+
+### Validacao
+
+- `npm run test:m4-search`: passou (conteudo local, busca semantica, filtros e query de catalogo com tenant obrigatorio).
+- `npm run test:sdk`: passou (35 verificacoes, incluindo busca privada preexistente).
+- A validacao end-to-end das consultas PostgreSQL no sandbox continua pendente de `DATABASE_URL` real.
+
+## 18. Sandbox/testnet isolado para a API comercial
+
+Entregue na branch `codex/m3-commercial-api-sandbox`, pendente de merge na `dev`.
+
+- O ambiente de deploy e explicito por `NODUS_DEPLOYMENT_ENV` e separado de `NODE_ENV`, mantendo os controles HTTP de producao tambem no sandbox.
+- O Render provisiona bancos independentes: `nodus-sandbox-db` para `nodus-dev` e `nodus-prod-db` para `nodus-prod`; dados de tenants, API keys, idempotencia e webhooks nao compartilham `DATABASE_URL`.
+- Walrus Testnet tornou-se opt-in. Mesmo que a flag esteja configurada incorretamente, o runtime o desativa em producao.
+- Falhas do Console/Walrus em producao passam a falhar fechadas: nao simulam uploads, nao gravam ciphertext em disco local e nao buscam blobs no aggregator de testnet.
+- `GET /api/status` informa o ambiente efetivo e se o adaptador Testnet esta ativo, sem expor credenciais.
+- O guia `docs/M3_SANDBOX.md` documenta configuracao, regras de isolamento e a validacao externa que falta executar.
+
+### Validacao
+
+- `npm run test:walrus-fallback` cobre a ativacao explicita no sandbox e a desativacao forcada em producao.
+- As suites `test:api-keys`, `test:idempotency` e `test:webhooks` ainda precisam rodar contra um PostgreSQL real do sandbox antes de liberar integradores externos.
 
 ## 17. Contrato público e webhooks assinados
 

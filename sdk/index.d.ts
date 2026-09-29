@@ -32,6 +32,8 @@ export interface PutOptions {
   type?: string;
   description?: string;
   tags?: string[];
+  /** Plaintext extracted locally (for example by a browser PDF/DOCX parser); never sent to Nodus. */
+  searchText?: string;
   encrypt?: boolean;
   resumable?: boolean;
   resumableThresholdBytes?: number;
@@ -127,6 +129,27 @@ export interface GetResult {
 export interface SearchOptions {
   type?: string;
   tag?: string;
+  folderId?: string | null;
+  owner?: string;
+  createdAfter?: string;
+  createdBefore?: string;
+  minSize?: number;
+  maxSize?: number;
+  /** Enables device-local synonym expansion; no query is sent to the API. */
+  semantic?: boolean;
+  limit?: number;
+}
+
+export interface AssetListFilters {
+  type?: string;
+  tag?: string;
+  folderId?: string | null;
+  owner?: string;
+  createdAfter?: string;
+  createdBefore?: string;
+  minSize?: number;
+  maxSize?: number;
+  cursor?: string;
   limit?: number;
 }
 
@@ -162,6 +185,8 @@ export declare class NodusSearchIndex {
   documents: Map<string, any>;
   indexDocument(doc: any): void;
   indexAll(docs: any[]): void;
+  indexContent(assetId: string, text: string): void;
+  static extractText(bytes: Uint8Array | ArrayBuffer | string, type?: string): string;
   search(query?: string, options?: SearchOptions): any[];
 }
 
@@ -195,7 +220,8 @@ export declare class NodusClient {
   getDirectManifest(assetId: string): Promise<any>;
   stream(fileId: string, options?: GetOptions): Promise<ReadableStream<Uint8Array>>;
   get(fileId: string, options?: GetOptions): Promise<GetResult>;
-  list(filters?: { tag?: string }): Promise<any[]>;
+  list(filters?: AssetListFilters): Promise<any[]>;
+  rebuildPrivateSearchIndex(options?: { includeContent?: boolean; filters?: AssetListFilters }): Promise<{ indexed: number; includeContent: boolean }>;
   search(query: string, options?: SearchOptions): Promise<any[]>;
   delete(fileId: string): Promise<{ success: boolean; deleted: boolean }>;
 
