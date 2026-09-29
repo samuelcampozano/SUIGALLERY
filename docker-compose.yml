@@ -7,6 +7,7 @@ services:
     environment:
       POSTGRES_DB: nodus
       POSTGRES_USER: nodus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nodus}
     ports:
       - "5432:5432"
     volumes:
@@ -40,6 +41,7 @@ services:
     environment:
       - PORT=3000
       - CONSOLE_MCP_ALLOWED_DIRS=/app
+      - DATABASE_URL=postgresql://nodus:${POSTGRES_PASSWORD:-nodus}@postgres:5432/nodus
       - WALRUS_DIRECT_TESTNET_ENABLED=true
     depends_on:
       postgres:
