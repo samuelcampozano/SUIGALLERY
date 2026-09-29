@@ -35,7 +35,6 @@ async function run() {
       tags: ["video", "resumable"],
       encryption: {
         mode: "chunked-aes-gcm-v1",
-        key: "a".repeat(64),
         iv: "b".repeat(24),
         chunkSize: MiB,
         chunkCount: 2
@@ -75,12 +74,22 @@ async function run() {
       originalSize: MiB,
       encryptedSize: MiB + 16,
       partSize: MiB + 16,
-      encryption: { key: "c".repeat(64), iv: "d".repeat(24) }
+      encryption: { iv: "d".repeat(24) }
     });
     manager.abort(aborted.uploadId);
     let absent = false;
     try { manager.get(aborted.uploadId); } catch { absent = true; }
     assert(absent, "Explicit abort permanently removes staged session data");
+
+    let rawKeyRejected = false;
+    try {
+      manager.create({
+        originalName: "key-leak.bin", originalType: "application/octet-stream",
+        originalSize: MiB, encryptedSize: MiB + 16, partSize: MiB + 16,
+        encryption: { iv: "e".repeat(24), key: "f".repeat(64) }
+      });
+    } catch (error) { rawKeyRejected = /Raw data keys/.test(error.message); }
+    assert(rawKeyRejected, "Rejects a resumable session that tries to persist a raw data key");
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }

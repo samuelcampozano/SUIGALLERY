@@ -1,0 +1,84 @@
+openapi: 3.1.0
+info:
+  title: Nodus Public API
+  version: 1.0.0
+  description: |
+    Tenant identity comes solely from a bearer session or an organization API key.
+    Data keys and plaintext must never be sent to this API.
+servers:
+  - url: https://api.example.nodus.cloud
+security:
+  - bearerAuth: []
+paths:
+  /api/assets:
+    get:
+      summary: List assets for the authenticated organization
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200': { description: Asset page, content: { application/json: { schema: { $ref: '#/components/schemas/AssetPage' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/assets/uploads:
+    post:
+      summary: Create an encrypted resumable upload control-plane session
+      parameters: [{ $ref: '#/components/parameters/idempotencyKey' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [originalName, originalSize, encryptedSize, partSize, keyEnvelopes], properties: { originalName: { type: string }, originalSize: { type: integer }, encryptedSize: { type: integer }, partSize: { type: integer }, keyEnvelopes: { type: array, items: { type: object } } } } } }
+      responses: { '201': { description: Created }, '409': { $ref: '#/components/responses/IdempotencyConflict' }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /api/assets/direct-uploads:
+    post:
+      summary: Create direct-to-publisher upload session; ciphertext bypasses Nodus
+      parameters: [{ $ref: '#/components/parameters/idempotencyKey' }]
+      responses: { '201': { description: Created }, '409': { $ref: '#/components/responses/IdempotencyConflict' } }
+  /api/orgs/{orgId}/api-keys:
+    post:
+      summary: Create a scoped API key (owner/admin session only)
+      parameters: [{ $ref: '#/components/parameters/orgId' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ApiKeyInput' } } } }
+      responses: { '201': { description: Key returned once }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /api/orgs/{orgId}/webhooks:
+    get:
+      summary: List organization webhook endpoints
+      parameters: [{ $ref: '#/components/parameters/orgId' }]
+      responses: { '200': { description: Endpoints } }
+    post:
+      summary: Create a signed webhook endpoint; signing secret is returned once
+      parameters: [{ $ref: '#/components/parameters/orgId' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WebhookInput' } } } }
+      responses: { '201': { description: Endpoint and one-time secret }, '400': { $ref: '#/components/responses/BadRequest' } }
+  /api/orgs/{orgId}/webhooks/{webhookId}/rotate:
+    post:
+      summary: Rotate endpoint signing secret
+      parameters: [{ $ref: '#/components/parameters/orgId' }, { name: webhookId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Replacement one-time secret } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: session-or-api-key }
+  parameters:
+    orgId: { name: orgId, in: path, required: true, schema: { type: string } }
+    limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+    cursor: { name: cursor, in: query, schema: { type: string } }
+    idempotencyKey: { name: Idempotency-Key, in: header, required: false, schema: { type: string, minLength: 8, maxLength: 200 }, description: Reuse unchanged on a network retry. }
+  schemas:
+    AssetPage: { type: object, required: [success, assets], properties: { success: { type: boolean }, assets: { type: array, items: { $ref: '#/components/schemas/Asset' } }, nextCursor: { type: [string, 'null'] } } }
+    Asset: { type: object, properties: { id: { type: string }, name: { type: string }, size: { type: integer }, version: { type: integer } } }
+    ApiKeyInput: { type: object, required: [name, scopes], properties: { name: { type: string }, scopes: { type: array, items: { type: string, enum: [assets:read, assets:write, assets:delete, assets:share, search:read, audit:read] } }, expiresAt: { type: string, format: date-time } } }
+    WebhookInput: { type: object, required: [url, eventTypes], properties: { url: { type: string, format: uri, description: HTTPS required in production. }, eventTypes: { type: array, items: { type: string, enum: [upload.completed, upload.failed, quota.high, asset.deleted] } } } }
+  responses:
+    BadRequest: { description: Invalid request }
+    Unauthorized: { description: Missing, expired, or revoked bearer token }
+    Forbidden: { description: Scope, role, or tenant does not permit this action }
+    IdempotencyConflict: { description: Key is already in progress or was used with another payload }
+webhooks:
+  nodusEvent:
+    post:
+      summary: Signed event delivery
+      parameters:
+        - { name: X-Nodus-Event, in: header, required: true, schema: { type: string, enum: [upload.completed, upload.failed, quota.high, asset.deleted] } }
+        - { name: X-Nodus-Delivery, in: header, required: true, schema: { type: string, format: uuid } }
+        - { name: X-Nodus-Timestamp, in: header, required: true, schema: { type: integer } }
+        - { name: X-Nodus-Signature, in: header, required: true, schema: { type: string, description: sha256=HMAC_SHA256(secret, timestamp + '.' + rawBody) } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { id: { type: string }, type: { type: string }, createdAt: { type: string }, data: { type: object } } } } } }
+      responses: { '204': { description: Acknowledged }, '400': { description: Reject; delivery will retry } }

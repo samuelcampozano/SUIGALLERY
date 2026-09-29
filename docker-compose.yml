@@ -7,11 +7,22 @@ services:
     environment:
       POSTGRES_DB: nodus
       POSTGRES_USER: nodus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nodus}
     ports:
       - "5432:5432"
     volumes:
       - nodus-postgres:/var/lib/postgresql/data
       - ./server/migrations/001_auth_tenants.sql:/docker-entrypoint-initdb.d/001_auth_tenants.sql:ro
+      - ./server/migrations/002_tenant_key_envelopes.sql:/docker-entrypoint-initdb.d/002_tenant_key_envelopes.sql:ro
+      - ./server/migrations/003_key_rotation_tasks.sql:/docker-entrypoint-initdb.d/003_key_rotation_tasks.sql:ro
+      - ./server/migrations/004_tenant_asset_catalog.sql:/docker-entrypoint-initdb.d/004_tenant_asset_catalog.sql:ro
+      - ./server/migrations/004_upload_control_plane.sql:/docker-entrypoint-initdb.d/004_upload_control_plane.sql:ro
+      - ./server/migrations/005_upload_payloads.sql:/docker-entrypoint-initdb.d/005_upload_payloads.sql:ro
+      - ./server/migrations/006_tenant_provisioning.sql:/docker-entrypoint-initdb.d/006_tenant_provisioning.sql:ro
+      - ./server/migrations/007_organization_invitations.sql:/docker-entrypoint-initdb.d/007_organization_invitations.sql:ro
+      - ./server/migrations/008_api_keys.sql:/docker-entrypoint-initdb.d/008_api_keys.sql:ro
+      - ./server/migrations/009_public_idempotency.sql:/docker-entrypoint-initdb.d/009_public_idempotency.sql:ro
+      - ./server/migrations/010_signed_webhooks.sql:/docker-entrypoint-initdb.d/010_signed_webhooks.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nodus -d nodus"]
       interval: 5s
@@ -30,6 +41,8 @@ services:
     environment:
       - PORT=3000
       - CONSOLE_MCP_ALLOWED_DIRS=/app
+      - DATABASE_URL=postgresql://nodus:${POSTGRES_PASSWORD:-nodus}@postgres:5432/nodus
+      - WALRUS_DIRECT_TESTNET_ENABLED=true
     depends_on:
       postgres:
         condition: service_healthy

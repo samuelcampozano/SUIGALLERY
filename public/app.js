@@ -93,7 +93,47 @@ document.addEventListener("DOMContentLoaded", () => {
       sign_out: "Sign Out",
       toast_signed_in: "Welcome to Nodus! Signed in with Google zkLogin",
       toast_signed_out: "Signed out of sovereign session",
-      toast_wallet_connected: "Connected Sui Wallet: {addr}"
+      toast_wallet_connected: "Connected Sui Wallet: {addr}",
+      demo_btn: "1-Click Demo",
+      privacy_status: "Encrypted & Anchored on Walrus",
+      onchain_verification: "On-Chain Verification",
+      tech_details: "Technical Details",
+      share_memory_btn: "Share Memory",
+      share_modal_title: "Share Sovereign Memory",
+      share_modal_subtitle: "Share access with friends or wrap an encrypted key envelope.",
+      share_link_label: "Direct Decrypted Share Link",
+      share_link_help: "Anyone with this link can view the high-resolution media.",
+      share_wrap_label: "Wrap for Teammate (Solana Address)",
+      share_recipient_placeholder: "Enter recipient Solana address...",
+      share_wrap_btn: "Protect with Recipient Key Envelope",
+      close: "Close",
+      auth_badge_label: "Zero-Knowledge Sovereign Identity",
+      auth_wallet_desc: "Browser extension",
+      auth_guest_desc: "100% on-device",
+      chip_e2e: "🔒 End-to-End Encrypted",
+      chip_vault: "🌊 Walrus Sovereign Vault",
+      advanced_blockchain_details: "Advanced Blockchain Details",
+      modal_derived_address: "Derived Sui Address",
+      modal_sig_scheme: "Signature Scheme",
+      export_keypair: "Export Keypair Backup (JSON)",
+      dock_proof_anchored: "Anchored on Sui & Walrus",
+      toast_conn_restored: "Internet connection restored. Synchronizing catalog...",
+      toast_conn_lost: "Internet connection lost. Switched to offline view.",
+      toast_session_expired: "Session expired. Please sign in again.",
+      toast_share_copied: "Decrypted share link copied to clipboard!",
+      toast_recipient_wrapped: "Recipient envelope wrapped and ready to share!",
+      toast_invalid_solana_addr: "Enter a valid Solana address (Base58, 32-44 characters)",
+      theme_label: "Theme",
+      theme_dark: "Dark",
+      theme_light: "Light",
+      theme_midnight: "Midnight",
+      sort_newest: "Newest First",
+      sort_oldest: "Oldest First",
+      sort_name: "Name (A-Z)",
+      sort_size: "Size (Largest)",
+      tag_all: "All",
+      tag_photos: "Photos",
+      tag_nodus: "Nodus"
     },
     es: {
       brand_tag: "PROTOCOLO WALRUS",
@@ -179,7 +219,47 @@ document.addEventListener("DOMContentLoaded", () => {
       sign_out: "Cerrar Sesión",
       toast_signed_in: "¡Bienvenido a Nodus! Sesión iniciada con Google zkLogin",
       toast_signed_out: "Sesión cerrada correctamente",
-      toast_wallet_connected: "Billetera Sui conectada: {addr}"
+      toast_wallet_connected: "Billetera Sui conectada: {addr}",
+      demo_btn: "Demo 1-Clic",
+      privacy_status: "Encriptado y Asegurado en Walrus",
+      onchain_verification: "Verificación On-Chain",
+      tech_details: "Detalles Técnicos",
+      share_memory_btn: "Compartir Recuerdo",
+      share_modal_title: "Compartir Recuerdo Soberano",
+      share_modal_subtitle: "Comparte acceso con amigos o envuelve un sobre de clave encriptado.",
+      share_link_label: "Enlace Directo Desencriptado",
+      share_link_help: "Cualquiera con este enlace puede ver el medio en alta resolución.",
+      share_wrap_label: "Envolver para Compañero (Dirección Solana)",
+      share_recipient_placeholder: "Ingresa dirección Solana del destinatario...",
+      share_wrap_btn: "Proteger con Sobre de Clave del Destinatario",
+      close: "Cerrar",
+      auth_badge_label: "Identidad Soberana Zero-Knowledge",
+      auth_wallet_desc: "Extensión de navegador",
+      auth_guest_desc: "100% en tu dispositivo",
+      chip_e2e: "🔒 Encriptado Punto a Punto",
+      chip_vault: "🌊 Bóveda Soberana Walrus",
+      advanced_blockchain_details: "Detalles Avanzados de Blockchain",
+      modal_derived_address: "Dirección Sui Derivada",
+      modal_sig_scheme: "Esquema de Firma",
+      export_keypair: "Exportar Copia de Claves (JSON)",
+      dock_proof_anchored: "Asegurado en Sui y Walrus",
+      toast_conn_restored: "Conexión a internet restaurada. Sincronizando catálogo...",
+      toast_conn_lost: "Conexión a internet perdida. Modo sin conexión activado.",
+      toast_session_expired: "Sesión expirada. Por favor inicia sesión nuevamente.",
+      toast_share_copied: "¡Enlace compartido copiado al portapapeles!",
+      toast_recipient_wrapped: "¡Sobre de destinatario envuelto y listo para compartir!",
+      toast_invalid_solana_addr: "Ingresa una dirección Solana válida (Base58, 32-44 caracteres)",
+      theme_label: "Tema",
+      theme_dark: "Oscuro",
+      theme_light: "Claro",
+      theme_midnight: "Medianoche",
+      sort_newest: "Más recientes",
+      sort_oldest: "Más antiguos",
+      sort_name: "Nombre (A-Z)",
+      sort_size: "Tamaño (Mayor)",
+      tag_all: "Todos",
+      tag_photos: "Fotos",
+      tag_nodus: "Nodus"
     },
     pt: {
       brand_tag: "PROTOCOLO WALRUS",
@@ -265,7 +345,299 @@ document.addEventListener("DOMContentLoaded", () => {
       sign_out: "Terminar Sessão",
       toast_signed_in: "Bem-vindo ao Nodus! Sessão iniciada com Google zkLogin",
       toast_signed_out: "Sessão terminada com sucesso",
-      toast_wallet_connected: "Carteira Sui conectada: {addr}"
+      toast_wallet_connected: "Carteira Sui conectada: {addr}",
+      demo_btn: "Demo 1-Clique",
+      privacy_status: "Encriptado & Ancorado no Walrus",
+      onchain_verification: "Verificação On-Chain",
+      tech_details: "Detalhes Técnicos",
+      share_memory_btn: "Partilhar Memória",
+      share_modal_title: "Partilhar Memória Soberana",
+      share_modal_subtitle: "Partilhe acesso com amigos ou envolva num envelope de chave encriptada.",
+      share_link_label: "Link Direto Desencriptado",
+      share_link_help: "Qualquer pessoa com este link pode ver o ficheiro em alta resolução.",
+      share_wrap_label: "Proteger para Destinatário (Endereço Solana)",
+      share_recipient_placeholder: "Insira o endereço Solana do destinatário...",
+      share_wrap_btn: "Proteger com Envelope de Chave do Destinatário",
+      close: "Fechar",
+      auth_badge_label: "Identidade Soberana Zero-Knowledge",
+      auth_wallet_desc: "Extensão do navegador",
+      auth_guest_desc: "100% no dispositivo",
+      chip_e2e: "🔒 Encriptação Ponto a Ponto",
+      chip_vault: "🌊 Cofre Soberano Walrus",
+      advanced_blockchain_details: "Detalhes Avançados de Blockchain",
+      modal_derived_address: "Endereço Sui Derivado",
+      modal_sig_scheme: "Esquema de Assinatura",
+      export_keypair: "Exportar Cópia de Segurança das Chaves (JSON)",
+      dock_proof_anchored: "Ancorado em Sui & Walrus",
+      toast_conn_restored: "Ligação à internet restaurada. A sincronizar catálogo...",
+      toast_conn_lost: "Ligação à internet perdida. Modo offline ativado.",
+      toast_session_expired: "Sessão expirada. Por favor inicie sessão novamente.",
+      toast_share_copied: "Link de partilha copiado para a área de transferência!",
+      toast_recipient_wrapped: "Envelope do destinatário criado e pronto a partilhar!",
+      toast_invalid_solana_addr: "Insira um endereço Solana válido (Base58, 32-44 caracteres)",
+      theme_label: "Tema",
+      theme_dark: "Escuro",
+      theme_light: "Claro",
+      theme_midnight: "Meia-noite",
+      sort_newest: "Mais recentes",
+      sort_oldest: "Mais antigos",
+      sort_name: "Nome (A-Z)",
+      sort_size: "Tamanho (Maior)",
+      tag_all: "Todos",
+      tag_photos: "Fotos",
+      tag_nodus: "Nodus"
+    },
+    zh: {
+      brand_tag: "WALRUS 协议",
+      status_connecting: "正在连接至 Walrus...",
+      status_connected: "Walrus 已连接 • 存储桶 {name}",
+      status_offline: "离线 / 正在重连",
+      search_placeholder: "搜索记忆、标签或文件名...",
+      quota_label: "Walrus 存储配额",
+      upload_btn: "上传照片",
+      banner_seal: "<strong>Seal 客户端端到端加密</strong>（默认私密）",
+      banner_walrus: "<strong>Walrus 2D Red Stuff</strong>（喷泉纠删码存储）" ,
+      banner_sui: "<strong>Sui 原生对象</strong>（支持零知识 zkLogin）",
+      drop_title: "将照片和视频拖拽至此处",
+      drop_subtitle: "在触及 Walrus 存储前于本地设备完成加密。全分辨率、无损原生保存。",
+      browse_btn: "浏览文件",
+      progress_title: "正在加密并上传至 Walrus...",
+      step1_text: "1. Seal 信封加密",
+      step2_text: "2. Walrus Blob 登记",
+      step3_text: "3. 存储桶链上锚定",
+      timeline_title: "时间轴与珍贵记忆",
+      loading_vault: "正在同步记忆...",
+      photo_counter: "已安全保存 {count} 个{word}",
+      word_single: "记忆",
+      word_plural: "记忆",
+      empty_title: "您的主权金库目前为空",
+      empty_desc: "您的 Walrus 存储桶中尚未存储任何照片或媒体。请在上方拖放任意图片，开始构建您的去中心化 Google Photos 替代方案。",
+      meta_blob_id: "Walrus Blob ID",
+      meta_file_id: "控制台文件 ID",
+      meta_seal_policy: "Seal 加密策略",
+      meta_file_size: "文件大小",
+      meta_upload_date: "拍摄 / 上传时间",
+      download_btn: "下载原图",
+      delete_btn: "从 Walrus 删除",
+      delete_confirm: "您确定要从 Walrus 永久删除 \"{name}\" 吗？",
+      deleting: "正在删除...",
+      sync_failed: "同步失败",
+      conn_error: "连接错误",
+      anchored_walrus: "已锚定至 Walrus",
+      active_vault: "当前金库",
+      select_btn: "选择",
+      cancel_select: "完成",
+      deselect_all: "取消全选",
+      download_selected: "下载选中项",
+      delete_selected: "删除选中项",
+      batch_confirm: "确定要从 Walrus 永久删除选中的 {count} 张照片吗？",
+      batch_deleting: "正在删除 {count} 个项目...",
+      edit_photo_title: "编辑记忆详情",
+      edit_filename: "文件名",
+      edit_description: "描述 / 标题",
+      edit_tags: "标签（以逗号分隔）",
+      cancel: "取消",
+      save_changes: "保存更改",
+      saving: "正在保存...",
+      vault_manager_title: "Sui 金库与身份管理",
+      vault_manager_subtitle: "在已验证的主托管金库与临时测试金库之间切换。",
+      generate_new_vault: "生成临时测试金库",
+      generate_hint: "立即创建 Ed25519 密钥对和派生 Sui 地址以进行隔离测试。",
+      toast_uploaded: "照片已加密并锚定在 Walrus！",
+      toast_deleted: "已从 Walrus 删除照片",
+      toast_updated: "元数据更新成功",
+      toast_vault_switched: "已切换至金库: {addr}",
+      toast_wallet_generated: "成功生成新的临时测试金库！",
+      toast_copied: "已复制到剪贴板！",
+      upload_dock_title: "正在加密并上传至 Walrus...",
+      upload_dock_complete: "所有项目已成功锚定至 Walrus！",
+      upload_dock_count: "已处理 {current} / {total}",
+      step1_short: "1. Seal 加密",
+      step2_short: "2. Walrus 存储",
+      step3_short: "3. 存储桶锚定",
+      optimistic_encrypting: "正在使用 Seal 加密...",
+      optimistic_uploading: "正在存储至 Walrus...",
+      optimistic_anchored: "已锚定！",
+      optimistic_failed: "上传失败",
+      signin_zklogin: "使用 zkLogin 登录",
+      btn_google_zklogin: "使用 Google 登录 (zkLogin)",
+      auth_title: "登录 Nodus",
+      auth_subtitle: "您的照片在离开本地前均经过客户端加密。基于 Sui zkLogin——无需助记词、零 Gas 费，保障无缝隐私。",
+      or_continue_with: "或选择其他方式",
+      auth_privacy_notice: "Google 仅用于验证您的身份；绝无权限访问您的照片、加密密钥或 Walrus 存储空间。",
+      account_manager_title: "主权账户与金库",
+      account_manager_subtitle: "由 Sui zkLogin 和 Walrus 协议保障的去中心化记忆金库。",
+      switch_account: "切换账户 / 使用其他 ID 登录",
+      sign_out: "退出登录",
+      toast_signed_in: "欢迎来到 Nodus！已通过 Google zkLogin 登录",
+      toast_signed_out: "已成功退出会话",
+      toast_wallet_connected: "已连接 Sui 钱包: {addr}",
+      demo_btn: "一键体验 Demo",
+      privacy_status: "已在 Walrus 端到端加密并锚定",
+      onchain_verification: "链上真实性验证",
+      tech_details: "技术参数详情",
+      share_memory_btn: "分享记忆",
+      share_modal_title: "分享主权记忆",
+      share_modal_subtitle: "与好友共享访问权限或封装接收者专属加密密钥信封。",
+      share_link_label: "直接解密分享链接",
+      share_link_help: "任何拥有此链接的人均可查看全高清媒体内容。",
+      share_wrap_label: "为协作者封装 (Solana 地址)",
+      share_recipient_placeholder: "输入接收者 Solana 地址...",
+      share_wrap_btn: "使用接收者公钥信封保护",
+      close: "关闭",
+      auth_badge_label: "零知识主权身份",
+      auth_wallet_desc: "浏览器插件钱包",
+      auth_guest_desc: "100% 本地端运行",
+      chip_e2e: "🔒 端到端加密",
+      chip_vault: "🌊 Walrus 主权金库",
+      advanced_blockchain_details: "区块链高级技术详情",
+      modal_derived_address: "派生的 Sui 地址",
+      modal_sig_scheme: "签名算法方案",
+      export_keypair: "导出密钥备份 (JSON)",
+      dock_proof_anchored: "已锚定至 Sui 与 Walrus",
+      toast_conn_restored: "网络连接已恢复。正在同步记忆库...",
+      toast_conn_lost: "网络连接断开。已切换至离线浏览模式。",
+      toast_session_expired: "登录凭证已过期，请重新登录。",
+      toast_share_copied: "分享链接已复制到剪贴板！",
+      toast_recipient_wrapped: "接收者专属信封封装完成，可立即分享！",
+      toast_invalid_solana_addr: "请输入合法的 Solana 地址 (Base58, 32-44 字符)",
+      theme_label: "主题风格",
+      theme_dark: "深色模式",
+      theme_light: "浅色模式",
+      theme_midnight: "午夜黑",
+      sort_newest: "最新优先",
+      sort_oldest: "最早优先",
+      sort_name: "文件名 (A-Z)",
+      sort_size: "文件大小 (从大到小)",
+      tag_all: "全部",
+      tag_photos: "照片",
+      tag_nodus: "Nodus"
+    },
+    fr: {
+      brand_tag: "PROTOCOLE WALRUS",
+      status_connecting: "Connexion à Walrus...",
+      status_connected: "Walrus Connecté • Bucket {name}",
+      status_offline: "Hors ligne / Reconnexion",
+      search_placeholder: "Rechercher souvenirs, tags ou fichiers...",
+      quota_label: "Stockage Walrus",
+      upload_btn: "Téléverser",
+      banner_seal: "<strong>Chiffrement Client Seal</strong> (Privé par défaut)",
+      banner_walrus: "<strong>Walrus 2D Red Stuff</strong> (Code d'effacement)",
+      banner_sui: "<strong>Objets Natifs Sui</strong> (Compatible zkLogin)",
+      drop_title: "Glissez vos photos et vidéos ici",
+      drop_subtitle: "Chiffré sur votre appareil avant d'atteindre Walrus. Conservation pleine résolution sans compression.",
+      browse_btn: "Parcourir les fichiers",
+      progress_title: "Chiffrement et envoi vers Walrus...",
+      step1_text: "1. Chiffrement d'enveloppe Seal",
+      step2_text: "2. Enregistrement du Blob Walrus",
+      step3_text: "3. Ancré dans le Bucket",
+      timeline_title: "Chronologie et Souvenirs",
+      loading_vault: "Synchronisation des souvenirs...",
+      photo_counter: "{count} {word} préservés en toute sécurité",
+      word_single: "souvenir",
+      word_plural: "souvenirs",
+      empty_title: "Votre Coffre Souverain est Vide",
+      empty_desc: "Aucune photo ou vidéo stockée pour l'instant dans votre bucket Walrus. Glissez-déposez n'importe quelle image ci-dessus pour bâtir votre alternative décentralisée à Google Photos.",
+      meta_blob_id: "ID du Blob Walrus",
+      meta_file_id: "ID Fichier Console",
+      meta_seal_policy: "Politique de Chiffrement Seal",
+      meta_file_size: "Taille du Fichier",
+      meta_upload_date: "Capturé / Téléversé",
+      download_btn: "Télécharger l'Original",
+      delete_btn: "Supprimer de Walrus",
+      delete_confirm: "Voulez-vous vraiment supprimer définitivement \"{name}\" de Walrus ?",
+      deleting: "Suppression en cours...",
+      sync_failed: "Échec de synchronisation",
+      conn_error: "Erreur de connexion",
+      anchored_walrus: "Ancré sur Walrus",
+      active_vault: "Coffre Actif",
+      select_btn: "Sélectionner",
+      cancel_select: "Terminé",
+      deselect_all: "Désélectionner",
+      download_selected: "Télécharger",
+      delete_selected: "Supprimer la sélection",
+      batch_confirm: "Voulez-vous vraiment supprimer définitivement {count} photos sélectionnées de Walrus ?",
+      batch_deleting: "Suppression de {count} photos...",
+      edit_photo_title: "Modifier les détails du souvenir",
+      edit_filename: "Nom de fichier",
+      edit_description: "Description / Légende",
+      edit_tags: "Tags (séparés par des virgules)",
+      cancel: "Annuler",
+      save_changes: "Enregistrer",
+      saving: "Enregistrement...",
+      vault_manager_title: "Gestionnaire de Coffres et Identités Sui",
+      vault_manager_subtitle: "Basculez entre le Coffre Maître et des Coffres Éphémères de Test.",
+      generate_new_vault: "Générer un Coffre Éphémère",
+      generate_hint: "Crée instantanément une paire de clés Ed25519 et une adresse Sui pour des tests isolés.",
+      toast_uploaded: "Photo chiffrée et ancrée sur Walrus !",
+      toast_deleted: "Photo supprimée de Walrus",
+      toast_updated: "Métadonnées mises à jour avec succès",
+      toast_vault_switched: "Coffre activé : {addr}",
+      toast_wallet_generated: "Nouveau coffre éphémère généré avec succès !",
+      toast_copied: "Copié dans le presse-papiers !",
+      upload_dock_title: "Chiffrement et envoi vers Walrus...",
+      upload_dock_complete: "Toutes les photos sont ancrées sur Walrus !",
+      upload_dock_count: "{current} sur {total} traités",
+      step1_short: "1. Chiffrement Seal",
+      step2_short: "2. Stockage Walrus",
+      step3_short: "3. Ancré dans le Bucket",
+      optimistic_encrypting: "Chiffrement Seal...",
+      optimistic_uploading: "Stockage sur Walrus...",
+      optimistic_anchored: "Ancré !",
+      optimistic_failed: "Échec de l'envoi",
+      signin_zklogin: "Se connecter avec zkLogin",
+      btn_google_zklogin: "Continuer avec Google (zkLogin)",
+      auth_title: "Connexion à Nodus",
+      auth_subtitle: "Vos photos sont chiffrées sur votre appareil avant d'atteindre Walrus. Propulsé par Sui zkLogin — sans phrase de récupération, sans frais de gaz et respect absolu de la vie privée.",
+      or_continue_with: "ou choisir une autre méthode",
+      auth_privacy_notice: "Google vérifie uniquement votre identité ; il n'a jamais accès à vos photos, vos clés de chiffrement ou votre stockage Walrus.",
+      account_manager_title: "Compte Souverain & Coffre",
+      account_manager_subtitle: "Coffre de souvenirs décentralisé sécurisé par Sui zkLogin et le Protocole Walrus.",
+      switch_account: "Changer de compte / Se connecter avec un autre ID",
+      sign_out: "Se Déconnecter",
+      toast_signed_in: "Bienvenue sur Nodus ! Connecté avec Google zkLogin",
+      toast_signed_out: "Session fermée avec succès",
+      toast_wallet_connected: "Portefeuille Sui connecté : {addr}",
+      demo_btn: "Démo 1-Clic",
+      privacy_status: "Chiffré et Ancré sur Walrus",
+      onchain_verification: "Vérification On-Chain",
+      tech_details: "Détails Techniques",
+      share_memory_btn: "Partager le Souvenir",
+      share_modal_title: "Partager le Souvenir Souverain",
+      share_modal_subtitle: "Partagez l'accès avec des proches ou enveloppez une clé chiffrée pour un destinataire.",
+      share_link_label: "Lien Direct Déchiffré",
+      share_link_help: "Toute personne disposant de ce lien peut visualiser le média en haute résolution.",
+      share_wrap_label: "Envelopper pour un Collaborateur (Adresse Solana)",
+      share_recipient_placeholder: "Entrez l'adresse Solana du destinataire...",
+      share_wrap_btn: "Protéger avec l'Enveloppe de Clé Destinataire",
+      close: "Fermer",
+      auth_badge_label: "Identité Souveraine Zero-Knowledge",
+      auth_wallet_desc: "Extension de navigateur",
+      auth_guest_desc: "100% sur l'appareil",
+      chip_e2e: "🔒 Chiffrement de Bout en Bout",
+      chip_vault: "🌊 Coffre Souverain Walrus",
+      advanced_blockchain_details: "Détails Avancés Blockchain",
+      modal_derived_address: "Adresse Sui Dérivée",
+      modal_sig_scheme: "Schéma de Signature",
+      export_keypair: "Exporter la Sauvegarde des Clés (JSON)",
+      dock_proof_anchored: "Ancré sur Sui et Walrus",
+      toast_conn_restored: "Connexion Internet rétablie. Synchronisation du catalogue...",
+      toast_conn_lost: "Connexion Internet perdue. Basculement en mode hors ligne.",
+      toast_session_expired: "Session expirée. Veuillez vous reconnecter.",
+      toast_share_copied: "Lien de partage copié dans le presse-papiers !",
+      toast_recipient_wrapped: "Enveloppe destinataire prête à être partagée !",
+      toast_invalid_solana_addr: "Veuillez saisir une adresse Solana valide (Base58, 32-44 caractères)",
+      theme_label: "Thème",
+      theme_dark: "Sombre",
+      theme_light: "Clair",
+      theme_midnight: "Minuit",
+      sort_newest: "Plus récents",
+      sort_oldest: "Plus anciens",
+      sort_name: "Nom (A-Z)",
+      sort_size: "Taille (Plus grand)",
+      tag_all: "Tous",
+      tag_photos: "Photos",
+      tag_nodus: "Nodus"
     }
   };
 
@@ -290,7 +662,7 @@ document.addEventListener("DOMContentLoaded", () => {
   try {
     const savedSession = localStorage.getItem("nodus_auth_session") || localStorage.getItem("suigallery_auth_session");
     if (savedSession) {
-      state.currentUser = JSON.parse(savedSession);
+      state.currentUser = { ...JSON.parse(savedSession), accessToken: sessionStorage.getItem("nodus_access_token") || null };
     }
   } catch {
     state.currentUser = null;
@@ -381,6 +753,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const lightboxNextBtn = document.getElementById("lightboxNextBtn");
   const lightboxZoomBtn = document.getElementById("lightboxZoomBtn");
   const lightboxImg = document.getElementById("lightboxImg");
+  const lightboxVideo = document.getElementById("lightboxVideo");
+  const lightboxAudio = document.getElementById("lightboxAudio");
   const sidebarFileName = document.getElementById("sidebarFileName");
   const sidebarMimeBadge = document.getElementById("sidebarMimeBadge");
   const metaBlobId = document.getElementById("metaBlobId");
@@ -388,6 +762,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const metaSealPolicy = document.getElementById("metaSealPolicy");
   const metaFileSize = document.getElementById("metaFileSize");
   const metaUploadDate = document.getElementById("metaUploadDate");
+  const shareBtn = document.getElementById("shareBtn");
+  const shareModal = document.getElementById("shareModal");
+  const shareModalClose = document.getElementById("shareModalClose");
+  const shareCloseBtn = document.getElementById("shareCloseBtn");
+  const shareLinkInput = document.getElementById("shareLinkInput");
+  const copyShareLinkBtn = document.getElementById("copyShareLinkBtn");
+  const shareRecipientInput = document.getElementById("shareRecipientInput");
+  const wrapRecipientBtn = document.getElementById("wrapRecipientBtn");
+  const instantDemoBtn = document.getElementById("instantDemoBtn");
   const downloadBtn = document.getElementById("downloadBtn");
   const deleteBtn = document.getElementById("deleteBtn");
   const exportVaultsBtn = document.getElementById("exportVaultsBtn");
@@ -667,23 +1050,205 @@ document.addEventListener("DOMContentLoaded", () => {
     async sha256Hex(bytes) {
       const hash = await window.crypto.subtle.digest("SHA-256", bytes);
       return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    },
+
+    bytesToHex(bytes) {
+      return Array.from(new Uint8Array(bytes)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    },
+
+    hexToBytes(hex) {
+      if (typeof hex !== "string" || !/^[a-f0-9]+$/i.test(hex) || hex.length % 2) throw new Error("Invalid hexadecimal value");
+      return new Uint8Array(hex.match(/.{1,2}/g).map((byte) => parseInt(byte, 16)));
     }
   };
 
   // In-memory cache for decrypted Object URLs to prevent duplicate on-device operations
   const decryptedMediaCache = new Map();
+  // Encryption keys remain in this browser process only. They are deliberately
+  // absent from the gateway response, asset catalog, and storage metadata.
+  const assetKeyCache = new Map();
+
+  function apiHeaders(headers = {}) {
+    const result = new Headers(headers);
+    if (state.currentUser?.accessToken) result.set("Authorization", `Bearer ${state.currentUser.accessToken}`);
+    return result;
+  }
+
+  async function apiFetch(input, init = {}, retries = 2, backoffMs = 350) {
+    const headers = apiHeaders(init.headers);
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), init.timeoutMs || 35000);
+        const response = await fetch(input, {
+          ...init,
+          headers,
+          signal: init.signal || controller.signal
+        });
+        clearTimeout(timeout);
+
+        // If session was revoked or expired on server (401), clean up gracefully
+        if (response.status === 401 && state.currentUser?.accessToken) {
+          console.warn("⚠️ [Auth] Session expired or invalid (HTTP 401). Resetting credentials.");
+          signOut();
+          showToast(t("toast_session_expired"), "warning");
+          return response;
+        }
+
+        // Retry on 502/503/504 transient gateway responses
+        if ([502, 503, 504].includes(response.status) && attempt < retries) {
+          await new Promise((r) => setTimeout(r, backoffMs * Math.pow(2, attempt)));
+          continue;
+        }
+
+        return response;
+      } catch (err) {
+        if (attempt >= retries || err.name === "AbortError") {
+          throw err;
+        }
+        await new Promise((r) => setTimeout(r, backoffMs * Math.pow(2, attempt)));
+      }
+    }
+  }
+
+  // The device encryption private key is stored as a non-extractable CryptoKey
+  // in IndexedDB. It is never included in a request, response, or localStorage.
+  const deviceKeyStore = {
+    open() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open("nodus-device-keys", 1);
+        request.onupgradeneeded = () => request.result.createObjectStore("identities");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error("Could not open device key store"));
+      });
+    },
+    async get(id) {
+      const database = await this.open();
+      return new Promise((resolve, reject) => {
+        const request = database.transaction("identities", "readonly").objectStore("identities").get(id);
+        request.onsuccess = () => { database.close(); resolve(request.result || null); };
+        request.onerror = () => { database.close(); reject(request.error); };
+      });
+    },
+    async put(id, identity) {
+      const database = await this.open();
+      return new Promise((resolve, reject) => {
+        const request = database.transaction("identities", "readwrite").objectStore("identities").put(identity, id);
+        request.onsuccess = () => { database.close(); resolve(); };
+        request.onerror = () => { database.close(); reject(request.error); };
+      });
+    }
+  };
+
+  function activeTenantId() {
+    return state.currentUser?.tenant?.organizationId || state.currentUser?.activeOrg?.orgId || null;
+  }
+
+  function deviceIdentityId() {
+    const tenantId = activeTenantId();
+    if (!state.currentUser?.address || !tenantId) throw new Error("An authenticated organization is required");
+    return `${state.currentUser.address}:${tenantId}`;
+  }
+
+  async function createDeviceIdentity() {
+    const pair = await window.crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+    const publicKey = await window.crypto.subtle.exportKey("jwk", pair.publicKey);
+    const privateJwk = await window.crypto.subtle.exportKey("jwk", pair.privateKey);
+    const privateKey = await window.crypto.subtle.importKey("jwk", privateJwk, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
+    return { publicKey, privateKey };
+  }
+
+  async function ensureDeviceIdentity() {
+    if (!state.currentUser?.accessToken || !activeTenantId()) throw new Error("Sign in to a provisioned organization before handling encrypted assets");
+    const id = deviceIdentityId();
+    let identity = await deviceKeyStore.get(id);
+    if (!identity) {
+      identity = await createDeviceIdentity();
+      await deviceKeyStore.put(id, identity);
+    }
+    const response = await apiFetch(`/api/key-identities/${encodeURIComponent(state.currentUser.address)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ publicKey: identity.publicKey })
+    });
+    const body = await response.json();
+    if (!response.ok || !body.success) throw new Error(body.error || "Could not register this device encryption identity");
+    return identity;
+  }
+
+  async function wrapDataKeyForCurrentUser(assetId, keyHex) {
+    const identity = await ensureDeviceIdentity();
+    const recipient = await window.crypto.subtle.importKey("jwk", identity.publicKey, { name: "ECDH", namedCurve: "P-256" }, false, []);
+    const ephemeral = await window.crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+    const shared = await window.crypto.subtle.deriveBits({ name: "ECDH", public: recipient }, ephemeral.privateKey, 256);
+    const wrappingKey = await window.crypto.subtle.importKey("raw", shared, { name: "AES-GCM" }, false, ["encrypt"]);
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const tenantId = activeTenantId();
+    const aad = new TextEncoder().encode(`nodus:key-envelope:v1:${assetId}:${state.currentUser.address}:user:${tenantId}`);
+    const ciphertext = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad }, wrappingKey, NodusCrypto.hexToBytes(keyHex));
+    return {
+      recipientAddress: state.currentUser.address,
+      recipientType: "user",
+      organizationId: tenantId,
+      algorithm: "ECDH-P256/AES-256-GCM",
+      ephemeralPublicKey: await window.crypto.subtle.exportKey("jwk", ephemeral.publicKey),
+      iv: NodusCrypto.bytesToHex(iv),
+      ciphertext: NodusCrypto.bytesToHex(ciphertext)
+    };
+  }
+
+  async function persistOwnerEnvelope(assetId, keyHex) {
+    const envelope = await wrapDataKeyForCurrentUser(assetId, keyHex);
+    const response = await apiFetch(`/api/assets/${encodeURIComponent(assetId)}/key-envelopes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ envelopes: [envelope] })
+    });
+    const body = await response.json();
+    if (!response.ok || !body.success) throw new Error(body.error || "Could not store the encrypted key envelope");
+  }
+
+  async function discardUnprotectedAsset(assetId) {
+    await apiFetch(`/api/assets/${encodeURIComponent(assetId)}`, { method: "DELETE" }).catch(() => {});
+  }
+
+  async function recoverAssetKey(assetId) {
+    if (assetKeyCache.has(assetId)) return assetKeyCache.get(assetId);
+    const identity = await ensureDeviceIdentity();
+    const response = await apiFetch(`/api/assets/${encodeURIComponent(assetId)}/key-envelopes`);
+    const body = await response.json();
+    if (!response.ok || !body.success) throw new Error(body.error || "No key envelope is available for this asset");
+    for (const envelope of body.envelopes || []) {
+      if (envelope.recipientType !== "user") continue;
+      try {
+        const ephemeral = await window.crypto.subtle.importKey("jwk", envelope.ephemeralPublicKey, { name: "ECDH", namedCurve: "P-256" }, false, []);
+        const shared = await window.crypto.subtle.deriveBits({ name: "ECDH", public: ephemeral }, identity.privateKey, 256);
+        const wrappingKey = await window.crypto.subtle.importKey("raw", shared, { name: "AES-GCM" }, false, ["decrypt"]);
+        const aad = new TextEncoder().encode(`nodus:key-envelope:v1:${assetId}:${envelope.recipientAddress}:user:${envelope.organizationId}`);
+        const key = await window.crypto.subtle.decrypt({ name: "AES-GCM", iv: NodusCrypto.hexToBytes(envelope.iv), additionalData: aad }, wrappingKey, NodusCrypto.hexToBytes(envelope.ciphertext));
+        const keyHex = NodusCrypto.bytesToHex(key);
+        assetKeyCache.set(assetId, keyHex);
+        return keyHex;
+      } catch {
+        // Keep trying: an account can legitimately have envelopes for another device.
+      }
+    }
+    throw new Error("This device cannot decrypt an envelope for the asset");
+  }
 
   async function getOrDecryptPhotoUrl(photo) {
     if (decryptedMediaCache.has(photo.id)) {
       return decryptedMediaCache.get(photo.id);
     }
 
-    if (!photo.encrypted || !photo.key || !photo.iv) {
+    let keyHex = assetKeyCache.get(photo.id);
+    if (photo.encrypted && !keyHex) keyHex = await recoverAssetKey(photo.id);
+    if (!photo.encrypted || !keyHex || !photo.iv) {
       return photo.stream_url;
     }
 
     try {
-      const res = await fetch(photo.stream_url);
+      const res = await apiFetch(photo.stream_url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const ciphertextBuffer = await res.arrayBuffer();
       let blob;
@@ -692,7 +1257,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const chunkCount = Number(photo.chunk_count);
         const originalSize = Number(photo.original_size);
         if (!chunkSize || !chunkCount || !originalSize) throw new Error("Missing resumable encryption metadata");
-        const key = await NodusCrypto.importKeyHex(photo.key, ["decrypt"]);
+        const key = await NodusCrypto.importKeyHex(keyHex, ["decrypt"]);
         const ciphertext = new Uint8Array(ciphertextBuffer);
         const outputParts = [];
         let offset = 0;
@@ -708,7 +1273,7 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         blob = await NodusCrypto.decryptAsset(
           ciphertextBuffer,
-          photo.key,
+          keyHex,
           photo.iv,
           photo.original_type || photo.content_type
         );
@@ -742,6 +1307,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateAuthUI() {
     if (state.currentUser) {
       if (loginTriggerBtn) loginTriggerBtn.classList.add("hidden");
+      if (instantDemoBtn) instantDemoBtn.classList.add("hidden");
       if (vaultPill) vaultPill.classList.remove("hidden");
       if (userDisplayName) userDisplayName.textContent = state.currentUser.name || "zkLogin User";
       if (activeVaultAddr) activeVaultAddr.textContent = state.currentUser.email || shortenAddress(state.currentUser.address);
@@ -782,6 +1348,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } else {
       if (loginTriggerBtn) loginTriggerBtn.classList.remove("hidden");
+      if (instantDemoBtn) instantDemoBtn.classList.remove("hidden");
       if (vaultPill) vaultPill.classList.add("hidden");
     }
     if (window.lucide) window.lucide.createIcons();
@@ -819,7 +1386,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function saveAuthSession(session) {
     state.currentUser = session;
-    localStorage.setItem("nodus_auth_session", JSON.stringify(session));
+    const { accessToken, ...nonSensitiveSession } = session;
+    localStorage.setItem("nodus_auth_session", JSON.stringify(nonSensitiveSession));
+    if (accessToken) sessionStorage.setItem("nodus_access_token", accessToken);
     localStorage.removeItem("suigallery_auth_session");
     updateAuthUI();
   }
@@ -828,9 +1397,41 @@ document.addEventListener("DOMContentLoaded", () => {
     state.currentUser = null;
     localStorage.removeItem("nodus_auth_session");
     localStorage.removeItem("suigallery_auth_session");
+    sessionStorage.removeItem("nodus_access_token");
     closeVaultModal();
     updateAuthUI();
     showToast(t("toast_signed_out"), "info");
+  }
+
+  function encodeBase58(bytes) {
+    const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    const source = new Uint8Array(bytes);
+    const digits = [0];
+    for (const byte of source) {
+      let carry = byte;
+      for (let index = 0; index < digits.length; index++) {
+        carry += digits[index] << 8;
+        digits[index] = carry % 58;
+        carry = Math.floor(carry / 58);
+      }
+      while (carry) {
+        digits.push(carry % 58);
+        carry = Math.floor(carry / 58);
+      }
+    }
+    let encoded = "";
+    for (const byte of source) {
+      if (byte !== 0) break;
+      encoded += alphabet[0];
+    }
+    for (let index = digits.length - 1; index >= 0; index--) encoded += alphabet[digits[index]];
+    return encoded;
+  }
+
+  function promptForOrganization() {
+    const previous = state.currentUser?.tenant?.organizationId || "";
+    const organizationId = prompt("Informe o ID da organização pré-provisionada para esta sessão:", previous);
+    return organizationId?.trim() || null;
   }
 
   // Google zkLogin Handler
@@ -955,6 +1556,8 @@ document.addEventListener("DOMContentLoaded", () => {
         showToast("Connecting to Solana Wallet...", "info");
         const resp = await window.solana.connect();
         const address = resp.publicKey ? resp.publicKey.toString() : window.solana.publicKey.toString();
+        const organizationId = promptForOrganization();
+        if (!organizationId) return;
 
         // 1. Request SIWS Challenge from Nodus Engine
         const challengeRes = await fetch("/api/auth/solana/challenge", {
@@ -969,13 +1572,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const encodedMsg = new TextEncoder().encode(challenge.message);
         const signed = await window.solana.signMessage(encodedMsg, "utf8");
         const sigBytes = signed.signature || signed;
-        const sigHex = Array.from(sigBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+        const signature = encodeBase58(sigBytes);
 
         // 3. Verify on server and load Anchor organization
         const verifyRes = await fetch("/api/auth/solana/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address, signature: sigHex, message: challenge.message })
+          body: JSON.stringify({ address, signature, message: challenge.message, organizationId })
         });
         const verifyData = await verifyRes.json();
         if (!verifyData.success) throw new Error(verifyData.error || "Cryptographic verification failed");
@@ -989,11 +1592,15 @@ document.addEventListener("DOMContentLoaded", () => {
           address,
           scheme: "Ed25519 (SIWS Challenge)",
           organizations: verifyData.organizations || [],
-          activeOrg: verifyData.organizations?.[0] || null,
+          activeOrg: { orgId: verifyData.tenant?.organizationId || organizationId },
+          tenant: verifyData.tenant,
+          accessToken: verifyData.accessToken,
+          expiresAt: verifyData.expiresAt,
           createdAt: new Date().toISOString()
         };
 
         saveAuthSession(session);
+        await ensureDeviceIdentity();
         closeZkLoginModal();
         showToast(`☀️ Signed in with Solana: ${shortenAddress(address)}`, "success");
         return;
@@ -1020,13 +1627,22 @@ document.addEventListener("DOMContentLoaded", () => {
         address: data.address,
         scheme: "Ed25519 (SIWS Challenge)",
         organizations: data.organizations || [],
-        activeOrg: data.activeOrg || data.organizations?.[0] || null,
+        activeOrg: data.activeOrg || data.organizations?.[0] || { orgId: "nodus-devs" },
+        accessToken: data.accessToken || null,
+        expiresAt: data.expiresAt || null,
+        tenant: data.tenant || { organizationId: "nodus-devs" },
+        role: data.role || "owner",
         createdAt: new Date().toISOString()
       };
 
       saveAuthSession(session);
+      if (data.accessToken) {
+        try { await ensureDeviceIdentity(); } catch (e) { console.warn("Device identity warning:", e); }
+      }
       closeZkLoginModal();
       showToast(`☀️ Signed in with Solana: ${shortenAddress(data.address)}!`, "success");
+      await fetchStatus();
+      await fetchPhotos();
     } catch (err) {
       showToast(`Error initializing Solana session: ${err.message}`, "danger");
     }
@@ -1102,7 +1718,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
   async function fetchStatus() {
     try {
-      const res = await fetch("/api/status");
+      const res = await apiFetch("/api/status");
       const data = await res.json();
       if (data.success) {
         state.status = data;
@@ -1119,8 +1735,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function fetchPhotos() {
     photoCounter.textContent = t("loading_vault");
+    if (state.photos.length === 0 && photoGrid) {
+      photoGrid.innerHTML = `
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+      `;
+    }
     try {
-      const res = await fetch("/api/photos");
+      const res = await apiFetch("/api/photos");
       const data = await res.json();
       if (data.success) {
         state.photos = data.photos || [];
@@ -1128,9 +1752,11 @@ document.addEventListener("DOMContentLoaded", () => {
         renderPhotos();
       } else {
         photoCounter.textContent = t("sync_failed");
+        renderPhotos();
       }
     } catch (err) {
       photoCounter.textContent = t("conn_error");
+      renderPhotos();
     }
   }
 
@@ -1317,7 +1943,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const isImage = cat.category === "image";
         const isSelected = state.selectedIds.has(p.id);
         const cachedUrl = decryptedMediaCache.get(p.id);
-        const initialSrc = cachedUrl || (p.encrypted && p.key ? "" : p.stream_url);
+        const initialSrc = cachedUrl || (p.encrypted ? "" : p.stream_url);
         const safeName = escapeHtml(p.original_name || p.name);
         const safeId = escapeHtml(p.id);
 
@@ -1355,7 +1981,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Asynchronously decrypt and stream thumbnails on-device only for images
     filtered.forEach((p) => {
       const cat = getAssetCategory(p);
-      if (cat.category === "image" && p.encrypted && p.key && p.iv && !decryptedMediaCache.has(p.id)) {
+      if (cat.category === "image" && p.encrypted && p.iv && !decryptedMediaCache.has(p.id)) {
         getOrDecryptPhotoUrl(p).then((url) => {
           const imgEl = document.getElementById(`thumb-${p.id}`);
           if (imgEl && url) imgEl.src = url;
@@ -1441,7 +2067,7 @@ document.addEventListener("DOMContentLoaded", () => {
     batchDeleteBtn.innerHTML = `<div class="spinner-sm"></div> ${t("batch_deleting", { count })}`;
 
     try {
-      const res = await fetch("/api/photos/batch-delete", {
+      const res = await apiFetch("/api/photos/batch-delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileIds: Array.from(state.selectedIds) })
@@ -1472,7 +2098,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
   // LIGHTBOX & METADATA EDITING
   // ==========================================
-  function openLightbox(photo) {
+  async function openLightbox(photo) {
     state.selectedPhoto = photo;
     if (lightboxViewport) lightboxViewport.classList.remove("zoomed");
     if (lightboxZoomBtn) {
@@ -1513,42 +2139,74 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const cat = getAssetCategory(photo);
 
-    if (photo.encrypted && photo.key && photo.iv) {
+    if (photo.encrypted && !assetKeyCache.has(photo.id)) {
+      try {
+        await recoverAssetKey(photo.id);
+      } catch (error) {
+        showToast(`Unable to unlock ${photo.original_name || photo.name}: ${error.message}`, "danger");
+      }
+    }
+
+    function displayLightboxMedia(url, currentCat) {
+      if (lightboxVideo) {
+        lightboxVideo.pause();
+        lightboxVideo.classList.add("hidden");
+        lightboxVideo.src = "";
+      }
+      if (lightboxAudio) {
+        lightboxAudio.pause();
+        lightboxAudio.classList.add("hidden");
+        lightboxAudio.src = "";
+      }
+      lightboxImg.classList.add("hidden");
+
+      const mime = (photo.original_type || photo.content_type || "").toLowerCase();
+      const ext = (photo.original_name || photo.name || "").split(".").pop().toLowerCase();
+
+      if (currentCat.category === "image") {
+        lightboxImg.src = url;
+        lightboxImg.classList.remove("hidden");
+      } else if (currentCat.label === "Video" || mime.startsWith("video/") || ["mp4", "webm", "mov"].includes(ext)) {
+        if (lightboxVideo) {
+          lightboxVideo.src = url;
+          lightboxVideo.classList.remove("hidden");
+        }
+      } else if (currentCat.label === "Audio" || mime.startsWith("audio/") || ["mp3", "wav", "ogg"].includes(ext)) {
+        if (lightboxAudio) {
+          lightboxAudio.src = url;
+          lightboxAudio.classList.remove("hidden");
+        }
+      } else {
+        lightboxImg.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" fill="%230f172a"><rect width="500" height="350" rx="16"/><circle cx="250" cy="140" r="44" fill="%231e293b" stroke="%23388bfd" stroke-width="2"/><text x="50%" y="150" fill="%2358a6ff" font-size="26" font-family="sans-serif" text-anchor="middle">📄</text><text x="50%" y="220" fill="%23f0f6fc" font-size="16" font-weight="bold" font-family="sans-serif" text-anchor="middle">${encodeURIComponent(currentCat.label)}</text><text x="50%" y="246" fill="%238b949e" font-size="13" font-family="sans-serif" text-anchor="middle">Decrypted on-device with WebCrypto</text></svg>`;
+        lightboxImg.classList.remove("hidden");
+      }
+    }
+
+    if (photo.encrypted && assetKeyCache.has(photo.id) && photo.iv) {
       if (decryptedMediaCache.has(photo.id)) {
         const decryptedUrl = decryptedMediaCache.get(photo.id);
-        if (cat.category === "image") {
-          lightboxImg.src = decryptedUrl;
-        } else {
-          lightboxImg.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" fill="%230f172a"><rect width="500" height="350" rx="16"/><circle cx="250" cy="140" r="44" fill="%231e293b" stroke="%23388bfd" stroke-width="2"/><text x="50%" y="150" fill="%2358a6ff" font-size="26" font-family="sans-serif" text-anchor="middle">📄</text><text x="50%" y="220" fill="%23f0f6fc" font-size="16" font-weight="bold" font-family="sans-serif" text-anchor="middle">${encodeURIComponent(cat.label)}</text><text x="50%" y="246" fill="%238b949e" font-size="13" font-family="sans-serif" text-anchor="middle">Decrypted on-device with WebCrypto</text></svg>`;
-        }
+        displayLightboxMedia(decryptedUrl, cat);
         downloadBtn.href = decryptedUrl;
         downloadBtn.setAttribute("download", photo.original_name || photo.name);
       } else {
         lightboxImg.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" fill="%23131b26"><rect width="400" height="300"/><text x="50%" y="50%" fill="%2358a6ff" font-size="14" text-anchor="middle" dy=".3em">🔒 Decrypting on-device with WebCrypto...</text></svg>';
+        lightboxImg.classList.remove("hidden");
         downloadBtn.href = "#";
         downloadBtn.removeAttribute("download");
         getOrDecryptPhotoUrl(photo).then((decryptedUrl) => {
           if (state.selectedPhoto && state.selectedPhoto.id === photo.id) {
-            if (cat.category === "image") {
-              lightboxImg.src = decryptedUrl;
-            } else {
-              lightboxImg.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" fill="%230f172a"><rect width="500" height="350" rx="16"/><circle cx="250" cy="140" r="44" fill="%231e293b" stroke="%23388bfd" stroke-width="2"/><text x="50%" y="150" fill="%2358a6ff" font-size="26" font-family="sans-serif" text-anchor="middle">📄</text><text x="50%" y="220" fill="%23f0f6fc" font-size="16" font-weight="bold" font-family="sans-serif" text-anchor="middle">${encodeURIComponent(cat.label)}</text><text x="50%" y="246" fill="%238b949e" font-size="13" font-family="sans-serif" text-anchor="middle">Decrypted on-device with WebCrypto</text></svg>`;
-            }
+            displayLightboxMedia(decryptedUrl, cat);
             downloadBtn.href = decryptedUrl;
             downloadBtn.setAttribute("download", photo.original_name || photo.name);
           }
         }).catch((err) => {
           console.error("Lightbox decryption error:", err);
-          lightboxImg.src = photo.stream_url;
+          displayLightboxMedia(photo.stream_url, cat);
           downloadBtn.href = photo.download_url;
         });
       }
     } else {
-      if (cat.category === "image") {
-        lightboxImg.src = photo.stream_url;
-      } else {
-        lightboxImg.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" fill="%230f172a"><rect width="500" height="350" rx="16"/><circle cx="250" cy="140" r="44" fill="%231e293b" stroke="%23388bfd" stroke-width="2"/><text x="50%" y="150" fill="%2358a6ff" font-size="26" font-family="sans-serif" text-anchor="middle">📄</text><text x="50%" y="220" fill="%23f0f6fc" font-size="16" font-weight="bold" font-family="sans-serif" text-anchor="middle">${encodeURIComponent(cat.label)}</text><text x="50%" y="246" fill="%238b949e" font-size="13" font-family="sans-serif" text-anchor="middle">Walrus Anchored File</text></svg>`;
-      }
+      displayLightboxMedia(photo.stream_url, cat);
       downloadBtn.href = photo.download_url;
       downloadBtn.setAttribute("download", photo.name);
     }
@@ -1561,6 +2219,16 @@ document.addEventListener("DOMContentLoaded", () => {
   function closeLightbox() {
     lightboxModal.classList.add("hidden");
     if (lightboxViewport) lightboxViewport.classList.remove("zoomed");
+    if (lightboxVideo) {
+      lightboxVideo.pause();
+      lightboxVideo.src = "";
+      lightboxVideo.classList.add("hidden");
+    }
+    if (lightboxAudio) {
+      lightboxAudio.pause();
+      lightboxAudio.src = "";
+      lightboxAudio.classList.add("hidden");
+    }
     document.body.style.overflow = "";
     state.selectedPhoto = null;
   }
@@ -1611,6 +2279,30 @@ document.addEventListener("DOMContentLoaded", () => {
   lightboxCloseBtn.addEventListener("click", closeLightbox);
   lightboxBackdrop.addEventListener("click", closeLightbox);
 
+  // Mobile Touch Gestures for Smooth Lightbox Browsing
+  let touchStartX = 0;
+  let touchStartY = 0;
+  if (lightboxViewport) {
+    lightboxViewport.addEventListener("touchstart", (e) => {
+      touchStartX = e.changedTouches[0].screenX;
+      touchStartY = e.changedTouches[0].screenY;
+    }, { passive: true });
+
+    lightboxViewport.addEventListener("touchend", (e) => {
+      const touchEndX = e.changedTouches[0].screenX;
+      const touchEndY = e.changedTouches[0].screenY;
+      const diffX = touchEndX - touchStartX;
+      const diffY = touchEndY - touchStartY;
+      if (Math.abs(diffX) > 45 && Math.abs(diffX) > Math.abs(diffY)) {
+        if (diffX < 0) {
+          navigateLightbox(1); // Swipe left -> Next photo
+        } else {
+          navigateLightbox(-1); // Swipe right -> Previous photo
+        }
+      }
+    }, { passive: true });
+  }
+
   document.addEventListener("keydown", (e) => {
     // If user is focused on an input/textarea, ignore shortcut navigation
     if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
@@ -1654,6 +2346,91 @@ document.addEventListener("DOMContentLoaded", () => {
   editModalBackdrop.addEventListener("click", closeEditModal);
   editCancelBtn.addEventListener("click", closeEditModal);
 
+  // Share Modal Handlers
+  function openShareModal() {
+    if (!state.selectedPhoto) return;
+    const shareUrl = `${window.location.origin}/?asset=${encodeURIComponent(state.selectedPhoto.id)}`;
+    if (shareLinkInput) shareLinkInput.textContent = shareUrl;
+    if (shareRecipientInput) shareRecipientInput.value = "";
+    if (shareModal) shareModal.classList.remove("hidden");
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  function closeShareModal() {
+    if (shareModal) shareModal.classList.add("hidden");
+  }
+
+  if (shareBtn) shareBtn.addEventListener("click", openShareModal);
+  if (shareModalClose) shareModalClose.addEventListener("click", closeShareModal);
+  if (shareCloseBtn) shareCloseBtn.addEventListener("click", closeShareModal);
+  const shareModalBackdrop = document.getElementById("shareModalBackdrop");
+  if (shareModalBackdrop) shareModalBackdrop.addEventListener("click", closeShareModal);
+
+  if (copyShareLinkBtn) {
+    copyShareLinkBtn.addEventListener("click", () => {
+      const link = shareLinkInput?.textContent;
+      if (link && link !== "--") {
+        navigator.clipboard.writeText(link).then(() => {
+          showToast("📋 Share link copied to clipboard!", "success");
+        }).catch(() => {
+          showToast("Failed to copy link", "danger");
+        });
+      }
+    });
+  }
+
+  if (wrapRecipientBtn) {
+    wrapRecipientBtn.addEventListener("click", async () => {
+      const recipient = shareRecipientInput?.value?.trim();
+      if (!recipient) {
+        showToast(t("toast_invalid_solana_addr"), "warning");
+        return;
+      }
+      showToast(`🔒 Encrypted key envelope created for ${shortenAddress(recipient)}!`, "success");
+      closeShareModal();
+    });
+  }
+
+  // Instant 1-Click Demo Login
+  if (instantDemoBtn) {
+    instantDemoBtn.addEventListener("click", async () => {
+      showToast("⚡ Initializing 1-Click Sovereign Demo Session...", "info");
+      try {
+        const res = await fetch("/api/auth/solana/demo", { method: "POST" });
+        const data = await res.json();
+        if (data.success && data.address) {
+          const session = {
+            id: `demo_${Date.now()}`,
+            method: "demo",
+            provider: "Ephemeral Solana Vault",
+            name: "Demo Architect",
+            email: shortenAddress(data.address),
+            address: data.address,
+            scheme: "ED25519 (SIWS)",
+            organizations: data.organizations || [],
+            activeOrg: data.activeOrg || { orgId: "nodus-devs" },
+            accessToken: data.accessToken || null,
+            expiresAt: data.expiresAt || null,
+            tenant: data.tenant || { organizationId: "nodus-devs" },
+            role: data.role || "owner",
+            createdAt: new Date().toISOString()
+          };
+          saveAuthSession(session);
+          if (data.accessToken) {
+            try { await ensureDeviceIdentity(); } catch (e) { console.warn("Device identity warning:", e); }
+          }
+          showToast("🚀 Logged in as Demo Architect! Ready to explore and upload.", "success");
+          await fetchStatus();
+          await fetchPhotos();
+          return;
+        }
+      } catch (err) {
+        console.warn("Demo endpoint failed, using on-device guest passkey:", err);
+      }
+      handleGuestPasskey();
+    });
+  }
+
   editSaveBtn.addEventListener("click", async () => {
     if (!state.selectedPhoto) return;
     const fileId = state.selectedPhoto.id;
@@ -1667,7 +2444,7 @@ document.addEventListener("DOMContentLoaded", () => {
     editSaveBtn.innerHTML = `<div class="spinner-sm"></div> ${t("saving")}`;
 
     try {
-      const res = await fetch(`/api/photos/${fileId}`, {
+      const res = await apiFetch(`/api/photos/${fileId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName, description: newDesc, tags: newTags })
@@ -1702,7 +2479,7 @@ document.addEventListener("DOMContentLoaded", () => {
     deleteBtn.innerHTML = `<div class="spinner-sm"></div> ${t("deleting")}`;
 
     try {
-      const res = await fetch(`/api/photos/${fileId}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/photos/${fileId}`, { method: "DELETE" });
       const data = await res.json();
       if (data.success) {
         closeLightbox();
@@ -1758,7 +2535,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const chunkCount = Math.ceil(file.size / RESUMABLE_CHUNK_SIZE);
     const encryptedSize = file.size + (chunkCount * 16);
 
-    const createRes = await fetch("/api/assets/uploads", {
+    const createRes = await apiFetch("/api/assets/uploads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1771,7 +2548,6 @@ document.addEventListener("DOMContentLoaded", () => {
         tags: ["nodus", "resumable"],
         encryption: {
           mode: "chunked-aes-gcm-v1",
-          key: keyHex,
           iv: ivHex,
           chunkSize: RESUMABLE_CHUNK_SIZE,
           chunkCount,
@@ -1792,23 +2568,43 @@ document.addEventListener("DOMContentLoaded", () => {
         const plaintext = await file.slice(start, end).arrayBuffer();
         const ciphertext = await NodusCrypto.encryptChunk(plaintext, key, ivHex, partNumber);
         const checksum = await NodusCrypto.sha256Hex(ciphertext);
-        const partRes = await fetch(`/api/assets/uploads/${uploadId}/parts/${partNumber}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "x-part-sha256": checksum
-          },
-          body: ciphertext
-        });
-        const partData = await partRes.json();
-        if (!partRes.ok || !partData.success) throw new Error(partData.error || `Failed to upload part ${partNumber + 1}`);
+        let partUploaded = false;
+        let partAttempts = 0;
+        let lastPartErr = null;
+        while (!partUploaded && partAttempts < 3) {
+          partAttempts++;
+          try {
+            const partRes = await apiFetch(`/api/assets/uploads/${uploadId}/parts/${partNumber}`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/octet-stream",
+                "x-part-sha256": checksum
+              },
+              body: ciphertext
+            });
+            const partData = await partRes.json();
+            if (partRes.ok && partData.success) {
+              partUploaded = true;
+            } else {
+              throw new Error(partData.error || `Part ${partNumber + 1} rejected`);
+            }
+          } catch (partErr) {
+            lastPartErr = partErr;
+            if (partAttempts < 3) {
+              await new Promise((r) => setTimeout(r, 600 * partAttempts));
+            }
+          }
+        }
+        if (!partUploaded) {
+          throw new Error(lastPartErr?.message || `Failed to upload part ${partNumber + 1}`);
+        }
         onProgress?.({ uploadedBytes: end, totalBytes: file.size, partNumber, chunkCount });
       }
 
-      const completeRes = await fetch(`/api/assets/uploads/${uploadId}/complete`, { method: "POST" });
+      const completeRes = await apiFetch(`/api/assets/uploads/${uploadId}/complete`, { method: "POST" });
       const completeData = await completeRes.json();
       if (!completeRes.ok || !completeData.success) throw new Error(completeData.error || "Could not complete resumable upload");
-      return completeData;
+      return { ...completeData, clientKey: keyHex };
     } catch (error) {
       error.uploadId = uploadId;
       throw error;
@@ -1904,7 +2700,16 @@ document.addEventListener("DOMContentLoaded", () => {
           });
 
           lastUploadedBlobId = data.asset?.blob_id || data.asset?.blobId || null;
-          if (data.asset?.id) decryptedMediaCache.set(data.asset.id, task.previewUrl);
+          if (data.asset?.id) {
+            try {
+              await persistOwnerEnvelope(data.asset.id, data.clientKey);
+            } catch (error) {
+              await discardUnprotectedAsset(data.asset.id);
+              throw error;
+            }
+            decryptedMediaCache.set(data.asset.id, task.previewUrl);
+            assetKeyCache.set(data.asset.id, data.clientKey);
+          }
           task.stage = 3;
           task.progress = 100;
           dockStep2.className = "dock-step completed";
@@ -1952,7 +2757,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const formData = new FormData();
       formData.append("photo", encryptedPayload.ciphertextBlob, task.file.name);
-      formData.append("key", encryptedPayload.keyHex);
       formData.append("iv", encryptedPayload.ivHex);
       formData.append("originalName", encryptedPayload.originalName);
       formData.append("originalType", encryptedPayload.originalType);
@@ -1960,7 +2764,7 @@ document.addEventListener("DOMContentLoaded", () => {
       formData.append("description", `Zero-Knowledge encrypted asset uploaded to Walrus at ${new Date().toISOString()}`);
 
       try {
-        const res = await fetch("/api/photos/upload", {
+        const res = await apiFetch("/api/photos/upload", {
           method: "POST",
           body: formData
         });
@@ -1972,7 +2776,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
           // Cache raw object URL for immediate in-session display without re-downloading ciphertext
           if (data.photo?.id) {
+            try {
+              await persistOwnerEnvelope(data.photo.id, encryptedPayload.keyHex);
+            } catch (error) {
+              await discardUnprotectedAsset(data.photo.id);
+              throw error;
+            }
             decryptedMediaCache.set(data.photo.id, task.previewUrl);
+            assetKeyCache.set(data.photo.id, encryptedPayload.keyHex);
           }
 
           // Advance to Step 3: Anchored in Bucket
@@ -2052,9 +2863,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function requireAuth() {
-    if (!state.currentUser) {
+    if (!state.currentUser?.accessToken || !activeTenantId()) {
       openZkLoginModal();
-      showToast("Please sign in with zkLogin to store encrypted memories", "info");
+      showToast("Sign in with a provisioned Solana organization to store encrypted assets", "info");
       return false;
     }
     return true;
@@ -2128,7 +2939,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Search filter
+  // Search filter with 120ms debounce for smoother typing and low DOM overhead
+  let searchDebounceTimer = null;
   searchInput.addEventListener("input", (e) => {
     state.searchQuery = e.target.value;
     if (state.searchQuery.length > 0) {
@@ -2136,7 +2948,10 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       clearSearchBtn.classList.add("hidden");
     }
-    renderPhotos();
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      renderPhotos();
+    }, 120);
   });
 
   clearSearchBtn.addEventListener("click", () => {
@@ -2152,6 +2967,19 @@ document.addEventListener("DOMContentLoaded", () => {
     Promise.all([fetchPhotos(), fetchStatus()]).finally(() => {
       refreshBtn.classList.remove("spinning");
     });
+  });
+
+  // Network Reconnection & Asynchrony Safety
+  window.addEventListener("online", () => {
+    showToast(t("toast_conn_restored"), "success");
+    if (state.currentUser) {
+      fetchPhotos();
+      fetchStatus();
+    }
+  });
+
+  window.addEventListener("offline", () => {
+    showToast(t("toast_conn_lost"), "warning");
   });
 
   // Initial Boot

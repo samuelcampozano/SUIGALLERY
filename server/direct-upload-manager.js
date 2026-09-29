@@ -34,18 +34,20 @@ function isUploadId(value) {
  * Durable control-plane state for browser-to-publisher uploads.
  *
  * Unlike ResumableUploadManager, this class never receives or stores ciphertext.
- * A production deployment can replace this JSON repository with PostgreSQL without
- * changing the HTTP or SDK protocol.
+ * Authenticated tenant deployments persist this state in PostgreSQL. JSON is a
+ * development-only fallback, never a store for direct-upload ciphertext.
  */
 export class DirectUploadManager {
-  constructor({ rootDir, ttlMs = SESSION_TTL_MS } = {}) {
-    if (!rootDir) throw new Error("rootDir is required");
-    this.rootDir = path.resolve(rootDir);
+  constructor({ rootDir, ttlMs = SESSION_TTL_MS, stateStore = null } = {}) {
+    if (!rootDir && !stateStore) throw new Error("rootDir is required when stateStore is not configured");
+    this.rootDir = rootDir ? path.resolve(rootDir) : null;
     this.ttlMs = ttlMs;
-    fs.mkdirSync(this.rootDir, { recursive: true, mode: 0o700 });
+    this.stateStore = stateStore;
+    this.operationLocks = new Map();
+    if (!this.stateStore) fs.mkdirSync(this.rootDir, { recursive: true, mode: 0o700 });
   }
 
-  create({ originalName, originalType, originalSize, segmentSize, description = "", tags = [], encryption, epochs = 1, tenant = null }) {
+  async create({ originalName, originalType, originalSize, segmentSize, description = "", tags = [], encryption, epochs = 1, tenant = null, userId = null, assetId = null, quotaReservationId = null, uploadId = crypto.randomUUID() }) {
     const size = Number(originalSize);
     const normalizedSegmentSize = Number(segmentSize) || DIRECT_UPLOAD_DEFAULT_SEGMENT_SIZE;
     const normalizedEpochs = Number(epochs) || 1;
@@ -60,6 +62,9 @@ export class DirectUploadManager {
     if (!encryption?.iv || !Number.isSafeInteger(chunkSize) || chunkSize < MiB) {
       throw new Error("A chunked client-side encryption envelope is required");
     }
+    if (Object.prototype.hasOwnProperty.call(encryption, "key") || Object.prototype.hasOwnProperty.call(encryption, "keyHex")) {
+      throw new Error("Raw data keys must not be sent to the server");
+    }
     if (normalizedSegmentSize % chunkSize !== 0) {
       throw new Error("segmentSize must be an exact multiple of encryption.chunkSize");
     }
@@ -67,7 +72,7 @@ export class DirectUploadManager {
       throw new Error("epochs must be between 1 and 1000");
     }
 
-    const uploadId = crypto.randomUUID();
+    if (!isUploadId(uploadId)) throw new Error("Invalid upload ID");
     const segments = [];
     for (let start = 0, index = 0; start < size; start += normalizedSegmentSize, index++) {
       const end = Math.min(start + normalizedSegmentSize, size);
@@ -84,6 +89,7 @@ export class DirectUploadManager {
         status: "pending",
         blobId: null,
         ciphertextSha256: null,
+        chunkSha256s: null,
         authorizedAt: null,
         uploadedAt: null,
         verificationState: "pending"
@@ -95,6 +101,9 @@ export class DirectUploadManager {
     const session = {
       uploadId,
       organizationId: tenant?.organizationId || null,
+      userId,
+      assetId: assetId || `direct_${uploadId}`,
+      quotaReservationId,
       status: "uploading",
       originalName: String(originalName || "asset.bin").slice(0, 255),
       originalType: String(originalType || "application/octet-stream").slice(0, 255),
@@ -110,86 +119,98 @@ export class DirectUploadManager {
       expiresAt: new Date(Date.now() + this.ttlMs).toISOString(),
       completedAsset: null
     };
-    this.write(session);
+    await this.write(session);
     return this.publicSession(session);
   }
 
-  get(uploadId, organizationId = null) {
-    const session = this.read(uploadId);
-    this.assertOrganization(session, organizationId);
+  async get(uploadId, context = null) {
+    const session = await this.read(uploadId);
+    this.assertAccess(session, context);
     if (this.isExpired(session) && session.status !== "completed") {
-      this.abort(uploadId);
+      await this.abort(uploadId);
       throw new Error("Upload session expired");
     }
     return this.publicSession(session);
   }
 
-  authorizeSegment(uploadId, index, organizationId = null) {
-    const session = this.read(uploadId);
-    this.assertOrganization(session, organizationId);
-    this.ensureWritable(session);
-    const segment = this.segment(session, index);
-    if (segment.status === "completed") throw new Error("Segment has already been completed");
-    segment.status = "authorized";
-    segment.authorizedAt = new Date().toISOString();
-    session.updatedAt = segment.authorizedAt;
-    this.write(session);
-    return { session, segment: { ...segment } };
+  async authorizeSegment(uploadId, index, context = null) {
+    return this.withUploadLock(uploadId, async () => {
+      const session = await this.read(uploadId);
+      this.assertAccess(session, context);
+      await this.ensureWritable(session);
+      const segment = this.segment(session, index);
+      if (segment.status === "completed") throw new Error("Segment has already been completed");
+      segment.status = "authorized";
+      segment.authorizedAt = new Date().toISOString();
+      session.updatedAt = segment.authorizedAt;
+      await this.write(session);
+      return { session, segment: { ...segment } };
+    });
   }
 
-  saveAuthorization(uploadId, index, authorization, organizationId = null) {
-    const session = this.read(uploadId);
-    this.assertOrganization(session, organizationId);
-    this.ensureWritable(session);
-    const segment = this.segment(session, index);
-    if (!authorization?.jti || !authorization?.expiresAt || !authorization?.ciphertextSha256) throw new Error("Invalid publisher authorization");
-    segment.authorization = { jti: authorization.jti, expiresAt: authorization.expiresAt, ciphertextSha256: authorization.ciphertextSha256 };
-    this.write(session);
+  async saveAuthorization(uploadId, index, authorization, context = null) {
+    return this.withUploadLock(uploadId, async () => {
+      const session = await this.read(uploadId);
+      this.assertAccess(session, context);
+      await this.ensureWritable(session);
+      const segment = this.segment(session, index);
+      if (!authorization?.jti || !authorization?.expiresAt || !authorization?.ciphertextSha256) throw new Error("Invalid publisher authorization");
+      segment.authorization = { jti: authorization.jti, expiresAt: authorization.expiresAt, ciphertextSha256: authorization.ciphertextSha256 };
+      await this.write(session);
+    });
   }
 
-  completionContext(uploadId, index, organizationId = null) {
-    const session = this.read(uploadId);
-    this.assertOrganization(session, organizationId);
-    this.ensureWritable(session);
+  async completionContext(uploadId, index, context = null) {
+    const session = await this.read(uploadId);
+    this.assertAccess(session, context);
+    await this.ensureWritable(session);
     const segment = this.segment(session, index);
     if (!segment.authorization) throw new Error("Segment has not been authorized");
     return { uploadId: session.uploadId, segmentIndex: segment.index, ciphertextSize: segment.ciphertextSize, ...segment.authorization };
   }
 
-  completeSegment(uploadId, index, { blobId, ciphertextSha256, publisherResponse = null, receipt = null, verified = false } = {}, organizationId = null) {
-    const session = this.read(uploadId);
-    this.assertOrganization(session, organizationId);
-    this.ensureWritable(session);
-    const segment = this.segment(session, index);
-    if (!blobId || !/^[A-Za-z0-9_-]{16,256}$/.test(blobId)) throw new Error("Invalid Walrus blob ID");
-    if (ciphertextSha256 && !/^[a-f0-9]{64}$/i.test(ciphertextSha256)) throw new Error("Invalid ciphertext SHA-256");
-    if (!segment.authorization || segment.authorization.ciphertextSha256 !== ciphertextSha256) throw new Error("Segment completion does not match its authorized checksum");
-    if (!verified || !receipt) throw new Error("An independently verified publisher receipt is required");
-    if (segment.status === "completed") {
-      if (segment.blobId === blobId && segment.ciphertextSha256 === (ciphertextSha256 || null)) return this.publicSession(session);
-      throw new Error("Segment was already completed with different content");
-    }
-    segment.status = "completed";
-    segment.blobId = blobId;
-    segment.ciphertextSha256 = ciphertextSha256 || null;
-    segment.publisherResponse = this.safePublisherResponse(publisherResponse);
-    segment.receipt = { blobId: receipt.blobId, jti: receipt.jti, issuedAt: receipt.iat, expiresAt: receipt.exp };
-    segment.verificationState = verified ? "verified" : "pending";
-    segment.uploadedAt = new Date().toISOString();
-    session.updatedAt = segment.uploadedAt;
-    this.write(session);
-    return this.publicSession(session);
+  async completeSegment(uploadId, index, { blobId, ciphertextSha256, chunkSha256s = null, publisherResponse = null, receipt = null, verified = false } = {}, context = null) {
+    return this.withUploadLock(uploadId, async () => {
+      const session = await this.read(uploadId);
+      this.assertAccess(session, context);
+      await this.ensureWritable(session);
+      const segment = this.segment(session, index);
+      if (!blobId || !/^[A-Za-z0-9_-]{16,256}$/.test(blobId)) throw new Error("Invalid Walrus blob ID");
+      if (ciphertextSha256 && !/^[a-f0-9]{64}$/i.test(ciphertextSha256)) throw new Error("Invalid ciphertext SHA-256");
+      if (!Array.isArray(chunkSha256s) || chunkSha256s.length !== segment.chunkCount || chunkSha256s.some((hash) => !/^[a-f0-9]{64}$/i.test(hash || ""))) {
+        throw new Error("Verified SHA-256 hashes are required for every encrypted chunk");
+      }
+      if (!segment.authorization || segment.authorization.ciphertextSha256 !== ciphertextSha256) throw new Error("Segment completion does not match its authorized checksum");
+      if (!verified || !receipt) throw new Error("An independently verified publisher receipt is required");
+      if (segment.status === "completed") {
+        if (segment.blobId === blobId && segment.ciphertextSha256 === (ciphertextSha256 || null)) return this.publicSession(session);
+        throw new Error("Segment was already completed with different content");
+      }
+      segment.status = "completed";
+      segment.blobId = blobId;
+      segment.ciphertextSha256 = ciphertextSha256 || null;
+      segment.chunkSha256s = chunkSha256s.map((hash) => hash.toLowerCase());
+      segment.publisherResponse = this.safePublisherResponse(publisherResponse);
+      segment.receipt = { blobId: receipt.blobId, jti: receipt.jti, issuedAt: receipt.iat, expiresAt: receipt.exp };
+      segment.verificationState = verified ? "verified" : "pending";
+      segment.uploadedAt = new Date().toISOString();
+      session.updatedAt = segment.uploadedAt;
+      await this.write(session);
+      return this.publicSession(session);
+    });
   }
 
-  finalize(uploadId, organizationId = null) {
-    const session = this.read(uploadId);
-    this.assertOrganization(session, organizationId);
-    this.ensureWritable(session);
-    const missing = session.segments.filter((segment) => segment.status !== "completed").map((segment) => segment.index);
-    if (missing.length) throw new Error(`Cannot finalize upload; ${missing.length} segment(s) missing`);
+  async finalize(uploadId, context = null) {
+    return this.withUploadLock(uploadId, async () => {
+      const session = await this.read(uploadId);
+      this.assertAccess(session, context);
+      if (session.status === "completed") return { upload: this.publicSession(session), asset: session.completedAsset, manifest: this.buildManifest(session) };
+      await this.ensureWritable(session);
+      const missing = session.segments.filter((segment) => segment.status !== "completed").map((segment) => segment.index);
+      if (missing.length) throw new Error(`Cannot finalize upload; ${missing.length} segment(s) missing`);
 
-    const asset = {
-      id: `direct_${session.uploadId}`,
+      const asset = {
+      id: session.assetId,
       name: session.originalName,
       original_name: session.originalName,
       original_type: session.originalType,
@@ -205,50 +226,72 @@ export class DirectUploadManager {
       description: session.description,
       created_at: new Date().toISOString(),
       manifest_url: `/api/assets/direct-uploads/${session.uploadId}/manifest`,
+      stream_url: `/api/assets/${session.assetId}/direct-manifest`,
+      download_url: `/api/assets/${session.assetId}/direct-manifest`,
       status: "active"
     };
-    session.status = "completed";
-    session.completedAsset = asset;
-    session.completedAt = asset.created_at;
-    session.updatedAt = asset.created_at;
-    this.write(session);
-    return { upload: this.publicSession(session), asset, manifest: this.buildManifest(session) };
+      session.status = "completed";
+      session.completedAsset = asset;
+      session.completedAt = asset.created_at;
+      session.updatedAt = asset.created_at;
+      await this.write(session);
+      return { upload: this.publicSession(session), asset, manifest: this.buildManifest(session) };
+    });
   }
 
-  manifest(uploadId, organizationId = null) {
-    const session = this.read(uploadId);
-    this.assertOrganization(session, organizationId);
+  async manifest(uploadId, context = null) {
+    const session = await this.read(uploadId);
+    this.assertAccess(session, context);
     if (session.status !== "completed") throw new Error("Upload is not finalized");
     return this.buildManifest(session);
   }
 
-  listAssets(organizationId = null) {
+  async manifestByAssetId(assetId, context = null) {
+    if (typeof assetId !== "string") throw new Error("Asset is not a direct publisher asset");
+    if (this.stateStore?.findByAssetId && context?.organizationId) {
+      const session = await this.stateStore.findByAssetId(assetId, context.organizationId);
+      if (!session) throw new Error("Asset is not a direct publisher asset");
+      this.assertAccess(session, context);
+      if (session.status !== "completed") throw new Error("Upload is not finalized");
+      return this.buildManifest(session);
+    }
+    for (const session of await this.listSessions()) {
+      if (session.assetId === assetId || (assetId === `direct_${session.uploadId}` && !session.assetId)) return this.manifest(session.uploadId, context);
+    }
+    throw new Error("Asset is not a direct publisher asset");
+  }
+
+  async listAssets(organizationId = null) {
     const assets = [];
-    for (const entry of fs.readdirSync(this.rootDir, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-      try {
-        const session = JSON.parse(fs.readFileSync(path.join(this.rootDir, entry.name), "utf8"));
-        if (session.status === "completed" && session.completedAsset && (!organizationId || session.organizationId === organizationId)) assets.push(session.completedAsset);
-      } catch {}
+    for (const session of await this.listSessions(organizationId)) {
+      if (session.status === "completed" && session.completedAsset && (!organizationId || session.organizationId === organizationId)) assets.push(session.completedAsset);
     }
     return assets;
   }
 
-  abort(uploadId, organizationId = null) {
+  async abort(uploadId, context = null) {
+    return this.withUploadLock(uploadId, () => this.abortUnlocked(uploadId, context));
+  }
+
+  async abortUnlocked(uploadId, context = null) {
+    if (this.stateStore) {
+      const session = await this.read(uploadId);
+      if (context) this.assertAccess(session, context);
+      await this.stateStore.remove(uploadId);
+      return true;
+    }
     const target = this.filePath(uploadId);
-    if (organizationId && fs.existsSync(target)) this.assertOrganization(this.read(uploadId), organizationId);
+    if (context && fs.existsSync(target)) this.assertAccess(await this.read(uploadId), context);
     if (fs.existsSync(target)) fs.unlinkSync(target);
     return true;
   }
 
-  pruneExpired() {
+  async pruneExpired() {
     let count = 0;
-    for (const entry of fs.readdirSync(this.rootDir, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    for (const session of await this.listSessions()) {
       try {
-        const session = JSON.parse(fs.readFileSync(path.join(this.rootDir, entry.name), "utf8"));
         if (session.status !== "completed" && this.isExpired(session)) {
-          fs.unlinkSync(path.join(this.rootDir, entry.name));
+          await this.abort(session.uploadId);
           count++;
         }
       } catch {}
@@ -256,14 +299,30 @@ export class DirectUploadManager {
     return count;
   }
 
-  read(uploadId) {
+  async read(uploadId) {
+    if (this.stateStore) {
+      const session = await this.stateStore.load(uploadId);
+      if (!session) throw new Error("Upload session not found");
+      return session;
+    }
     const target = this.filePath(uploadId);
     if (!fs.existsSync(target)) throw new Error("Upload session not found");
     return JSON.parse(fs.readFileSync(target, "utf8"));
   }
 
-  write(session) {
+  async write(session) {
+    if (this.stateStore) return this.stateStore.save(session);
     writeJsonAtomic(this.filePath(session.uploadId), session);
+  }
+
+  async listSessions(organizationId = null) {
+    if (this.stateStore) return this.stateStore.list(organizationId);
+    const sessions = [];
+    for (const entry of fs.readdirSync(this.rootDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+      try { sessions.push(JSON.parse(fs.readFileSync(path.join(this.rootDir, entry.name), "utf8"))); } catch {}
+    }
+    return sessions;
   }
 
   filePath(uploadId) {
@@ -277,11 +336,24 @@ export class DirectUploadManager {
     return session.segments[value];
   }
 
-  ensureWritable(session) {
+  async ensureWritable(session) {
     if (session.status !== "uploading") throw new Error(`Upload is not writable in '${session.status}' state`);
     if (this.isExpired(session)) {
-      this.abort(session.uploadId);
+      await this.abortUnlocked(session.uploadId);
       throw new Error("Upload session expired");
+    }
+  }
+
+  async withUploadLock(uploadId, operation) {
+    const previous = this.operationLocks.get(uploadId) || Promise.resolve();
+    let release;
+    const current = new Promise((resolve) => { release = resolve; });
+    const tail = previous.then(() => current);
+    this.operationLocks.set(uploadId, tail);
+    await previous;
+    try { return await operation(); } finally {
+      release();
+      if (this.operationLocks.get(uploadId) === tail) this.operationLocks.delete(uploadId);
     }
   }
 
@@ -289,9 +361,13 @@ export class DirectUploadManager {
     return new Date(session.expiresAt).getTime() <= Date.now();
   }
 
-  assertOrganization(session, organizationId) {
-    if (organizationId && session.organizationId !== organizationId) {
+  assertAccess(session, context) {
+    const normalized = typeof context === "string" ? { organizationId: context } : (context || {});
+    if (normalized.organizationId && session.organizationId !== normalized.organizationId) {
       throw new Error("Upload session does not belong to the active organization");
+    }
+    if (normalized.userId && session.userId && session.userId !== normalized.userId && !normalized.canManage) {
+      throw new Error("Upload session does not belong to the authenticated user");
     }
   }
 
@@ -302,12 +378,13 @@ export class DirectUploadManager {
   }
 
   buildManifest(session) {
-    return {
+    const manifest = {
       version: 1,
-      assetId: session.completedAsset?.id || `direct_${session.uploadId}`,
+      assetId: session.completedAsset?.id || session.assetId || `direct_${session.uploadId}`,
       originalName: session.originalName,
       originalType: session.originalType,
       originalSize: session.originalSize,
+      segmentSize: session.segmentSize,
       encryption: {
         mode: "chunked-aes-gcm-v2",
         chunkSize: session.encryption.chunkSize,
@@ -318,11 +395,19 @@ export class DirectUploadManager {
         index: segment.index,
         plainStart: segment.plainStart,
         plainEnd: segment.plainEnd,
+        plainSize: segment.plainSize,
         ciphertextSize: segment.ciphertextSize,
+        chunkStart: segment.chunkStart,
+        chunkCount: segment.chunkCount,
         blobId: segment.blobId,
         ciphertextSha256: segment.ciphertextSha256,
+        chunkSha256s: segment.chunkSha256s,
         verificationState: segment.verificationState
       }))
+    };
+    return {
+      ...manifest,
+      manifestSha256: crypto.createHash("sha256").update(JSON.stringify(manifest)).digest("hex")
     };
   }
 
@@ -330,6 +415,7 @@ export class DirectUploadManager {
     const completed = session.segments.filter((segment) => segment.status === "completed").map((segment) => segment.index);
     return {
       uploadId: session.uploadId,
+      assetId: session.assetId || null,
       status: session.status,
       originalName: session.originalName,
       originalType: session.originalType,

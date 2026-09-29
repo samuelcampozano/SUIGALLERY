@@ -6,11 +6,41 @@
  */
 
 import { PublicKey } from "@solana/web3.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 
 export const DEFAULT_NODUS_PROGRAM_ID = "NodUS11111111111111111111111111111111111111";
 export const DEFAULT_RESUMABLE_THRESHOLD_BYTES = 20 * 1024 * 1024;
 export const DEFAULT_RESUMABLE_CHUNK_SIZE = 8 * 1024 * 1024;
 export const DEFAULT_DIRECT_PUBLISHER_SEGMENT_SIZE = 64 * 1024 * 1024;
+export const DEFAULT_DIRECT_UPLOAD_CONCURRENCY = 3;
+export const DEFAULT_DIRECT_UPLOAD_MAX_RETRIES = 4;
+
+/** Controls an in-flight large upload without ever retaining its data key. */
+export class NodusUploadControl {
+  constructor() {
+    this.paused = false;
+    this.cancelled = false;
+    this._resumeWaiters = [];
+  }
+
+  pause() { this.paused = true; }
+
+  resume() {
+    this.paused = false;
+    for (const resolve of this._resumeWaiters.splice(0)) resolve();
+  }
+
+  cancel() {
+    this.cancelled = true;
+    this.resume();
+  }
+
+  async waitUntilReady() {
+    if (this.cancelled) throw new Error("Upload cancelled");
+    while (this.paused && !this.cancelled) await new Promise((resolve) => this._resumeWaiters.push(resolve));
+    if (this.cancelled) throw new Error("Upload cancelled");
+  }
+}
 
 /**
  * Derives the deterministic Anchor Program Derived Address (PDA) for an Organization.
@@ -173,6 +203,90 @@ export const NodusCrypto = {
     return new Uint8Array(plaintext);
   },
 
+  bytesToHex(bytes) {
+    return Array.from(new Uint8Array(bytes)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  },
+
+  hexToBytes(hex) {
+    if (typeof hex !== "string" || !/^[a-f0-9]+$/i.test(hex) || hex.length % 2) throw new Error("Invalid hexadecimal value");
+    return new Uint8Array(hex.match(/.{1,2}/g).map((byte) => parseInt(byte, 16)));
+  },
+
+  async createEnvelopeIdentity({ recovery = true } = {}) {
+    const subtle = globalThis.crypto?.subtle;
+    if (!subtle) throw new Error("WebCrypto (crypto.subtle) is not available in this environment.");
+    const createPair = async () => {
+      const pair = await subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+      return { publicKey: await subtle.exportKey("jwk", pair.publicKey), privateKey: await subtle.exportKey("jwk", pair.privateKey) };
+    };
+    const primary = await createPair();
+    const recoveryPair = recovery ? await createPair() : null;
+    return {
+      version: 1,
+      algorithm: "ECDH-P256/AES-256-GCM",
+      primaryPublicKey: primary.publicKey,
+      primaryPrivateKey: primary.privateKey,
+      recoveryPublicKey: recoveryPair?.publicKey || null,
+      recoveryPrivateKey: recoveryPair?.privateKey || null
+    };
+  },
+
+  async wrapDataKey(dataKeyHex, recipientPublicKey, { assetId, recipientAddress, recipientType = "user", organizationId = null } = {}) {
+    const subtle = globalThis.crypto?.subtle;
+    const recipient = await subtle.importKey("jwk", recipientPublicKey, { name: "ECDH", namedCurve: "P-256" }, false, []);
+    const ephemeral = await subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+    const shared = await subtle.deriveBits({ name: "ECDH", public: recipient }, ephemeral.privateKey, 256);
+    const wrappingKey = await subtle.importKey("raw", shared, { name: "AES-GCM" }, false, ["encrypt"]);
+    const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
+    const aad = new TextEncoder().encode(`nodus:key-envelope:v1:${assetId}:${recipientAddress}:${recipientType}:${organizationId || "personal"}`);
+    const ciphertext = await subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad }, wrappingKey, this.hexToBytes(dataKeyHex));
+    return {
+      recipientAddress,
+      recipientType,
+      organizationId,
+      algorithm: "ECDH-P256/AES-256-GCM",
+      ephemeralPublicKey: await subtle.exportKey("jwk", ephemeral.publicKey),
+      iv: this.bytesToHex(iv),
+      ciphertext: this.bytesToHex(ciphertext)
+    };
+  },
+
+  async unwrapDataKey(envelope, recipientPrivateKey, { assetId } = {}) {
+    const subtle = globalThis.crypto?.subtle;
+    const privateKey = await subtle.importKey("jwk", recipientPrivateKey, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
+    const ephemeral = await subtle.importKey("jwk", envelope.ephemeralPublicKey, { name: "ECDH", namedCurve: "P-256" }, false, []);
+    const shared = await subtle.deriveBits({ name: "ECDH", public: ephemeral }, privateKey, 256);
+    const wrappingKey = await subtle.importKey("raw", shared, { name: "AES-GCM" }, false, ["decrypt"]);
+    const aad = new TextEncoder().encode(`nodus:key-envelope:v1:${assetId}:${envelope.recipientAddress}:${envelope.recipientType}:${envelope.organizationId || "personal"}`);
+    const plaintext = await subtle.decrypt({ name: "AES-GCM", iv: this.hexToBytes(envelope.iv), additionalData: aad }, wrappingKey, this.hexToBytes(envelope.ciphertext));
+    return this.bytesToHex(plaintext);
+  },
+
+  async createRecoveryKit(identity, passphrase) {
+    if (!identity?.recoveryPrivateKey || typeof passphrase !== "string" || passphrase.length < 12) {
+      throw new Error("A recovery identity and a passphrase of at least 12 characters are required");
+    }
+    const subtle = globalThis.crypto?.subtle;
+    const salt = globalThis.crypto.getRandomValues(new Uint8Array(16));
+    const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
+    const material = await subtle.importKey("raw", new TextEncoder().encode(passphrase), "PBKDF2", false, ["deriveKey"]);
+    const key = await subtle.deriveKey({ name: "PBKDF2", salt, iterations: 210000, hash: "SHA-256" }, material, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
+    const payload = new TextEncoder().encode(JSON.stringify({ version: 1, recoveryPrivateKey: identity.recoveryPrivateKey }));
+    const ciphertext = await subtle.encrypt({ name: "AES-GCM", iv }, key, payload);
+    return { version: 1, algorithm: "PBKDF2-SHA256/AES-256-GCM", iterations: 210000, salt: this.bytesToHex(salt), iv: this.bytesToHex(iv), ciphertext: this.bytesToHex(ciphertext) };
+  },
+
+  async openRecoveryKit(kit, passphrase) {
+    if (!kit || kit.algorithm !== "PBKDF2-SHA256/AES-256-GCM" || typeof passphrase !== "string") throw new Error("Invalid recovery kit");
+    const subtle = globalThis.crypto?.subtle;
+    const material = await subtle.importKey("raw", new TextEncoder().encode(passphrase), "PBKDF2", false, ["deriveKey"]);
+    const key = await subtle.deriveKey({ name: "PBKDF2", salt: this.hexToBytes(kit.salt), iterations: kit.iterations, hash: "SHA-256" }, material, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+    const plaintext = await subtle.decrypt({ name: "AES-GCM", iv: this.hexToBytes(kit.iv) }, key, this.hexToBytes(kit.ciphertext));
+    const payload = JSON.parse(new TextDecoder().decode(plaintext));
+    if (!payload?.recoveryPrivateKey) throw new Error("Recovery kit has no recovery identity");
+    return payload.recoveryPrivateKey;
+  },
+
   async sha256Hex(bytes) {
     const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
     return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -295,8 +409,14 @@ export class NodusClient {
     this.gatewayUrl = (config.gatewayUrl || "http://localhost:3000").replace(/\/+$/, "");
     this.apiKey = config.apiKey || null;
     this.accessToken = config.accessToken || null;
+    this.organizationId = config.organizationId || null;
     this._fetch = config.fetch || globalThis.fetch.bind(globalThis);
     this.searchIndex = new NodusSearchIndex();
+    // Ephemeral device-local mapping. It is never serialized into an upload,
+    // session, catalog entry, or HTTP header.
+    this.keyCache = new Map();
+    this.keyIdentity = config.keyIdentity || null;
+    this.resumeStorage = config.resumeStorage || globalThis.localStorage || null;
   }
 
   /**
@@ -309,6 +429,27 @@ export class NodusClient {
     });
     if (!res.ok) throw new Error(`Status check failed: HTTP ${res.status}`);
     return res.json();
+  }
+
+  /**
+   * Execute a documented public API request with the configured bearer session
+   * or API key. Mutating requests can provide a stable idempotencyKey.
+   */
+  async request(path, { method = "GET", body, idempotencyKey } = {}) {
+    const headers = this._getHeaders(true);
+    if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const response = await this._fetch(`${this.gatewayUrl}${path.startsWith("/") ? path : `/${path}`}`, {
+      method, headers, body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = new Error(payload?.error || `Nodus API request failed: HTTP ${response.status}`);
+      error.status = response.status;
+      error.payload = payload;
+      throw error;
+    }
+    return payload;
   }
 
   /**
@@ -336,6 +477,12 @@ export class NodusClient {
       return this.putDirectPublisher(data, { ...options, name, type, description, tags, encrypt });
     }
     const resumableThreshold = options.resumableThresholdBytes || DEFAULT_RESUMABLE_THRESHOLD_BYTES;
+    // Large objects never traverse the gateway. A caller can explicitly opt out
+    // while migrating an older publisher integration, but should not do so for
+    // production-scale uploads.
+    if (options.directPublisher !== false && options.resumable !== true && sourceSize > resumableThreshold) {
+      return this.putDirectPublisher(data, { ...options, name, type, description, tags, encrypt });
+    }
     if (options.resumable !== false && (options.resumable === true || sourceSize > resumableThreshold)) {
       return this.putResumable(data, { ...options, name, type, description, tags, encrypt });
     }
@@ -379,7 +526,6 @@ export class NodusClient {
 
     if (encrypt) {
       formData.append("encrypted", "true");
-      formData.append("key", keyHex);
       formData.append("iv", ivHex);
     }
 
@@ -412,6 +558,10 @@ export class NodusClient {
         record.name = name;
       }
       this.searchIndex.indexDocument(record);
+      if (encrypt && record.id) {
+        this.keyCache.set(record.id, keyHex);
+        await this._protectOrDiscardUploadedAsset(record.id, options);
+      }
     }
 
     return {
@@ -433,7 +583,7 @@ export class NodusClient {
    * in memory at once when the input is a Blob/File.
    *
    * To resume after an interrupted process, retain `error.uploadId`,
-   * `error.encryption.key`, and `error.encryption.iv`, then call
+   * the locally retained encryption key and IV, then call
    * resumeResumableUpload(uploadId, file, { key, iv }).
    */
   async putResumable(data, options = {}) {
@@ -473,6 +623,7 @@ export class NodusClient {
       const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
       ivHex = ivHex || Array.from(iv).map((byte) => byte.toString(16).padStart(2, "0")).join("");
       upload = await this.createResumableUpload({
+        ...(options.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}:create` } : {}),
         originalName: name,
         originalType: type,
         originalSize,
@@ -482,7 +633,6 @@ export class NodusClient {
         tags,
         encryption: {
           mode: "chunked-aes-gcm-v1",
-          key: keyHex,
           iv: ivHex,
           chunkSize,
           chunkCount,
@@ -494,8 +644,11 @@ export class NodusClient {
     }
 
     const received = new Set(upload.receivedParts || []);
+    this._saveUploadReference(upload, "resumable");
+    const startedAt = Date.now();
     try {
       for (let partNumber = 0; partNumber < chunkCount; partNumber++) {
+        await this._waitForUploadControl(options.control);
         if (received.has(partNumber)) continue;
         const start = partNumber * chunkSize;
         const end = Math.min(start + chunkSize, originalSize);
@@ -503,20 +656,25 @@ export class NodusClient {
         const ciphertextPart = await NodusCrypto.encryptChunk(plaintextPart, keyHex, ivHex, partNumber);
         const checksum = await NodusCrypto.sha256Hex(ciphertextPart);
         await this.uploadResumablePart(upload.uploadId, partNumber, ciphertextPart, checksum);
-        if (typeof options.onProgress === "function") {
-          options.onProgress({
+        this._emitUploadProgress(options, {
             uploadId: upload.uploadId,
             partNumber,
             partCount: chunkCount,
             uploadedBytes: Math.min(end, originalSize),
-            totalBytes: originalSize
+            totalBytes: originalSize,
+            startedAt
           });
-        }
       }
 
-      const completed = await this.completeResumableUpload(upload.uploadId);
+      const completed = await this.completeResumableUpload(upload.uploadId, options.idempotencyKey ? `${options.idempotencyKey}:finalize` : undefined);
+      this._removeUploadReference(upload.uploadId);
       const record = completed.asset || completed.result;
       if (record) this._indexRecord(record, { name, type, description, tags });
+      if (record?.id || record?.fileId) {
+        const assetId = record.id || record.fileId;
+        this.keyCache.set(assetId, keyHex);
+        await this._protectOrDiscardUploadedAsset(assetId, options);
+      }
       return {
         success: true,
         uploadId: upload.uploadId,
@@ -531,8 +689,13 @@ export class NodusClient {
         upload: completed.upload
       };
     } catch (error) {
+      if (this._isCancellation(error, options.control)) {
+        await this.abortResumableUpload(upload.uploadId).catch(() => {});
+        this._removeUploadReference(upload.uploadId);
+      }
       error.uploadId = upload.uploadId;
       error.encryption = { key: keyHex, iv: ivHex, chunkSize, chunkCount };
+      error.userMessage = this._friendlyUploadError(error);
       throw error;
     }
   }
@@ -582,6 +745,7 @@ export class NodusClient {
       const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
       ivHex = ivHex || Array.from(iv).map((byte) => byte.toString(16).padStart(2, "0")).join("");
       upload = await this.createDirectUpload({
+        ...(options.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}:create` } : {}),
         originalName: name,
         originalType: type,
         originalSize,
@@ -601,35 +765,54 @@ export class NodusClient {
     }
 
     try {
-      for (const segment of upload.segments) {
-        if (segment.status === "completed") continue;
-        const { ciphertext, ciphertextSha256 } = await this._encryptDirectSegment(data, segment, keyHex, ivHex, chunkSize);
-        const authorization = await this.authorizeDirectSegment(upload.uploadId, segment.index, ciphertextSha256, options.sendObjectTo);
-        const published = await this._fetch(authorization.uploadUrl, {
-          method: authorization.method || "PUT",
-          headers: authorization.headers,
-          body: ciphertext
-        });
-        const publisherResponse = await this._readPublisherResponse(published);
-        if (!published.ok) {
-          throw new Error(publisherResponse?.error || publisherResponse?.message || `Publisher rejected segment ${segment.index}: HTTP ${published.status}`);
+    const pending = upload.segments.filter((segment) => segment.status !== "completed");
+      this._saveUploadReference(upload, "direct");
+      const startedAt = Date.now();
+      const concurrency = Number(options.concurrency || DEFAULT_DIRECT_UPLOAD_CONCURRENCY);
+      if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 5) throw new Error("direct upload concurrency must be between 1 and 5");
+      const maxRetries = Number(options.maxRetries || DEFAULT_DIRECT_UPLOAD_MAX_RETRIES);
+      if (!Number.isInteger(maxRetries) || maxRetries < 1 || maxRetries > 8) throw new Error("direct upload maxRetries must be between 1 and 8");
+
+      let nextIndex = 0;
+      let uploadedBytes = upload.segments
+        .filter((segment) => segment.status === "completed")
+        .reduce((total, segment) => total + segment.plainSize, 0);
+      const publishOne = async (segment) => {
+        await this._waitForUploadControl(options.control);
+        await this._withExponentialBackoff(async () => {
+          const { ciphertextSha256, chunkSha256s, ciphertextStream } = await this._prepareDirectSegmentUpload(data, segment, keyHex, ivHex, chunkSize);
+          const authorization = await this.authorizeDirectSegment(upload.uploadId, segment.index, ciphertextSha256, options.sendObjectTo);
+          const request = {
+            method: authorization.method || "PUT",
+            headers: authorization.headers,
+            body: ciphertextStream,
+            // Required by Node's fetch and supported by Chromium for request streams.
+            duplex: "half"
+          };
+          const published = await this._fetch(authorization.uploadUrl, request);
+          const publisherResponse = await this._readPublisherResponse(published);
+          if (!published.ok) throw new Error(publisherResponse?.error || publisherResponse?.message || `Publisher rejected segment ${segment.index}: HTTP ${published.status}`);
+          if (!this._publisherBlobId(publisherResponse)) throw new Error(`Publisher did not return a blob ID for segment ${segment.index}`);
+          await this.completeDirectSegment(upload.uploadId, segment.index, { ciphertextSha256, chunkSha256s, publisherResponse, receipt: publisherResponse?.receipt });
+        }, maxRetries);
+        uploadedBytes += segment.plainSize;
+        this._emitUploadProgress(options, { uploadId: upload.uploadId, segmentIndex: segment.index, segmentCount: upload.segmentCount, uploadedBytes, totalBytes: originalSize, startedAt });
+      };
+      const workers = Array.from({ length: Math.min(concurrency, pending.length) }, async () => {
+        while (nextIndex < pending.length) {
+          const segment = pending[nextIndex++];
+          await publishOne(segment);
         }
-        const blobId = this._publisherBlobId(publisherResponse);
-        if (!blobId) throw new Error(`Publisher did not return a blob ID for segment ${segment.index}`);
-        upload = await this.completeDirectSegment(upload.uploadId, segment.index, { ciphertextSha256, publisherResponse, receipt: publisherResponse?.receipt });
-        if (typeof options.onProgress === "function") {
-          options.onProgress({
-            uploadId: upload.uploadId,
-            segmentIndex: segment.index,
-            segmentCount: upload.segmentCount,
-            uploadedBytes: segment.plainEnd,
-            totalBytes: originalSize
-          });
-        }
-      }
-      const completed = await this.finalizeDirectUpload(upload.uploadId);
+      });
+      await Promise.all(workers);
+      const completed = await this.finalizeDirectUpload(upload.uploadId, options.idempotencyKey ? `${options.idempotencyKey}:finalize` : undefined);
+      this._removeUploadReference(upload.uploadId);
       const record = completed.asset;
       if (record) this._indexRecord(record, { name, type, description, tags });
+      if (record?.id) {
+        this.keyCache.set(record.id, keyHex);
+        await this._protectOrDiscardUploadedAsset(record.id, options);
+      }
       return {
         success: true,
         uploadId: upload.uploadId,
@@ -645,8 +828,13 @@ export class NodusClient {
         manifest: completed.manifest
       };
     } catch (error) {
+      if (this._isCancellation(error, options.control)) {
+        await this.abortDirectUpload(upload.uploadId).catch(() => {});
+        this._removeUploadReference(upload.uploadId);
+      }
       error.uploadId = upload.uploadId;
       error.encryption = { key: keyHex, iv: ivHex, chunkSize, segmentSize };
+      error.userMessage = this._friendlyUploadError(error);
       throw error;
     }
   }
@@ -656,10 +844,11 @@ export class NodusClient {
   }
 
   async createDirectUpload(payload) {
+    const { idempotencyKey, ...requestPayload } = payload;
     const res = await this._fetch(`${this.gatewayUrl}/api/assets/direct-uploads`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...this._getHeaders() },
-      body: JSON.stringify(payload)
+      headers: { "Content-Type": "application/json", ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}), ...this._getHeaders() },
+      body: JSON.stringify(requestPayload)
     });
     const body = await res.json();
     if (!res.ok || !body.success) throw new Error(body.error || `Unable to create direct upload: HTTP ${res.status}`);
@@ -695,32 +884,276 @@ export class NodusClient {
     return body.upload;
   }
 
-  async finalizeDirectUpload(uploadId) {
+  async finalizeDirectUpload(uploadId, idempotencyKey) {
     const res = await this._fetch(`${this.gatewayUrl}/api/assets/direct-uploads/${encodeURIComponent(uploadId)}/finalize`, {
       method: "POST",
-      headers: this._getHeaders()
+      headers: { ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}), ...this._getHeaders() }
     });
     const body = await res.json();
     if (!res.ok || !body.success) throw new Error(body.error || `Unable to finalize direct upload: HTTP ${res.status}`);
     return body;
   }
 
-  async _encryptDirectSegment(data, segment, keyHex, ivHex, chunkSize) {
-    // The client keeps one segment, never the complete file, in memory. For a
-    // production 500 GiB profile, replace this bounded buffer with a browser
-    // ReadableStream once the selected publisher accepts chunked request bodies.
-    const ciphertext = new Uint8Array(segment.ciphertextSize);
+  async abortDirectUpload(uploadId) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/direct-uploads/${encodeURIComponent(uploadId)}`, {
+      method: "DELETE",
+      headers: this._getHeaders()
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to abort direct upload: HTTP ${res.status}`);
+    return body;
+  }
+
+  /** Returns browser-persistent upload references, never plaintext or data keys. */
+  listPendingUploadReferences() {
+    if (!this.resumeStorage) return [];
+    const prefix = this._resumeStoragePrefix();
+    const references = [];
+    for (let index = 0; index < this.resumeStorage.length; index++) {
+      const key = this.resumeStorage.key(index);
+      if (!key?.startsWith(prefix)) continue;
+      try { references.push(JSON.parse(this.resumeStorage.getItem(key))); } catch {}
+    }
+    return references.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  async getDirectManifest(assetId) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/${encodeURIComponent(assetId)}/direct-manifest`, {
+      headers: this._getHeaders()
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to read direct asset manifest: HTTP ${res.status}`);
+    await this._verifyDirectManifest(body.manifest);
+    return body.manifest;
+  }
+
+  /**
+   * Streams an authenticated-publisher asset and decrypts each AES-GCM chunk
+   * as it arrives. No complete ciphertext segment or plaintext file is kept in
+   * memory. For non-direct legacy assets, use get().
+   */
+  async stream(fileId, options = {}) {
+    if (!fileId?.startsWith("direct_")) {
+      throw new Error("Streaming is currently available for direct publisher assets only");
+    }
+    const manifest = await this.getDirectManifest(fileId);
+    const keyHex = options.key || this.keyCache.get(fileId) || await this.recoverAssetKey(fileId, options);
+    const ivHex = options.iv || manifest.encryption?.iv;
+    if (!keyHex || !ivHex) {
+      throw new Error(`Asset ${fileId} is encrypted; provide its device-local key to stream it`);
+    }
+    const chunkSize = Number(manifest.encryption?.chunkSize);
+    if (!Number.isSafeInteger(chunkSize) || chunkSize < 1) {
+      throw new Error(`Asset ${fileId} has invalid chunk encryption metadata`);
+    }
+
+    const requestedRange = this._parsePlainRange(options.range, manifest.originalSize);
+    const selectedSegments = manifest.segments.filter((segment) => !requestedRange
+      || (segment.plainEnd > requestedRange.start && segment.plainStart <= requestedRange.end));
+    return new ReadableStream({
+      start: async (controller) => {
+        try {
+          for (const segment of selectedSegments) {
+            const requestedStart = requestedRange ? Math.max(requestedRange.start, segment.plainStart) : segment.plainStart;
+            const requestedEndExclusive = requestedRange ? Math.min(requestedRange.end + 1, segment.plainEnd) : segment.plainEnd;
+            const firstChunk = Math.floor((requestedStart - segment.plainStart) / chunkSize);
+            const lastChunk = Math.ceil((requestedEndExclusive - segment.plainStart) / chunkSize) - 1;
+            const ciphertextStart = firstChunk * (chunkSize + 16);
+            const lastPlainLength = Math.min(chunkSize, segment.plainSize - (lastChunk * chunkSize));
+            const ciphertextEnd = (lastChunk * (chunkSize + 16)) + lastPlainLength + 15;
+            const response = await this._fetch(
+              `${this.gatewayUrl}/api/assets/${encodeURIComponent(fileId)}/direct-segments/${segment.index}`,
+              { headers: { ...this._getHeaders(), ...(requestedRange ? { Range: `bytes=${ciphertextStart}-${ciphertextEnd}` } : {}) } }
+            );
+            if (!response.ok || !response.body) {
+              throw new Error(`Failed to read direct segment ${segment.index}: HTTP ${response.status}`);
+            }
+            const reader = response.body.getReader();
+            let pending = new Uint8Array();
+            let plainOffset = firstChunk * chunkSize;
+            let chunkOffset = firstChunk;
+            const consume = async () => {
+              while (chunkOffset <= lastChunk) {
+                const plainLength = Math.min(chunkSize, segment.plainSize - plainOffset);
+                const ciphertextLength = plainLength + 16;
+                if (pending.byteLength < ciphertextLength) return;
+                const ciphertext = pending.slice(0, ciphertextLength);
+                pending = pending.slice(ciphertextLength);
+                const expectedChunkHash = segment.chunkSha256s?.[chunkOffset];
+                if (!expectedChunkHash || await NodusCrypto.sha256Hex(ciphertext) !== expectedChunkHash) {
+                  throw new Error(`Ciphertext integrity check failed for direct segment ${segment.index}, chunk ${chunkOffset}`);
+                }
+                const plaintext = await NodusCrypto.decryptChunk(ciphertext, keyHex, ivHex, segment.chunkStart + chunkOffset);
+                const chunkPlainStart = segment.plainStart + plainOffset;
+                const from = Math.max(0, requestedStart - chunkPlainStart);
+                const to = Math.min(plaintext.byteLength, requestedEndExclusive - chunkPlainStart);
+                if (to > from) controller.enqueue(plaintext.slice(from, to));
+                plainOffset += plaintext.byteLength;
+                chunkOffset++;
+              }
+            };
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              if (chunkOffset > lastChunk) continue;
+              const combined = new Uint8Array(pending.byteLength + value.byteLength);
+              combined.set(pending);
+              combined.set(value, pending.byteLength);
+              pending = combined;
+              await consume();
+            }
+            await consume();
+            if (chunkOffset !== lastChunk + 1 || pending.byteLength !== 0) {
+              throw new Error(`Ciphertext length mismatch for direct segment ${segment.index}`);
+            }
+          }
+          controller.close();
+        } catch (error) {
+          controller.error(error);
+        }
+      }
+    });
+  }
+
+  async _readStreamFully(stream) {
+    const reader = stream.getReader();
+    const chunks = [];
+    let length = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      length += value.byteLength;
+    }
+    const data = new Uint8Array(length);
     let offset = 0;
+    for (const chunk of chunks) {
+      data.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return data;
+  }
+
+  async _prepareDirectSegmentUpload(data, segment, keyHex, ivHex, chunkSize) {
+    // The publisher JWT binds a SHA-256 checksum, so hash one deterministic
+    // encryption pass before authorization. The second pass is streamed directly
+    // to the publisher; no ciphertext segment (up to 1 GiB) is ever allocated.
+    const hasher = sha256.create();
+    const chunkSha256s = [];
     for (let chunkOffset = 0; chunkOffset < segment.chunkCount; chunkOffset++) {
       const start = segment.plainStart + (chunkOffset * chunkSize);
       const end = Math.min(start + chunkSize, segment.plainEnd);
       const plaintext = await this._readSourceChunk(data, start, end);
       const encrypted = await NodusCrypto.encryptChunk(plaintext, keyHex, ivHex, segment.chunkStart + chunkOffset);
-      ciphertext.set(encrypted, offset);
-      offset += encrypted.byteLength;
+      hasher.update(encrypted);
+      chunkSha256s.push(NodusCrypto.bytesToHex(sha256(encrypted)));
     }
-    if (offset !== ciphertext.byteLength) throw new Error("Encrypted segment size mismatch");
-    return { ciphertext, ciphertextSha256: await NodusCrypto.sha256Hex(ciphertext) };
+    return {
+      ciphertextSha256: NodusCrypto.bytesToHex(hasher.digest()),
+      chunkSha256s,
+      ciphertextStream: this._encryptedSegmentStream(data, segment, keyHex, ivHex, chunkSize)
+    };
+  }
+
+  _encryptedSegmentStream(data, segment, keyHex, ivHex, chunkSize) {
+    let chunkOffset = 0;
+    return new ReadableStream({
+      pull: async (controller) => {
+        if (chunkOffset >= segment.chunkCount) return controller.close();
+        const start = segment.plainStart + (chunkOffset * chunkSize);
+        const end = Math.min(start + chunkSize, segment.plainEnd);
+        const plaintext = await this._readSourceChunk(data, start, end);
+        const encrypted = await NodusCrypto.encryptChunk(plaintext, keyHex, ivHex, segment.chunkStart + chunkOffset);
+        chunkOffset++;
+        controller.enqueue(encrypted);
+      }
+    });
+  }
+
+  async _withExponentialBackoff(operation, maxRetries) {
+    let lastError;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try { return await operation(); } catch (error) {
+        lastError = error;
+        if (attempt === maxRetries - 1) break;
+        const delay = Math.min(2000, 150 * (2 ** attempt)) + Math.floor(Math.random() * 100);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+    throw lastError;
+  }
+
+  async _verifyDirectManifest(manifest) {
+    if (!manifest || typeof manifest !== "object" || !/^[a-f0-9]{64}$/i.test(manifest.manifestSha256 || "")) {
+      throw new Error("Direct manifest is missing its integrity hash");
+    }
+    const { manifestSha256, ...unsigned } = manifest;
+    const actual = await NodusCrypto.sha256Hex(new TextEncoder().encode(JSON.stringify(unsigned)));
+    if (actual !== manifestSha256.toLowerCase()) throw new Error("Direct manifest integrity check failed");
+  }
+
+  _parsePlainRange(range, size) {
+    if (!range) return null;
+    const value = typeof range === "string" ? range.replace(/^bytes=/i, "") : `${range.start}-${range.end ?? ""}`;
+    const match = /^(\d+)-(\d*)$/.exec(value);
+    if (!match) throw new Error("Invalid plaintext range");
+    const start = Number(match[1]);
+    const end = match[2] === "" ? size - 1 : Number(match[2]);
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || end >= size) throw new Error("Plaintext range is outside the asset");
+    return { start, end };
+  }
+
+  async _waitForUploadControl(control) {
+    if (control instanceof NodusUploadControl) await control.waitUntilReady();
+  }
+
+  _isCancellation(error, control) {
+    return control instanceof NodusUploadControl && control.cancelled || error?.message === "Upload cancelled";
+  }
+
+  _emitUploadProgress(options, progress) {
+    if (typeof options.onProgress !== "function") return;
+    const elapsedSeconds = Math.max(0.001, (Date.now() - progress.startedAt) / 1000);
+    const bytesPerSecond = progress.uploadedBytes / elapsedSeconds;
+    const bytesRemaining = Math.max(0, progress.totalBytes - progress.uploadedBytes);
+    options.onProgress({
+      ...progress,
+      bytesPerSecond,
+      bytesRemaining,
+      estimatedSecondsRemaining: bytesPerSecond > 0 ? bytesRemaining / bytesPerSecond : null
+    });
+  }
+
+  _friendlyUploadError(error) {
+    const message = String(error?.message || "Upload failed");
+    if (/quota/i.test(message)) return "Storage quota exceeded. Free space or upgrade the organization plan, then resume the upload.";
+    if (/expired/i.test(message)) return "The upload session expired. Start a new upload session and keep your local key envelope available.";
+    if (/publisher/i.test(message) || /network|fetch failed/i.test(message)) return "The storage publisher is temporarily unavailable. Keep the upload reference and retry when the connection is restored.";
+    if (/cancelled/i.test(message)) return "Upload cancelled. The reserved quota was released.";
+    return message;
+  }
+
+  _resumeStoragePrefix() {
+    return `nodus:upload-reference:${this.organizationId || "default"}:`;
+  }
+
+  _saveUploadReference(upload, kind) {
+    if (!this.resumeStorage || !upload?.uploadId) return;
+    const reference = {
+      uploadId: upload.uploadId,
+      assetId: upload.assetId || null,
+      kind,
+      originalName: upload.originalName,
+      originalSize: upload.originalSize,
+      expiresAt: upload.expiresAt,
+      createdAt: new Date().toISOString()
+    };
+    try { this.resumeStorage.setItem(`${this._resumeStoragePrefix()}${upload.uploadId}`, JSON.stringify(reference)); } catch {}
+  }
+
+  _removeUploadReference(uploadId) {
+    if (!this.resumeStorage || !uploadId) return;
+    try { this.resumeStorage.removeItem(`${this._resumeStoragePrefix()}${uploadId}`); } catch {}
   }
 
   async _readPublisherResponse(response) {
@@ -734,10 +1167,11 @@ export class NodusClient {
   }
 
   async createResumableUpload(payload) {
+    const { idempotencyKey, ...requestPayload } = payload;
     const res = await this._fetch(`${this.gatewayUrl}/api/assets/uploads`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...this._getHeaders() },
-      body: JSON.stringify(payload)
+      headers: { "Content-Type": "application/json", ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}), ...this._getHeaders() },
+      body: JSON.stringify(requestPayload)
     });
     const body = await res.json();
     if (!res.ok || !body.success) throw new Error(body.error || `Unable to create resumable upload: HTTP ${res.status}`);
@@ -771,10 +1205,10 @@ export class NodusClient {
     return body;
   }
 
-  async completeResumableUpload(uploadId) {
+  async completeResumableUpload(uploadId, idempotencyKey) {
     const res = await this._fetch(`${this.gatewayUrl}/api/assets/uploads/${encodeURIComponent(uploadId)}/complete`, {
       method: "POST",
-      headers: this._getHeaders()
+      headers: { ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}), ...this._getHeaders() }
     });
     const body = await res.json();
     if (!res.ok || !body.success) throw new Error(body.error || `Unable to complete resumable upload: HTTP ${res.status}`);
@@ -804,6 +1238,18 @@ export class NodusClient {
   async get(fileId, options = {}) {
     if (!fileId) throw new Error("fileId is required");
 
+    if (fileId.startsWith("direct_")) {
+      const manifest = await this.getDirectManifest(fileId);
+      const data = await this._readStreamFully(await this.stream(fileId, options));
+      return {
+        data,
+        name: manifest.originalName || fileId,
+        type: manifest.originalType || "application/octet-stream",
+        size: data.byteLength,
+        encrypted: true
+      };
+    }
+
     const res = await this._fetch(`${this.gatewayUrl}/api/photos/${fileId}/stream`, {
       headers: this._getHeaders()
     });
@@ -814,7 +1260,7 @@ export class NodusClient {
 
     const isEncrypted = res.headers.get("x-nodus-encrypted") === "true";
     const ivHex = options.iv || res.headers.get("x-nodus-iv");
-    const keyHex = options.key || res.headers.get("x-nodus-key");
+    const keyHex = options.key || this.keyCache.get(fileId) || await this.recoverAssetKey(fileId, options);
     const encryptionMode = res.headers.get("x-nodus-encryption-mode") || "aes-gcm-v1";
     const chunkSize = Number(res.headers.get("x-nodus-chunk-size"));
     const chunkCount = Number(res.headers.get("x-nodus-chunk-count"));
@@ -959,7 +1405,172 @@ export class NodusClient {
     if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
     this.userAddress = address;
     if (data.accessToken) this.accessToken = data.accessToken;
+    if (data.tenant?.organizationId) this.organizationId = data.tenant.organizationId;
     return data;
+  }
+
+  /** Creates a device encryption identity and registers only its public half. */
+  async bootstrapKeyIdentity({ passphrase } = {}) {
+    if (!this.userAddress) throw new Error("Authenticate with Solana before creating an encryption identity");
+    const identity = await NodusCrypto.createEnvelopeIdentity();
+    await this.registerKeyIdentity(identity);
+    const recoveryKit = passphrase ? await NodusCrypto.createRecoveryKit(identity, passphrase) : null;
+    return { identity, recoveryKit };
+  }
+
+  async registerKeyIdentity(identity) {
+    if (!this.userAddress) throw new Error("Authenticate with Solana before registering an encryption identity");
+    if (!identity?.primaryPublicKey || !identity?.primaryPrivateKey) throw new Error("A complete device encryption identity is required");
+    const res = await this._fetch(`${this.gatewayUrl}/api/key-identities/${encodeURIComponent(this.userAddress)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._getHeaders() },
+      body: JSON.stringify({ publicKey: identity.primaryPublicKey, recoveryPublicKey: identity.recoveryPublicKey || null })
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to register encryption identity: HTTP ${res.status}`);
+    this.keyIdentity = identity;
+    return body.identity;
+  }
+
+  async getKeyIdentity(address) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/key-identities/${encodeURIComponent(address)}`, { headers: this._getHeaders() });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Encryption identity not found for ${address}`);
+    return body.identity;
+  }
+
+  async getOrganizationKeyRecipients(orgId) {
+    const res = await this._fetch(`${this.gatewayUrl}/api/orgs/${encodeURIComponent(orgId)}/key-recipients`, { headers: this._getHeaders() });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to load organization key recipients: HTTP ${res.status}`);
+    return body.recipients || [];
+  }
+
+  async protectAssetKey(assetId, { recipientAddresses = [], organizationId = null } = {}) {
+    if (!assetId || !this.userAddress || !this.keyIdentity) {
+      throw new Error("An authenticated device encryption identity is required to protect an asset key");
+    }
+    const dataKeyHex = this.keyCache.get(assetId);
+    if (!dataKeyHex) throw new Error(`No device-local data key is available for ${assetId}`);
+    const activeOrganizationId = organizationId || this.organizationId;
+    if (!activeOrganizationId) throw new Error("A tenant organization is required to protect an asset key");
+    if (organizationId && this.organizationId && organizationId !== this.organizationId) {
+      throw new Error("The requested organization does not match the authenticated tenant");
+    }
+    const recipients = new Map();
+    for (const recipient of await this.getOrganizationKeyRecipients(activeOrganizationId)) {
+      recipients.set(recipient.member, { ...recipient, organizationId: activeOrganizationId });
+    }
+    // The API is deliberately organization-scoped: arbitrary addresses cannot
+    // receive an envelope unless they are a member of the active tenant.
+    for (const address of recipientAddresses) {
+      if (!recipients.has(address)) throw new Error(`Recipient ${address} is not a member of the active organization`);
+    }
+
+    const envelopes = [];
+    for (const recipient of recipients.values()) {
+      if (!recipient.identity?.publicKey) continue;
+      envelopes.push(await NodusCrypto.wrapDataKey(dataKeyHex, recipient.identity.publicKey, {
+        assetId, recipientAddress: recipient.member, recipientType: "user", organizationId: recipient.organizationId
+      }));
+      if (recipient.identity.recoveryPublicKey) {
+        envelopes.push(await NodusCrypto.wrapDataKey(dataKeyHex, recipient.identity.recoveryPublicKey, {
+          assetId, recipientAddress: recipient.member, recipientType: "recovery", organizationId: recipient.organizationId
+        }));
+      }
+    }
+    if (!envelopes.length) throw new Error("No recipient encryption identities are registered");
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/${encodeURIComponent(assetId)}/key-envelopes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._getHeaders() },
+      body: JSON.stringify({ envelopes })
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Unable to store encrypted key envelopes: HTTP ${res.status}`);
+    return body.asset;
+  }
+
+  async recoverAssetKey(assetId, { recoveryKit = null, passphrase = null, recoveryPrivateKey = null } = {}) {
+    if (!this.userAddress) throw new Error("Authenticate with Solana before recovering an asset key");
+    const res = await this._fetch(`${this.gatewayUrl}/api/assets/${encodeURIComponent(assetId)}/key-envelopes`, { headers: this._getHeaders() });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || `Key envelopes not found for ${assetId}`);
+    const recoveryKey = recoveryPrivateKey || (recoveryKit ? await NodusCrypto.openRecoveryKit(recoveryKit, passphrase) : null);
+    const primary = this.keyIdentity?.primaryPrivateKey || null;
+    const candidates = recoveryKey
+      ? body.envelopes.filter((entry) => entry.recipientType === "recovery").map((entry) => ({ entry, privateKey: recoveryKey }))
+      : body.envelopes.filter((entry) => entry.recipientType === "user" && primary).map((entry) => ({ entry, privateKey: primary }));
+    for (const candidate of candidates) {
+      try {
+        const keyHex = await NodusCrypto.unwrapDataKey(candidate.entry, candidate.privateKey, { assetId });
+        this.keyCache.set(assetId, keyHex);
+        return keyHex;
+      } catch {
+        // An envelope for another device/organization member cannot be opened
+        // with this private key; try the remaining recipient envelopes.
+      }
+    }
+    throw new Error(`No decryptable key envelope is available for ${assetId}`);
+  }
+
+  /** Lists assets that must be re-encrypted after a member's envelope is revoked. */
+  async listPendingKeyRotations() {
+    const res = await this._fetch(`${this.gatewayUrl}/api/key-rotations/pending`, { headers: this._getHeaders() });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || "Unable to load pending key rotations");
+    return body.rotations || [];
+  }
+
+  /**
+   * Performs strong revocation without server key custody. The SDK decrypts the
+   * source asset locally, encrypts a replacement with a fresh data key, creates
+   * envelopes for current members, then asks the API to shred the old asset.
+   */
+  async rotateAssetAfterRevocation({ rotationId, assetId, name, type, description, tags } = {}) {
+    if (!rotationId || !assetId) throw new Error("rotationId and assetId are required");
+    const source = await this.get(assetId);
+    const record = source.record || source;
+    const replacement = await this.put(source.data, {
+      name: name || record.original_name || record.name,
+      type: type || record.original_type || record.content_type,
+      description: description || record.description || "Re-encrypted after member revocation",
+      tags: tags || record.tags || [],
+      organizationId: this.organizationId
+    });
+    const res = await this._fetch(`${this.gatewayUrl}/api/key-rotations/${encodeURIComponent(rotationId)}/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._getHeaders() },
+      body: JSON.stringify({ replacementAssetId: replacement.id })
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) throw new Error(body.error || "Unable to complete key rotation");
+    this.keyCache.delete(assetId);
+    return { replacement, rotation: body.rotation };
+  }
+
+  async _protectUploadedAsset(assetId, options) {
+    const organizationId = options?.organizationId || this.organizationId || null;
+    if (!this.keyIdentity || !this.userAddress) {
+      if (organizationId) throw new Error("Organization assets require an authenticated device encryption identity");
+      return null;
+    }
+    return this.protectAssetKey(assetId, { organizationId });
+  }
+
+  /**
+   * An encrypted asset is not considered successfully uploaded for a tenant
+   * until its owner/member envelopes are persisted. If that last client-side
+   * step fails, destroy the newly created ciphertext instead of leaving an
+   * unrecoverable asset behind.
+   */
+  async _protectOrDiscardUploadedAsset(assetId, options) {
+    try {
+      return await this._protectUploadedAsset(assetId, options);
+    } catch (error) {
+      this.keyCache.delete(assetId);
+      await this.delete(assetId).catch(() => {});
+      throw new Error(`Asset envelope protection failed; the uploaded ciphertext was discarded: ${error.message}`);
+    }
   }
 
   /**
@@ -1095,7 +1706,9 @@ export class NodusClient {
     const headers = {};
     if (includeJson) headers["Accept"] = "application/json";
     if (this.accessToken || this.apiKey) headers["Authorization"] = `Bearer ${this.accessToken || this.apiKey}`;
-    if (this.userAddress) headers["x-solana-address"] = this.userAddress;
+    // Legacy local/demo endpoints still accept this hint. Production routes
+    // authenticate exclusively from the bearer session token.
+    if (this.userAddress && !this.accessToken) headers["x-solana-address"] = this.userAddress;
     return headers;
   }
 }

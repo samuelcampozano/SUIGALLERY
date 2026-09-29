@@ -16,7 +16,7 @@ services:
   # 1. DEVELOPMENT / STAGING ENVIRONMENT (Branch: dev)
   # ------------------------------------------------------
   - type: web
-    name: suigallery-dev
+    name: nodus-dev
     runtime: docker
     plan: free
     region: oregon
@@ -28,6 +28,8 @@ services:
         value: 3000
       - key: NODE_ENV
         value: production
+      - key: WALRUS_DIRECT_TESTNET_ENABLED
+        value: "true"
       - key: DATABASE_URL
         fromDatabase:
           name: nodus-db
@@ -42,12 +44,20 @@ services:
         sync: false
       - key: CONSOLE_WEB_ACCOUNT_ADDRESS
         sync: false
+      - key: NODUS_ALLOWED_ORIGINS
+        sync: false
+      - key: NODUS_PROVISIONING_ADMIN_TOKEN
+        sync: false
+      - key: NODUS_TENANT_PROVISIONER_URL
+        sync: false
+      - key: NODUS_TENANT_PROVISIONER_TOKEN
+        sync: false
 
   # ------------------------------------------------------
   # 2. PRODUCTION ENVIRONMENT (Branch: main)
   # ------------------------------------------------------
   - type: web
-    name: suigallery-prod
+    name: nodus-prod
     runtime: docker
     plan: free
     region: oregon
@@ -59,6 +69,8 @@ services:
         value: 3000
       - key: NODE_ENV
         value: production
+      - key: WALRUS_DIRECT_TESTNET_ENABLED
+        value: "true"
       - key: DATABASE_URL
         fromDatabase:
           name: nodus-db
@@ -72,4 +84,12 @@ services:
       - key: CONSOLE_SERVICE_PRIVATE_KEY
         sync: false
       - key: CONSOLE_WEB_ACCOUNT_ADDRESS
+        sync: false
+      - key: NODUS_ALLOWED_ORIGINS
+        sync: false
+      - key: NODUS_PROVISIONING_ADMIN_TOKEN
+        sync: false
+      - key: NODUS_TENANT_PROVISIONER_URL
+        sync: false
+      - key: NODUS_TENANT_PROVISIONER_TOKEN
         sync: false

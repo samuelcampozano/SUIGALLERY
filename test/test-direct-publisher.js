@@ -37,9 +37,16 @@ async function run() {
   console.log("==================================================");
 
   const received = [];
+  const blobs = new Map();
   const consumedJtis = new Set();
   const publisher = http.createServer(async (req, res) => {
-    if (req.method !== "PUT" || req.url?.split("?")[0] !== "/v1/blobs") {
+    const route = req.url?.split("?")[0] || "";
+    if (req.method === "GET" && route.startsWith("/v1/blobs/")) {
+      const blob = blobs.get(decodeURIComponent(route.slice("/v1/blobs/".length)));
+      if (!blob) return res.writeHead(404).end();
+      return res.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Length": blob.length }).end(blob);
+    }
+    if (req.method !== "PUT" || route !== "/v1/blobs") {
       res.writeHead(404).end();
       return;
     }
@@ -62,6 +69,7 @@ async function run() {
     }
     consumedJtis.add(claims.jti);
     const blobId = crypto.createHash("sha256").update(body).digest("base64url");
+    blobs.set(blobId, body);
     const receipt = signReceipt({
       iat: claims.iat,
       exp: claims.exp,
@@ -96,7 +104,7 @@ async function run() {
     const result = await client.put(data, {
       name: "direct-publisher-test.bin",
       type: "application/octet-stream",
-      directPublisher: true,
+      resumableThresholdBytes: MiB,
       chunkSize: MiB,
       segmentSize: 2 * MiB,
       epochs: 2,
@@ -138,6 +146,28 @@ async function run() {
     const manifestBody = await manifestResponse.json();
     assert(manifestResponse.status === 200 && manifestBody.manifest.segments.length === 2, "Exposes an ordered encrypted-segment manifest");
     assert(manifestBody.manifest.segments.every((segment) => segment.verificationState === "verified"), "Finalizes only independently verified publisher receipts");
+    assert(manifestBody.manifest.segments.every((segment) => Number.isInteger(segment.chunkStart) && Number.isInteger(segment.chunkCount)), "Manifest preserves authenticated chunk boundaries for streamed decryption");
+    assert(/^[a-f0-9]{64}$/.test(manifestBody.manifest.manifestSha256), "Includes a deterministic manifest integrity hash");
+
+    const plaintextStream = await client.stream(result.id);
+    const reader = plaintextStream.getReader();
+    const recoveredParts = [];
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      recoveredParts.push(Buffer.from(value));
+    }
+    assert(Buffer.concat(recoveredParts).equals(data), "Streams publisher ciphertext through the gateway and decrypts it on-device chunk by chunk");
+
+    const rangedStream = await client.stream(result.id, { range: "bytes=1048573-1048585" });
+    const rangedReader = rangedStream.getReader();
+    const rangedParts = [];
+    while (true) {
+      const { value, done } = await rangedReader.read();
+      if (done) break;
+      rangedParts.push(Buffer.from(value));
+    }
+    assert(Buffer.concat(rangedParts).equals(data.subarray(1048573, 1048586)), "Decrypts a requested plaintext byte range using authenticated chunk boundaries");
 
     const assetsResponse = await fetch(`${gatewayUrl}/api/assets`);
     const assetsBody = await assetsResponse.json();

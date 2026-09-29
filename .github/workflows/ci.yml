@@ -1,4 +1,4 @@
-name: SuiGallery CI
+name: Nodus CI
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Security & API Test Suite
+    name: Nodus Automated Test Suites
     runs-on: ubuntu-latest
 
     steps:
@@ -24,8 +24,5 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Run Unit & Security Tests
-        run: npm run test:security
-
-      - name: Run REST API Integration Tests
-        run: npm run test:api
+      - name: Run All Automated Test Suites
+        run: npm test

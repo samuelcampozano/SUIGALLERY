@@ -84,7 +84,7 @@ export async function validateMagicBytes(filePath) {
  * Guarantees zero-knowledge: server never accepts plaintext files directly.
  *
  * @param {string} filePath - Absolute path to uploaded file on disk
- * @param {object} meta - Metadata envelope { iv, key }
+ * @param {object} meta - Non-secret encryption metadata { iv, mode, chunkSize }
  * @returns {Promise<{ valid: boolean, error?: string }>}
  */
 export async function validateCiphertextPayload(filePath, meta = {}) {
@@ -97,9 +97,10 @@ export async function validateCiphertextPayload(filePath, meta = {}) {
     return { valid: false, error: "Invalid or missing AES-GCM 96-bit initialization vector (IV)" };
   }
 
-  // 2. Verify Key format (256-bit symmetric key = 64 hex characters or wrapped envelope)
-  if (!meta.key || typeof meta.key !== "string" || meta.key.length < 32) {
-    return { valid: false, error: "Invalid or missing key envelope material" };
+  // 2. The raw data key must never enter the gateway. Key wrapping and recovery
+  // are client-side concerns; validation only needs public envelope metadata.
+  if (Object.prototype.hasOwnProperty.call(meta, "key")) {
+    return { valid: false, error: "Raw data keys must not be sent to the server" };
   }
 
   // 3. Inspect raw file header to ensure no plaintext file header was leaked

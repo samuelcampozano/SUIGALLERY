@@ -85,8 +85,8 @@ graph TD
 
 ### 1. Clone & Configure
 ```bash
-git clone https://github.com/samuelcampozano/SUIGALLERY.git
-cd SUIGALLERY
+git clone https://github.com/samuelcampozano/nodus.git
+cd nodus
 
 # Copy environment template
 cp .env.example .env
@@ -114,15 +114,21 @@ npm run dev
 ```
 
 ### 4. Run Automated Test Suites
-Run the automated test suites verifying backend security defenses, API endpoints, zero-plaintext privacy, developer SDK, private search, on-chain Sui Mainnet policies, crypto-shredding, and Solana identity:
+Run the automated test suites verifying backend security defenses, API endpoints, zero-plaintext privacy, developer SDK, private search, on-chain Sui Mainnet policies, crypto-shredding, Solana identity, and resumable direct publisher:
 ```bash
-# Run all 7 test suites end-to-end
+# Run all 15 test suites end-to-end
 npm test
 
 # Run individual suites
 npm run test:security       # Magic bytes validation, path traversal defense, XSS escaping, cache TTL
 npm run test:api            # REST endpoints, rate limiting, and HTTP security headers
 npm run test:zero-plaintext # Validates zero plaintext disk/memory leaks, enforces ciphertext, 404 on wallet endpoint
+npm run test:m0-zero-custody # Enforces strict zero-custody boundaries on upload routes
+npm run test:resumable      # Resumable encrypted multipart upload and chunk assembly
+npm run test:direct-publisher # Authenticated direct publisher stream and HMAC receipts
+npm run test:key-envelopes  # Client-side ECDH P-256 key envelopes & emergency account recovery
+npm run test:tenant-provisioning # Atomic tenant, storage context, and operator provisioning
+npm run test:web-zero-custody # In-browser zero-custody WebCrypto verification
 npm run test:sdk            # Developer SDK operations: put, get, private search, and crypto-shredding
 npm run test:onchain        # Sui Mainnet GraphQL Move policy and custodian verification
 npm run test:shred          # End-to-end live crypto-shredding and bit-for-bit validation
@@ -187,7 +193,13 @@ const org = await nodus.createOrganization({
 console.log(`Anchor Org PDA: ${org.orgPda}`);
 ```
 
-In a production tenant deployment, `verifySolanaAuth` returns a short-lived `accessToken` after the address is verified as a member of the selected pre-provisioned organization. The SDK retains that token for subsequent asset, upload, manifest, and deletion requests; do not persist it in browser local storage. Configure `POSTGRES_PASSWORD` and `DATABASE_URL` only in an untracked `.env` file, then apply `server/migrations/001_auth_tenants.sql` before enabling production mode.
+In a production tenant deployment, `verifySolanaAuth` returns a short-lived `accessToken` after the address is verified as a member of the selected pre-provisioned organization. The SDK retains that token for subsequent asset, upload, manifest, and deletion requests; do not persist it in browser local storage. Configure `POSTGRES_PASSWORD` and `DATABASE_URL` only in an untracked `.env` file, then apply migrations `001_auth_tenants.sql` through `006_tenant_provisioning.sql` before enabling tenant uploads. The control plane reserves quota before an upload, binds it to the authenticated user and organization, and converts the reservation to used storage only after finalization.
+
+The API refuses tenant endpoints when no tenant store is configured. A local-only compatibility bypass requires `NODUS_ALLOW_INSECURE_DEV_AUTH=true`; never set it outside a disposable development environment.
+
+Tenant organizations are provisioned by the separate operator plane, never by a browser session. Set `NODUS_PROVISIONING_ADMIN_TOKEN` in the secret manager and follow [the provisioning runbook](docs/TENANT_PROVISIONING_RUNBOOK.md). When a managed storage account is available, configure `NODUS_TENANT_PROVISIONER_URL` and its token; otherwise an operator must supply the existing `spaceId`, `bucketId`, and `sealPolicyId` to the protected provisioning API.
+
+Tenant organizations are provisioned by the separate operator plane, never by a browser session. Set `NODUS_PROVISIONING_ADMIN_TOKEN` in the secret manager and follow [the provisioning runbook](docs/TENANT_PROVISIONING_RUNBOOK.md). When a managed storage account is available, configure `NODUS_TENANT_PROVISIONER_URL` and its token; otherwise an operator must supply the existing `spaceId`, `bucketId`, and `sealPolicyId` to the protected provisioning API.
 
 Set `NODUS_ALLOWED_ORIGINS` to the comma-separated HTTPS origins of the browser applications allowed to call the API. Production rejects all cross-origin browser requests when this value is absent.
 
@@ -231,22 +243,44 @@ Set `NODUS_ALLOWED_ORIGINS` to the comma-separated HTTPS origins of the browser 
 
 ### Resumable uploads
 
-The gateway supports encrypted multipart sessions for files from 1 byte up to 500 GiB. The SDK automatically chooses this protocol above 20 MiB, using 8 MiB chunks by default. Each part is encrypted independently with AES-256-GCM, checksum-verified by the gateway, persisted to a session directory, and can be retried without re-uploading prior parts. A session expires after 24 hours if it is not completed.
+The gateway supports encrypted multipart sessions for files from 1 byte up to 500 GiB. The SDK uses this legacy protocol only when explicitly selected or below 20 MiB; each part is encrypted independently with AES-256-GCM, checksum-verified by the gateway, persisted to a session directory, and can be retried without re-uploading prior parts. A session expires after 24 hours if it is not completed.
 
-The legacy resumable route assembles ciphertext sequentially on local disk before passing it to the Walrus adapter. For production-scale workloads, use the direct authenticated publisher flow. The gateway becomes a control plane: it issues a short-lived, one-time JWT per encrypted segment and stores only session/manifest metadata. Ciphertext is sent from the browser directly to the configured Walrus publisher and never passes through the Nodus server.
+The legacy resumable route assembles ciphertext sequentially on local disk before passing it to the Walrus adapter. For production-scale workloads, the SDK automatically selects the direct authenticated publisher flow above 20 MiB (set `directPublisher: false` only for a controlled legacy migration). The gateway becomes a control plane: it issues a short-lived, one-time JWT per encrypted segment and stores canonical session/manifest metadata in PostgreSQL. Ciphertext is sent from the browser directly to the configured Walrus publisher and never passes through the Nodus server.
 
 ```js
 const upload = await nodus.put(largeVideoFile, {
   name: "archive.mp4",
   type: "video/mp4",
-  directPublisher: true,
   chunkSize: 8 * 1024 * 1024,
   segmentSize: 64 * 1024 * 1024,
+  concurrency: 3,
+  maxRetries: 4,
   epochs: 2
 });
 ```
 
-Each segment becomes one Walrus blob; Nodus returns a logical asset plus an ordered manifest. This is required for files larger than a single Walrus blob. The AES key stays with the client and is never sent to the control plane or stored in the manifest. Configure `NODUS_PUBLISHER_URL`, `NODUS_PUBLISHER_JWT_SECRET`, and a distinct `NODUS_PUBLISHER_RECEIPT_SECRET` before enabling this option outside tests. The publisher must consume each JWT `jti` exactly once and return an HMAC-SHA256 signed receipt binding the `jti`, upload ID, segment index, ciphertext SHA-256, ciphertext size, and Walrus blob ID; Nodus refuses to finalize an asset without verified receipts for every segment.
+Each segment becomes one Walrus blob; Nodus returns a logical asset plus an ordered manifest. This is required for files larger than a single Walrus blob. The SDK hashes one deterministic encryption pass and streams a second one to the publisher, avoiding any in-memory ciphertext segment allocation. The manifest and every AES-GCM ciphertext chunk carry a SHA-256 integrity check that is verified before decryption. `nodus.stream(assetId, { range: "bytes=0-1048575" })` supports authenticated plaintext ranges for media players and seekable downloads. The AES key stays with the client and is never sent to the control plane or stored in the manifest. Configure `NODUS_PUBLISHER_URL`, `NODUS_PUBLISHER_JWT_SECRET`, and a distinct `NODUS_PUBLISHER_RECEIPT_SECRET` before enabling this option outside tests. The publisher must consume each JWT `jti` exactly once and return an HMAC-SHA256 signed receipt binding the `jti`, upload ID, segment index, ciphertext SHA-256, ciphertext size, and Walrus blob ID; Nodus refuses to finalize an asset without verified receipts for every segment.
+
+For product UIs, pass a `NodusUploadControl` through upload options. It pauses or cancels work safely; the SDK stores only a session reference in browser storage so an unfinished upload can be discovered after reopening the browser. The data key remains device-local or is recovered through its encrypted owner/recovery envelope.
+
+### Recipient envelopes and account recovery
+
+After Solana sign-in, create one client-side encryption identity. Nodus registers only the P-256 public keys. Every asset key is then wrapped locally using ephemeral ECDH P-256 plus AES-256-GCM for the owner, recipients, and (optionally) their recovery keys. The gateway stores only these ciphertext envelopes and cannot unwrap them.
+
+```js
+const { identity, recoveryKit } = await nodus.bootstrapKeyIdentity({
+  passphrase: "a long recovery passphrase"
+});
+
+const upload = await nodus.put(file, { name: "plan.pdf", type: "application/pdf" });
+await nodus.protectAssetKey(upload.id, { recipientAddresses: [teammateSolanaAddress] });
+await nodus.protectAssetKey(upload.id, { organizationId: "acme-corp" });
+
+// On a new device, after authenticating the same Solana identity:
+const keyHex = await nodus.recoverAssetKey(upload.id, { recoveryKit, passphrase: "a long recovery passphrase" });
+```
+
+Store the encrypted `recoveryKit` with the user (download, password manager, or another trusted vault), never in the Nodus gateway. Removing a member blocks future envelope fan-out; re-encrypt existing assets when immediate revocation is required. **Revocation cannot delete a plaintext copy that a recipient has already decrypted, downloaded, exported, or screen-captured.** It prevents future recovery through Nodus only after the old ciphertext is re-encrypted and its old envelopes are destroyed.
 
 ---
 

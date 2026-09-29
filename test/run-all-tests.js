@@ -6,14 +6,17 @@ const suites = [
   { name: "REST API Integration", file: "test/test-api.js" },
   { name: "CORS & Uniform Organization Auth", file: "test/test-cors-uniform-auth.js" },
   { name: "Zero-Plaintext & Client Encryption", file: "test/test-zero-plaintext.js" },
+  { name: "M0 Zero-Custody Upload Boundaries", file: "test/test-m0-zero-custody.js" },
   { name: "Resumable Encrypted Uploads", file: "test/test-resumable-upload.js" },
   { name: "Resumable Upload HTTP API", file: "test/test-resumable-api.js" },
+  { name: "Client-Side Key Envelopes & Recovery", file: "test/test-key-envelopes.js" },
   { name: "Tenant Upload Context Isolation", file: "test/test-tenant-upload-context.js" },
   { name: "Direct Authenticated Publisher", file: "test/test-direct-publisher.js" },
   { name: "Developer SDK & Private Search", file: "test/test-sdk.js" },
   { name: "Live Sui On-Chain Verification", file: "test/test-onchain.js" },
   { name: "End-to-End Crypto-Shredding", file: "test-crypto-shredding.js" },
   { name: "Solana Identity & Anchor PDAs", file: "test/test-solana.js" },
+  { name: "Direct Walrus Testnet Fallback", file: "test/test-walrus-testnet-fallback.js" },
   { name: "Security Audit & Pen-Test", file: "test/test-audit-security.js" }
 ];
 
