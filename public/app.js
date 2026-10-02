@@ -830,10 +830,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const shareModal = document.getElementById("shareModal");
   const shareModalClose = document.getElementById("shareModalClose");
   const shareCloseBtn = document.getElementById("shareCloseBtn");
-  const shareLinkInput = document.getElementById("shareLinkInput");
-  const copyShareLinkBtn = document.getElementById("copyShareLinkBtn");
-  const shareRecipientInput = document.getElementById("shareRecipientInput");
-  const wrapRecipientBtn = document.getElementById("wrapRecipientBtn");
+  const shareResourceType = document.getElementById("shareResourceType");
+  const shareFolderGroup = document.getElementById("shareFolderGroup");
+  const shareFolderSelect = document.getElementById("shareFolderSelect");
+  const shareRecipientSelect = document.getElementById("shareRecipientSelect");
+  const shareRoleSelect = document.getElementById("shareRoleSelect");
+  const shareExpiresAt = document.getElementById("shareExpiresAt");
+  const grantShareBtn = document.getElementById("grantShareBtn");
+  const shareAccessList = document.getElementById("shareAccessList");
   const instantDemoBtn = document.getElementById("instantDemoBtn");
   const downloadBtn = document.getElementById("downloadBtn");
   const deleteBtn = document.getElementById("deleteBtn");
@@ -1240,25 +1244,22 @@ document.addEventListener("DOMContentLoaded", () => {
     return identity;
   }
 
-  async function wrapDataKeyForCurrentUser(assetId, keyHex) {
-    const identity = await ensureDeviceIdentity();
-    const recipient = await window.crypto.subtle.importKey("jwk", identity.publicKey, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  async function wrapDataKeyForRecipient(assetId, keyHex, recipientAddress, publicKey) {
+    if (!recipientAddress || !publicKey) throw new Error("The selected member has no encryption identity");
+    const recipient = await window.crypto.subtle.importKey("jwk", publicKey, { name: "ECDH", namedCurve: "P-256" }, false, []);
     const ephemeral = await window.crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
     const shared = await window.crypto.subtle.deriveBits({ name: "ECDH", public: recipient }, ephemeral.privateKey, 256);
     const wrappingKey = await window.crypto.subtle.importKey("raw", shared, { name: "AES-GCM" }, false, ["encrypt"]);
     const iv = window.crypto.getRandomValues(new Uint8Array(12));
     const tenantId = activeTenantId();
-    const aad = new TextEncoder().encode(`nodus:key-envelope:v1:${assetId}:${state.currentUser.address}:user:${tenantId}`);
+    const aad = new TextEncoder().encode(`nodus:key-envelope:v1:${assetId}:${recipientAddress}:user:${tenantId}`);
     const ciphertext = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad }, wrappingKey, NodusCrypto.hexToBytes(keyHex));
-    return {
-      recipientAddress: state.currentUser.address,
-      recipientType: "user",
-      organizationId: tenantId,
-      algorithm: "ECDH-P256/AES-256-GCM",
-      ephemeralPublicKey: await window.crypto.subtle.exportKey("jwk", ephemeral.publicKey),
-      iv: NodusCrypto.bytesToHex(iv),
-      ciphertext: NodusCrypto.bytesToHex(ciphertext)
-    };
+    return { recipientAddress, recipientType: "user", organizationId: tenantId, algorithm: "ECDH-P256/AES-256-GCM", ephemeralPublicKey: await window.crypto.subtle.exportKey("jwk", ephemeral.publicKey), iv: NodusCrypto.bytesToHex(iv), ciphertext: NodusCrypto.bytesToHex(ciphertext) };
+  }
+
+  async function wrapDataKeyForCurrentUser(assetId, keyHex) {
+    const identity = await ensureDeviceIdentity();
+    return wrapDataKeyForRecipient(assetId, keyHex, state.currentUser.address, identity.publicKey);
   }
 
   async function persistOwnerEnvelope(assetId, keyHex) {
@@ -3107,13 +3108,38 @@ document.addEventListener("DOMContentLoaded", () => {
   editCancelBtn.addEventListener("click", closeEditModal);
 
   // Share Modal Handlers
-  function openShareModal() {
-    if (!state.selectedPhoto) return;
-    const shareUrl = `${window.location.origin}/?asset=${encodeURIComponent(state.selectedPhoto.id)}`;
-    if (shareLinkInput) shareLinkInput.textContent = shareUrl;
-    if (shareRecipientInput) shareRecipientInput.value = "";
-    if (shareModal) shareModal.classList.remove("hidden");
+  let shareRecipients = [];
+  async function loadAssetShares(assetId) {
+    const response = await apiFetch(`/api/assets/${encodeURIComponent(assetId)}/shares`);
+    const body = await response.json();
+    if (!response.ok || !body.success) throw new Error(body.error || "Could not load shared access");
+    shareAccessList.innerHTML = body.shares.length ? `<strong>Current access</strong>${body.shares.map((share) => `<div class="tech-mini-val" style="margin-top:6px"><span>${escapeHtml(shortenAddress(share.recipientAddress))} · ${escapeHtml(share.role)} · ${escapeHtml(share.status)}${share.expiresAt ? ` · expires ${escapeHtml(new Date(share.expiresAt).toLocaleString())}` : ""}</span>${share.status === "active" ? `<button class="copy-btn" data-revoke-share="${escapeHtml(share.id)}" title="Revoke access"><i data-lucide="ban"></i></button>` : ""}</div>`).join("")}` : "<span style=\"color:var(--text-muted);font-size:.85rem\">No member access has been granted yet.</span>";
+    shareAccessList.querySelectorAll("[data-revoke-share]").forEach((button) => button.addEventListener("click", async () => {
+      const revoke = await apiFetch(`/api/assets/${encodeURIComponent(assetId)}/shares/${encodeURIComponent(button.dataset.revokeShare)}`, { method: "DELETE" });
+      const result = await revoke.json();
+      if (!revoke.ok || !result.success) return showToast(result.error || "Could not revoke access", "danger");
+      showToast("Member access revoked. Their future envelope reads are blocked.", "success");
+      await loadAssetShares(assetId); if (window.lucide) window.lucide.createIcons();
+    }));
     if (window.lucide) window.lucide.createIcons();
+  }
+
+  async function openShareModal() {
+    if (!state.selectedPhoto) return;
+    if (!state.currentUser?.accessToken) return showToast("Sign in to share encrypted access.", "warning");
+    try {
+      const [recipientResponse, folderResponse] = await Promise.all([apiFetch(`/api/orgs/${encodeURIComponent(activeTenantId())}/key-recipients`), apiFetch("/api/assets/folders")]);
+      const recipients = await recipientResponse.json(); const folders = await folderResponse.json();
+      if (!recipientResponse.ok || !recipients.success) throw new Error(recipients.error || "Could not load organization members");
+      if (!folderResponse.ok || !folders.success) throw new Error(folders.error || "Could not load organization folders");
+      shareRecipients = (recipients.recipients || []).filter((item) => item.member !== state.currentUser.address && item.identity?.publicKey);
+      shareRecipientSelect.innerHTML = shareRecipients.length ? shareRecipients.map((item) => `<option value="${escapeHtml(item.member)}">${escapeHtml(shortenAddress(item.member))} · ${escapeHtml(item.role)}</option>`).join("") : "<option value=\"\">No eligible organization members</option>";
+      shareFolderSelect.innerHTML = (folders.folders || []).map((folder) => `<option value="${escapeHtml(folder.id)}">${escapeHtml(folder.name)}</option>`).join("") || "<option value=\"\">No folders available</option>";
+      shareResourceType.value = "asset"; shareFolderGroup.classList.add("hidden"); shareRoleSelect.value = "viewer"; shareExpiresAt.value = "";
+      shareModal.classList.remove("hidden");
+      await loadAssetShares(state.selectedPhoto.id);
+      if (window.lucide) window.lucide.createIcons();
+    } catch (error) { showToast(error.message, "danger"); }
   }
 
   function closeShareModal() {
@@ -3126,30 +3152,35 @@ document.addEventListener("DOMContentLoaded", () => {
   const shareModalBackdrop = document.getElementById("shareModalBackdrop");
   if (shareModalBackdrop) shareModalBackdrop.addEventListener("click", closeShareModal);
 
-  if (copyShareLinkBtn) {
-    copyShareLinkBtn.addEventListener("click", () => {
-      const link = shareLinkInput?.textContent;
-      if (link && link !== "--") {
-        navigator.clipboard.writeText(link).then(() => {
-          showToast("📋 Share link copied to clipboard!", "success");
-        }).catch(() => {
-          showToast("Failed to copy link", "danger");
-        });
+  if (shareResourceType) shareResourceType.addEventListener("change", () => shareFolderGroup.classList.toggle("hidden", shareResourceType.value !== "folder"));
+  if (grantShareBtn) grantShareBtn.addEventListener("click", async () => {
+    const recipient = shareRecipients.find((item) => item.member === shareRecipientSelect.value);
+    if (!recipient || !state.selectedPhoto) return showToast("Choose an eligible organization member.", "warning");
+    const expiresAt = shareExpiresAt.value ? new Date(shareExpiresAt.value).toISOString() : null;
+    const role = shareRoleSelect.value;
+    grantShareBtn.disabled = true;
+    try {
+      let photos = [state.selectedPhoto];
+      let folderId = null;
+      if (shareResourceType.value === "folder") {
+        folderId = shareFolderSelect.value;
+        if (!folderId) throw new Error("Choose a folder to share");
+        const response = await apiFetch(`/api/assets?folderId=${encodeURIComponent(folderId)}&limit=500`);
+        const body = await response.json(); if (!response.ok || !body.success) throw new Error(body.error || "Could not load folder files");
+        photos = body.assets || [];
+        if (!photos.length) throw new Error("This folder has no current files to share");
       }
-    });
-  }
-
-  if (wrapRecipientBtn) {
-    wrapRecipientBtn.addEventListener("click", async () => {
-      const recipient = shareRecipientInput?.value?.trim();
-      if (!recipient) {
-        showToast(t("toast_invalid_solana_addr"), "warning");
-        return;
+      for (const photo of photos) {
+        const key = assetKeyCache.get(photo.id) || await recoverAssetKey(photo.id);
+        const envelope = await wrapDataKeyForRecipient(photo.id, key, recipient.member, recipient.identity.publicKey);
+        const response = await apiFetch(`/api/assets/${encodeURIComponent(photo.id)}/shares`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipientAddress: recipient.member, role, expiresAt, envelopes: [envelope] }) });
+        const body = await response.json(); if (!response.ok || !body.success) throw new Error(body.error || `Could not share ${photo.name}`);
       }
-      showToast(`🔒 Encrypted key envelope created for ${shortenAddress(recipient)}!`, "success");
-      closeShareModal();
-    });
-  }
+      if (folderId) await apiFetch(`/api/assets/folders/${encodeURIComponent(folderId)}/shares`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipientAddress: recipient.member, role, expiresAt, assetIds: photos.map((photo) => photo.id) }) });
+      showToast(`Encrypted access granted to ${shortenAddress(recipient.member)} for ${photos.length} ${photos.length === 1 ? "file" : "files"}.`, "success");
+      if (!folderId) await loadAssetShares(state.selectedPhoto.id);
+    } catch (error) { showToast(error.message, "danger"); } finally { grantShareBtn.disabled = false; }
+  });
 
   // Instant 1-Click Demo Login
   if (instantDemoBtn) {

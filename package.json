@@ -26,6 +26,7 @@
     "test:walrus-fallback": "node test/test-walrus-testnet-fallback.js",
     "test:m3-sandbox": "node test/test-deployment-environment.js && node test/test-walrus-testnet-fallback.js",
     "test:private-search": "node test/test-private-search.js",
+    "test:asset-sharing": "node test/test-asset-sharing.js",
     "test:m4-search": "node test/test-private-search.js && node test/test-tenant-catalog-search.js",
     "test-connection": "node test-connection.js",
     "mcp:install": "npx -y @mysten-incubation/walrus-console-mcp@beta install",

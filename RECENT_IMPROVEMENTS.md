@@ -1,6 +1,6 @@
 # Nodus - Log de Melhorias Recentes
 
-Atualizado em 29 de setembro de 2026.
+Atualizado em 2 de outubro de 2026.
 
 Este documento registra as melhorias integradas na branch `dev` e as entregas prontas para merge nas branches de trabalho.
 
@@ -25,6 +25,23 @@ Este documento registra as melhorias integradas na branch `dev` e as entregas pr
 | Pronto para merge em `dev` | Contrato OpenAPI, exemplos SDK e webhooks assinados | branch `codex/openapi-signed-webhooks` |
 | Pronto para merge em `dev` | Sandbox/testnet isolado para API comercial (M3) | branch `codex/m3-commercial-api-sandbox` |
 | Pronto para merge em `dev` | Busca privada, filtros e reindexacao por tenant (M4) | branch `codex/m3-commercial-api-sandbox` |
+| Pronto para merge em `dev` | Compartilhamento interno de assets e pastas com envelopes (M5) | branch `codex/m5-asset-folder-sharing` |
+
+## 20. Compartilhamento interno por organização (M5)
+
+Entregue na branch `codex/m5-asset-folder-sharing`, pendente de merge na `dev`.
+
+- O modal legado de link descriptografado foi substituído por uma UX de compartilhamento apenas para membros da organização com identidade ECDH registrada. O navegador cifra um envelope novo para o destinatário; nenhuma chave AES chega ao gateway.
+- Arquivos podem ser compartilhados como `viewer`, `contributor` ou `admin`, com expiração opcional. Owner/admin podem administrar qualquer asset; contributor somente pode compartilhar assets próprios e não concede `admin`.
+- Grants e auditoria são persistidos por `organization_id` no PostgreSQL. Revogar ou expirar um grant impede leituras futuras do envelope do destinatário, preservando o limite zero-custody: não elimina uma chave que ele já tenha recuperado nem cópias que já tenha exportado.
+- O modal exibe os destinatários, papel, estado ativo/expirado/revogado e permite revogar um acesso ativo.
+- Pastas têm uma opção de compartilhamento por snapshot: cada arquivo atual recebe seu próprio envelope e grant, e a pasta registra a concessão auditável. Arquivos enviados depois não herdam acesso silenciosamente.
+- A migração `011_asset_sharing.sql` cria as tabelas tenant-scoped `asset_access_grants` e `folder_access_grants`; `test/test-asset-sharing.js` cobre recipient do tenant, papel, expiração, revogação e tentativa cross-tenant.
+
+### Validação
+
+- `node --check` passou para browser, backend e suíte nova; `npm run test:web-zero-custody` passou.
+- `npm run test:asset-sharing` está pronto, mas foi pulado sem `DATABASE_URL`. A execução contra PostgreSQL real é obrigatória antes do fechamento formal dos dois primeiros critérios de M5.
 
 ## 19. Busca privada e organizacao por tenant
 

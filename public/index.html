@@ -367,7 +367,7 @@
     </div>
   </div>
 
-  <!-- Share Memory Modal -->
+  <!-- Organization sharing — access is delivered only in recipient key envelopes. -->
   <div class="modal-dialog hidden" id="shareModal">
     <div class="modal-backdrop" id="shareModalBackdrop"></div>
     <div class="modal-content">
@@ -375,28 +375,28 @@
         <div class="header-icon-title">
           <div class="vault-modal-icon"><i data-lucide="share-2"></i></div>
           <div>
-            <h3 data-i18n="share_modal_title">Share Sovereign Memory</h3>
-            <p class="modal-subtitle" data-i18n="share_modal_subtitle">Share access with friends or wrap an encrypted key envelope.</p>
+            <h3>Share encrypted access</h3>
+            <p class="modal-subtitle">Choose an organization member. Nodus encrypts a new key envelope in this browser.</p>
           </div>
         </div>
         <button class="btn-close" id="shareModalClose"><i data-lucide="x"></i></button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label data-i18n="share_link_label">Direct Decrypted Share Link</label>
-          <div class="tech-mini-val" style="background: var(--bg-surface); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between;">
-            <code id="shareLinkInput" class="mono-code" style="font-size: 0.85rem; word-break: break-all;">--</code>
-            <button class="copy-btn" id="copyShareLinkBtn" title="Copy Share Link"><i data-lucide="copy"></i></button>
-          </div>
-          <span data-i18n="share_link_help" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; display: block;">Anyone with this link can view the high-resolution media.</span>
+          <label for="shareResourceType">What do you want to share?</label>
+          <select id="shareResourceType" class="form-input"><option value="asset">This file</option><option value="folder">A folder (current files)</option></select>
         </div>
-        <div class="form-group" style="margin-top: 1rem;">
-          <label data-i18n="share_wrap_label">Wrap for Teammate (Solana Address)</label>
-          <input type="text" id="shareRecipientInput" class="form-input" data-i18n-placeholder="share_recipient_placeholder" placeholder="Enter recipient Solana address...">
-          <button class="btn btn-secondary btn-sm" id="wrapRecipientBtn" style="margin-top: 8px;">
-            <i data-lucide="shield"></i> <span data-i18n="share_wrap_btn">Protect with Recipient Key Envelope</span>
-          </button>
+        <div class="form-group hidden" id="shareFolderGroup">
+          <label for="shareFolderSelect">Folder</label><select id="shareFolderSelect" class="form-input"></select>
         </div>
+        <div class="form-group">
+          <label for="shareRecipientSelect">Organization member</label><select id="shareRecipientSelect" class="form-input"></select>
+          <span style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;display:block">Only members with an encryption identity can receive access.</span>
+        </div>
+        <div class="form-group"><label for="shareRoleSelect">Permission</label><select id="shareRoleSelect" class="form-input"><option value="viewer">Viewer — view and download</option><option value="contributor">Contributor — collaborate</option><option value="admin">Admin — manage sharing</option></select></div>
+        <div class="form-group"><label for="shareExpiresAt">Access expires (optional)</label><input id="shareExpiresAt" type="datetime-local" class="form-input"></div>
+        <button class="btn btn-primary btn-sm" id="grantShareBtn"><i data-lucide="shield"></i> Encrypt and grant access</button>
+        <div id="shareAccessList" style="margin-top:1rem"></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="shareCloseBtn" data-i18n="close">Close</button>

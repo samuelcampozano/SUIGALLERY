@@ -109,15 +109,17 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 
 **Objetivo:** permitir colaboracao segura sem tornar a plataforma custodiante das chaves.
 
-- [ ] Criar UX de compartilhamento de arquivo e pasta para membros da organizacao.
-- [ ] Adicionar permissao `viewer`, `contributor`, `admin` e expiracao de acesso por compartilhamento.
+**Status:** primeira entrega de compartilhamento interno concluida na branch `codex/m5-asset-folder-sharing`; a suite PostgreSQL real ainda precisa ser executada antes de encerrar os itens formalmente.
+
+- [x] Criar UX de compartilhamento de arquivo e pasta para membros da organizacao (pasta como snapshot dos arquivos atuais).
+- [x] Adicionar permissao `viewer`, `contributor`, `admin` e expiracao de acesso por compartilhamento (aguarda execucao PostgreSQL real).
 - [ ] Criar links compartilhaveis opcionais com expiracao, senha e revogacao.
 - [ ] Exibir lista de destinatarios, permissoes e historico de compartilhamento.
 - [ ] Automatizar a tarefa de rotacao/re-cifragem apos remover um membro.
 - [ ] Implementar troca de dispositivo usando passkey/identidade de recovery sem exportar chave privada.
 - [ ] Decidir e documentar o modelo de social recovery/guardian para casos de perda total de dispositivo.
 
-**Criterio de saida:** owner compartilha, revoga e recupera um asset em outro dispositivo; os testes cobrem envelopes, revogacao e rotacao.
+**Criterio de saida:** owner compartilha, revoga e recupera um asset em outro dispositivo; os testes cobrem envelopes, revogacao e rotacao. A expiração e a revogação impedem leituras futuras de envelopes; não podem apagar uma chave ou cópia já decifrada no dispositivo do destinatário.
 
 ## M6 - Planos, billing e renovacao de storage
 
