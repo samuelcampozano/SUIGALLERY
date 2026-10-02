@@ -2,15 +2,15 @@
 
 ## Source of truth
 
-Status: Active. Updated 2 October 2026. Surface: authenticated web vault, sharing modal and asset/folder actions. Evidence reviewed: `public/index.html`, `public/app.js`, `public/style.css`, tenant catalog/envelope routes, `pending_milestones.md`. The pre-existing share modal offers a direct decrypted link; it is legacy UI and is replaced by the member-only sharing flow below.
+Status: Needs refresh. Updated 2 October 2026. Surface: authenticated web vault, sharing modal, landing page and app shell. Evidence reviewed: `public/index.html`, `public/app.js`, `public/style.css`, tenant catalog/envelope routes, `pending_milestones.md`, the product briefing, and branch `Nodus---Design-System-(-app-and-website-)` (`79a6e14`). The design branch adds `DESIGN_SYSTEM.md`, `Nodus Website.html` and `Nodus app.html` as high-fidelity references only; it does not change the shipping frontend, backend or API. The pre-existing share modal offers a direct decrypted link; it is legacy UI and is replaced by the member-only sharing flow below.
 
 ## Brand
 
-Nodus is calm, technically credible and protective. Trust signals are explicit recipient identity, access level, expiration and encryption status. Avoid “anyone with the link” language, irreversible-looking destructive controls, or claims that a server can read data keys.
+Nodus is calm, technically credible and protective: “Your data. Under your control.” The new reference defines Deep Black, restrained Nodus Blue, Geist/Geist Mono, technical grid and Guardian imagery. Trust signals are explicit recipient identity, access level, expiration, encryption state, a clearly labelled Devnet/Testnet environment and explorer proof. Avoid crypto hype, “anyone with the link” language, irreversible-looking destructive controls, or claims that a server can read data keys.
 
 ## Product goals
 
-Let an authorized member grant another organization member time-bound access to one asset or the current assets in a folder, without the gateway receiving plaintext data keys. Success means a recipient can see a clear access state and an owner can revoke a grant. Non-goals for this slice: public links, passwords, outside recipients and automatic access to assets added to a folder later.
+Let an authorized member grant another organization member time-bound access to one asset or the current assets in a folder, without the gateway receiving plaintext data keys. The public surface must communicate private cloud value before protocol mechanics, then make SIWS, Devnet PDAs and Walrus/Sui verification inspectable for the technical audience. Success means a recipient can see a clear access state and an owner can revoke a grant. Non-goals for this slice: public links, passwords, outside recipients and automatic access to assets added to a folder later.
 
 ## Personas and jobs
 
@@ -18,7 +18,7 @@ Owners/admins manage collaborator access. Contributors share a file they own wit
 
 ## Information architecture
 
-Asset lightbox/card exposes “Share”. Folder browsing exposes “Share folder”. One modal contains: item summary, member selector, role selector (`viewer`, `contributor`, `admin`), optional expiration, existing grants and revoke controls. The server remains the source of truth; client-side envelope creation happens only after the recipient’s public identity is loaded.
+Landing page → onboarding/sign-in → vault gallery → lightbox/share. The landing leads with privacy, control and programmability; chain names appear as verifiable infrastructure rather than a wallet prerequisite. Asset lightbox/card exposes “Share”. Folder browsing exposes “Share folder”. One modal contains: item summary, member selector, role selector (`viewer`, `contributor`, `admin`), optional expiration, existing grants and revoke controls. The server remains the source of truth; client-side envelope creation happens only after the recipient’s public identity is loaded.
 
 ## Design principles
 
@@ -30,7 +30,7 @@ Asset lightbox/card exposes “Share”. Folder browsing exposes “Share folder
 
 ## Visual language
 
-Reuse existing CSS variables, Plus Jakarta Sans, Lucide icons, rounded elevated modal, status colors and motion. New sharing rows use the existing surface/border tokens; no parallel design system.
+The shipping app needs a deliberate token migration from its current style to the reference: Deep `#080B0A`, Nodus Blue `#1FA8FF` as a sparing signal, Stone/Slate neutrals, Geist/Geist Mono, 4px spacing scale, restrained 16px cards and Lucide 1.5px icons. New sharing rows use the active surface/border tokens; no second parallel design system.
 
 ## Components
 
@@ -54,9 +54,10 @@ Use plain, reassuring language: “Grant encrypted access”, “Expires”, “
 
 ## Implementation constraints
 
-Vanilla HTML/CSS/JS frontend, Express API, PostgreSQL tenant store and ECDH-P256/AES-GCM envelopes. Each grant is organization-scoped and the server stores only metadata plus already-encrypted envelopes. Tests must cover tenant isolation, expiration and insufficient role. Existing i18n has English/Portuguese/Spanish variants; new strings start in English with neutral fallback and must be extractable later.
+Vanilla HTML/CSS/JS frontend, Express API, PostgreSQL tenant store and ECDH-P256/AES-GCM envelopes. Each grant is organization-scoped and the server stores only metadata plus already-encrypted envelopes. Tests must cover tenant isolation, expiration and insufficient role. The design-reference branch is a standalone in-browser prototype with mock data and bundled resources, so it must be ported component-by-component rather than served or merged as production code. Existing i18n has English/Portuguese/Spanish variants; the product briefing requires Portuguese-first for the demo.
 
 ## Open questions
 
 - [ ] Product owner: should a folder grant automatically apply to files added after the grant? Owner: Product. Impact: requires envelope propagation on every future upload/move.
 - [ ] Product owner: should a contributor be able to grant `admin`, or only owner/admin? Owner: Product. Impact: permission matrix. This slice uses owner/admin for `admin`; contributors may grant `viewer` and `contributor` only for assets they own.
+- [ ] Product/engineering: choose the smallest production slice of the design reference (landing, sign-in, gallery, share) and map it to real routes/data before visual porting. Owner: Product + frontend. Impact: prevents a visually polished mock from displacing the working demo.
