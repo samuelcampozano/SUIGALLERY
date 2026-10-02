@@ -168,10 +168,12 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 
 **Objetivo:** evitar lock-in e definir o papel definitivo de Solana no produto.
 
-**Classificacao:** **Obrigatorio agora, mas com escopo reduzido para Solana Devnet.** O codigo atual possui SIWS, derivacao deterministica de PDAs e uma simulacao de organizacao/papeis; isso nao substitui um programa Anchor implantado ou permissao consultada on-chain. A prova Devnet de `Organization`, `Member` e `Capability` e o bloqueio/aplicacao do papel efetivo devem vir antes de multi-backend e pagamentos.
+**Classificacao:** **Obrigatorio agora, mas com escopo reduzido para Solana Devnet.** O programa Anchor, o leitor fail-closed do backend, o runbook e o provisionador de transacoes ja estao no repositorio. Isso ainda nao substitui uma implantacao: a prova para a banca so existe depois de compilar, implantar, provisionar as wallets e abrir as evidencias no Explorer.
 
-- [ ] **[Obrigatorio agora]** Criar, testar e implantar em Solana Devnet o programa Anchor minimo com contas `Organization`, `Member` e `Capability`, sem metadados pessoais ou de assets on-chain.
-- [ ] **[Obrigatorio agora]** Fazer SIWS consultar/vincular a wallet ao estado Devnet e aplicar o papel on-chain no fluxo de demonstracao; exibir assinatura, PDA e link de explorer.
+- [x] **[Implementado; falta execucao Devnet]** Criar e testar o programa Anchor minimo com contas `Organization`, `Member` e `Capability`, sem metadados pessoais ou de assets on-chain. Inclui o provisionador `npm run solana:devnet:provision`, que cria organizacao, owner, membro e capability por transacao assinada, e o runbook `docs/SOLANA_DEVNET_RBAC.md`.
+- [ ] **[Obrigatorio agora]** Compilar, sincronizar o Program ID, implantar o programa em Solana Devnet e registrar assinatura, Program ID e PDAs reais no Explorer. Depende de o Samuel executar o runbook com keypair exclusiva de Devnet.
+- [x] **[Implementado; falta evidencia Devnet]** Fazer o SIWS consultar membership/capability Devnet e aplicar o menor papel entre tenant e chain no backend, com falha fechada para contas inexistentes, estrangeiras ou revogadas.
+- [ ] **[Obrigatorio agora]** Conectar uma Phantom/Solflare real ao ambiente Devnet, realizar SIWS contra as contas provisionadas e exibir na interface a assinatura, o PDA e o link de Explorer do fluxo demonstrado.
 - [ ] **[Obrigatorio agora]** Criar roteiro/teste de duas wallets: owner cria organizacao, convida/atribui papel, membro acessa o asset compartilhado e a revogacao impede nova recuperacao pelo Nodus.
 - [ ] Criar interface `StorageProvider` separando API/SDK da implementacao Walrus.
 - [ ] Extrair `WalrusStorageProvider` da logica atual.
@@ -232,3 +234,4 @@ As entregas abaixo nao devem voltar para a lista pendente sem uma regressao comp
 - [x] Catalogo persistente, pastas, versoes e eventos de auditoria.
 - [x] Crypto-shredding e tarefas de rotacao apos revogacao de membro.
 - [x] CORS restrito e autorizacao uniforme nas rotas protegidas.
+- [x] Fundacao Anchor Devnet de RBAC, runbook de deploy e provisionador de transacoes para `Organization`, `Member` e `Capability` (aguarda execucao real em Devnet).
