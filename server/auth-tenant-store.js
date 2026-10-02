@@ -211,6 +211,8 @@ export class AuthTenantStore {
         );
         CREATE INDEX IF NOT EXISTS catalog_assets_list_idx ON catalog_assets (organization_id, status, created_at DESC, asset_id DESC);
         CREATE INDEX IF NOT EXISTS catalog_assets_folder_idx ON catalog_assets (organization_id, folder_id, status, created_at DESC);
+        CREATE INDEX IF NOT EXISTS catalog_assets_owner_idx ON catalog_assets (organization_id, owner_user_id, status, created_at DESC);
+        CREATE INDEX IF NOT EXISTS catalog_assets_metadata_search_idx ON catalog_assets USING GIN (to_tsvector('simple', name || ' ' || description || ' ' || tags::text));
         CREATE TABLE IF NOT EXISTS asset_versions (
           organization_id TEXT NOT NULL, asset_id TEXT NOT NULL, version INTEGER NOT NULL CHECK (version >= 1),
           name TEXT NOT NULL, content_type TEXT NOT NULL, byte_size BIGINT NOT NULL CHECK (byte_size >= 0),
@@ -1186,15 +1188,25 @@ export class AuthTenantStore {
     } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
   }
 
-  async listCatalogAssets({ organizationId, folderId = undefined, limit = 50, cursor = null }) {
+  async listCatalogAssets({ organizationId, folderId = undefined, contentType, tag, ownerAddress, createdAfter, createdBefore, minSize, maxSize, query, limit = 50, cursor = null }) {
     const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
     const decoded = this.decodeCursor(cursor);
     const params = [organizationId];
-    let where = "organization_id = $1 AND status = 'active'";
-    if (folderId !== undefined) { params.push(folderId || null); where += ` AND folder_id IS NOT DISTINCT FROM $${params.length}`; }
-    if (decoded) { params.push(decoded.createdAt, decoded.assetId); where += ` AND (created_at, asset_id) < ($${params.length - 1}::timestamptz, $${params.length})`; }
+    let where = "a.organization_id = $1 AND a.status = 'active'";
+    const add = (value, expression) => { params.push(value); where += ` AND ${expression.replace('?', `$${params.length}`)}`; };
+    if (folderId !== undefined) add(folderId || null, "a.folder_id IS NOT DISTINCT FROM ?");
+    if (contentType) add(`${String(contentType).trim().toLowerCase().replace(/\/$/, "")}%`, "LOWER(a.content_type) LIKE ?");
+    if (tag) add(JSON.stringify([String(tag).trim()]), "a.tags @> ?::jsonb");
+    if (ownerAddress) add(String(ownerAddress).trim(), "owner.solana_address = ?");
+    if (createdAfter) add(this.catalogDate(createdAfter, "createdAfter"), "a.created_at >= ?::timestamptz");
+    if (createdBefore) add(this.catalogDate(createdBefore, "createdBefore"), "a.created_at <= ?::timestamptz");
+    if (minSize !== undefined) add(this.catalogSize(minSize, "minSize"), "a.byte_size >= ?");
+    if (maxSize !== undefined) add(this.catalogSize(maxSize, "maxSize"), "a.byte_size <= ?");
+    if (minSize !== undefined && maxSize !== undefined && Number(minSize) > Number(maxSize)) throw new Error("minSize cannot exceed maxSize");
+    if (query) add(String(query).trim().slice(0, 128), "to_tsvector('simple', a.name || ' ' || a.description || ' ' || a.tags::text) @@ websearch_to_tsquery('simple', ?)");
+    if (decoded) { params.push(decoded.createdAt, decoded.assetId); where += ` AND (a.created_at, a.asset_id) < ($${params.length - 1}::timestamptz, $${params.length})`; }
     params.push(safeLimit + 1);
-    const result = await this.pool.query(`SELECT * FROM catalog_assets WHERE ${where} ORDER BY created_at DESC, asset_id DESC LIMIT $${params.length}`, params);
+    const result = await this.pool.query(`SELECT a.*, owner.solana_address AS owner_address FROM catalog_assets a JOIN users owner ON owner.id=a.owner_user_id WHERE ${where} ORDER BY a.created_at DESC, a.asset_id DESC LIMIT $${params.length}`, params);
     const rows = result.rows.slice(0, safeLimit).map((row) => this.catalogRow(row));
     const tail = rows.at(-1);
     return { assets: rows, nextCursor: result.rows.length > safeLimit && tail ? this.encodeCursor(tail) : null };
@@ -1274,7 +1286,9 @@ export class AuthTenantStore {
     return { name: this.catalogText(name, 255, "Asset name is required"), contentType: this.catalogText(contentType || "application/octet-stream", 255, "Content type is required"), byteSize: size,
       description: typeof description === "string" ? description.slice(0, 1024) : "", tags: Array.isArray(tags) ? tags.slice(0, 30).map((tag) => String(tag).slice(0, 64)) : [], storageKind, folderId: folderId || null };
   }
-  catalogRow(row) { return { id: row.asset_id, name: row.name, contentType: row.content_type, size: Number(row.byte_size), description: row.description, tags: row.tags, folderId: row.folder_id, storageKind: row.storage_kind, ownerUserId: row.owner_user_id, version: row.current_version, createdAt: row.created_at, updatedAt: row.updated_at }; }
+  catalogRow(row) { return { id: row.asset_id, name: row.name, contentType: row.content_type, size: Number(row.byte_size), description: row.description, tags: row.tags, folderId: row.folder_id, storageKind: row.storage_kind, ownerUserId: row.owner_user_id, ownerAddress: row.owner_address || undefined, version: row.current_version, createdAt: row.created_at, updatedAt: row.updated_at }; }
+  catalogDate(value, name) { const parsed = new Date(value); if (Number.isNaN(parsed.getTime())) throw new Error(`${name} must be an ISO-8601 date`); return parsed.toISOString(); }
+  catalogSize(value, name) { const size = Number(value); if (!Number.isSafeInteger(size) || size < 0) throw new Error(`${name} must be a non-negative integer`); return size; }
   encodeCursor(row) { return Buffer.from(JSON.stringify({ createdAt: row.createdAt || row.created_at, assetId: row.id || row.asset_id })).toString("base64url"); }
   decodeCursor(cursor) { if (!cursor) return null; try { const value = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")); if (!value.createdAt || !value.assetId) throw new Error(); return value; } catch { throw new Error("Invalid pagination cursor"); } }
 

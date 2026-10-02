@@ -10,6 +10,8 @@ import process from "node:process";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { walrus, DEFAULT_SPACE_ID, DEFAULT_BUCKET_ID } from "./walrus-client.js";
+import { directWalrusAdapter } from "./walrus-direct-adapter.js";
+import { deploymentEnvironment } from "./deployment-environment.js";
 import { ResumableUploadManager, RESUMABLE_UPLOAD_LIMITS } from "./resumable-upload.js";
 import { DirectUploadManager, DIRECT_UPLOAD_MAX_SEGMENT_SIZE } from "./direct-upload-manager.js";
 import { AuthenticatedPublisher } from "./authenticated-publisher.js";
@@ -458,6 +460,10 @@ app.get("/api/status", async (req, res) => {
       direct_publisher: {
         configured: authenticatedPublisher.isConfigured(),
         max_segment_bytes: DIRECT_UPLOAD_MAX_SEGMENT_SIZE
+      },
+      deployment: {
+        environment: deploymentEnvironment(),
+        direct_walrus_testnet_enabled: directWalrusAdapter.enabled
       }
     });
   } catch (err) {
@@ -499,9 +505,8 @@ app.post("/api/auth/solana/verify", (req, res) => {
   // Retrieve user's organizations
   const userOrgs = listUserOrganizations(address);
 
-  const organizationId = req.body.organizationId;
+  const organizationId = req.body.organizationId || "nodus-devs";
   if (authTenantStore) {
-    if (!organizationId) return res.status(400).json({ success: false, error: "organizationId is required for tenant authentication" });
     return authTenantStore.createSession({ address, organizationId })
       .then((session) => res.json({ success: true, address, provider: "solana", scheme: "ed25519", verifiedAt: result.verifiedAt, organizations: userOrgs, accessToken: session.token, expiresAt: session.expiresAt, tenant: { organizationId, ...session.tenant }, role: session.role }))
       .catch((error) => res.status(403).json({ success: false, error: error.message }));
@@ -1307,7 +1312,13 @@ app.get("/api/assets/:fileId/audit", requireTenant, requireTenantEnvelopeStore, 
 app.get(["/api/photos", "/api/assets"], requireTenant, async (req, res) => {
   try {
     if (authTenantStore) {
-      const page = await authTenantStore.listCatalogAssets({ organizationId: req.tenant.organizationId, folderId: req.query.folderId, limit: req.query.limit, cursor: req.query.cursor });
+      const page = await authTenantStore.listCatalogAssets({
+        organizationId: req.tenant.organizationId, folderId: req.query.folderId,
+        contentType: req.query.type, tag: req.query.tag, ownerAddress: req.query.owner,
+        createdAfter: req.query.createdAfter, createdBefore: req.query.createdBefore,
+        minSize: req.query.minSize, maxSize: req.query.maxSize, query: req.query.q,
+        limit: req.query.limit, cursor: req.query.cursor
+      });
       const assets = page.assets.map((asset) => ({ ...asset, created_at: asset.createdAt, content_type: asset.contentType, stream_url: asset.storageKind === "walrus" ? `/api/assets/${asset.id}/stream` : null, download_url: asset.storageKind === "walrus" ? `/api/assets/${asset.id}/stream?download=true` : null }));
       return res.json({ success: true, count: assets.length, assets, photos: assets, nextCursor: page.nextCursor });
     }

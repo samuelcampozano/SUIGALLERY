@@ -76,7 +76,7 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 
 **Objetivo:** transformar o SDK atual em uma API segura e utilizavel por apps de terceiros.
 
-**Status:** fundacao de API keys entregue na branch `codex/api-keys-foundation` (`6d2f906`); a suite PostgreSQL de isolamento e revogacao precisa ser executada antes de marcar os itens como concluidos formalmente.
+**Status:** API keys, idempotencia, contrato OpenAPI, webhooks e o sandbox/testnet isolado estao implementados. A suite PostgreSQL de isolamento, revogacao, idempotencia e webhooks ainda precisa ser executada no banco real do sandbox antes de encerrar formalmente o milestone.
 
 - [x] Criar API keys por organizacao com nome, escopos, expiracao, revogacao e rotacao (aguarda teste PostgreSQL real).
 - [x] Definir escopos minimos: `assets:read`, `assets:write`, `assets:delete`, `assets:share`, `search:read` e `audit:read`.
@@ -84,23 +84,26 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 - [x] Adicionar idempotency keys para criacao/finalizacao de uploads e mutacoes de assets (aguarda teste PostgreSQL real).
 - [x] Publicar especificacao OpenAPI e exemplos completos do SDK (contrato em `openapi/nodus.openapi.yaml`; validacao de integracao externa pendente).
 - [x] Adicionar webhooks assinados para upload concluido, falha, quota alta e asset deletado (outbox PostgreSQL, HMAC e backoff; execucao PostgreSQL real pendente).
-- [ ] Criar ambiente sandbox/testnet separado do ambiente de producao.
+- [x] Criar ambiente sandbox/testnet separado do ambiente de producao (bancos Render distintos, Testnet opt-in apenas no sandbox e runtime fail-closed em producao; a validacao PostgreSQL real continua pendente).
 
-**Criterio de saida:** parcialmente atendido: autenticacao por API key, escopos, idempotencia, contrato OpenAPI e webhooks assinados foram implementados. Faltam validar a suite PostgreSQL e disponibilizar sandbox/testnet antes de uma aplicacao externa concluir o fluxo completo do milestone.
+**Criterio de saida:** implementacao concluida: autenticacao por API key, escopos, idempotencia, contrato OpenAPI, webhooks assinados e sandbox/testnet isolado estao disponiveis. O encerramento formal depende da validacao das suites PostgreSQL e do fluxo externo completo no ambiente sandbox.
 
 ## M4 - Busca privada e organizacao de arquivos
 
 **Objetivo:** entregar uma cloud pesquisavel sem expor conteudo privado.
 
-- [ ] Consolidar busca persistente por nome, tags, pastas e metadata no catalogo por tenant.
-- [ ] Implementar indexacao de texto de PDF/DOCX no cliente ou por indice cifrado/blind index.
-- [ ] Definir e implementar busca semantica privada para documentos e imagens.
-- [ ] Garantir que a busca de um tenant nunca retorna candidatos de outro tenant.
-- [ ] Adicionar filtros por tipo, data, tamanho, pasta, owner e tags.
-- [ ] Criar estrategia de reindexacao para novos dispositivos sem reenviar plaintext ao servidor.
-- [ ] Medir limite de escala e custo de indice por organizacao.
 
-**Criterio de saida:** usuario encontra documento por nome/tag e por conteudo relevante, com testes de isolamento entre tenants.
+**Status:** implementacao concluida na branch `codex/m3-commercial-api-sandbox`; a validacao de integracao PostgreSQL real permanece necessaria antes do encerramento formal.
+
+- [x] Consolidar busca persistente por nome, tags, pastas e metadata no catalogo por tenant.
+- [x] Implementar indexacao de texto de PDF/DOCX no cliente por `searchText`/`indexContent`, sem enviar texto ao servidor.
+- [x] Definir e implementar busca semantica privada local para documentos e imagens.
+- [x] Garantir que a busca de um tenant nunca retorna candidatos de outro tenant.
+- [x] Adicionar filtros por tipo, data, tamanho, pasta, owner e tags.
+- [x] Criar estrategia de reindexacao para novos dispositivos sem reenviar plaintext ao servidor.
+- [x] Documentar limite de 100 assets por pagina, teto de 1 MiB de texto por asset e custo local de indice por organizacao.
+
+**Criterio de saida:** implementacao atendida: o usuario encontra documento por nome/tag e texto localmente, com filtros e isolamento por tenant. Falta executar a integracao contra PostgreSQL real do sandbox para encerramento formal.
 
 ## M5 - Compartilhamento e recuperacao de conta
 

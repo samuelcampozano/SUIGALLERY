@@ -472,8 +472,16 @@
             <button class="auth-secondary-card" id="connectSuiWalletBtn">
               <div class="auth-card-icon"><i data-lucide="wallet"></i></div>
               <div class="auth-card-info">
-                <span class="auth-card-title">Sui Wallet</span>
-                <span class="auth-card-desc" data-i18n="auth_wallet_desc">Browser extension</span>
+                <span class="auth-card-title">Sui / Slush Wallet</span>
+                <span class="auth-card-desc">Slush, Sui & Extensions</span>
+              </div>
+            </button>
+
+            <button class="auth-secondary-card" id="seedPhraseBtn">
+              <div class="auth-card-icon"><i data-lucide="key"></i></div>
+              <div class="auth-card-info">
+                <span class="auth-card-title">Seed Phrase (BIP-39)</span>
+                <span class="auth-card-desc">12-word sovereign key</span>
               </div>
             </button>
 
@@ -499,6 +507,340 @@
           <i data-lucide="lock"></i>
           <span data-i18n="auth_privacy_notice">Google only verifies your identity; it never has access to your photos, encryption keys, or Walrus storage.</span>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Google zkLogin Interactive Sheet Modal -->
+  <div class="modal-dialog hidden" id="googleZkModal">
+    <div class="modal-backdrop" id="googleZkModalBackdrop"></div>
+    <div class="modal-content auth-modal-content">
+      <div class="modal-header auth-modal-header">
+        <div class="auth-brand-badge">
+          <svg class="google-icon" viewBox="0 0 24 24" width="16" height="16">
+            <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"/>
+            <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.7-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z"/>
+            <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3 0-.8.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12.3 1.9 7.9l3.7-2.9z"/>
+            <path fill="#34A853" d="M12 23.5c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.3L1.9 16.5C3.7 20.2 7.5 23.5 12 23.5z"/>
+          </svg>
+          <span class="auth-badge-label">Sui zkLogin Protocol</span>
+        </div>
+        <button class="btn-close" id="googleZkModalClose"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="modal-body auth-modal-body">
+        <h2 class="auth-title">Google zkLogin</h2>
+        <p class="auth-subtitle">
+          Select a verified identity profile or type your Google Account to derive your sovereign zero-knowledge address.
+        </p>
+
+        <!-- Quick 1-Click Identity Personas -->
+        <div class="google-persona-list">
+          <button class="google-persona-card" id="personaAlexBtn" data-email="alex.sovereign@gmail.com">
+            <div class="google-avatar">A</div>
+            <div class="google-persona-info">
+              <span class="google-persona-name">Alex Sovereign</span>
+              <span class="google-persona-email">alex.sovereign@gmail.com</span>
+            </div>
+            <span class="google-persona-badge">Instant</span>
+          </button>
+
+          <button class="google-persona-card" id="personaSamuelBtn" data-email="samuel.campozano@gmail.com">
+            <div class="google-avatar" style="background: linear-gradient(135deg, #10b981, #06b6d4);">S</div>
+            <div class="google-persona-info">
+              <span class="google-persona-name">Samuel Campozano</span>
+              <span class="google-persona-email">samuel.campozano@gmail.com</span>
+            </div>
+            <span class="google-persona-badge">Instant</span>
+          </button>
+        </div>
+
+        <div class="auth-divider">
+          <span>or enter your Google email</span>
+        </div>
+
+        <!-- Custom Email Form -->
+        <div class="custom-email-form">
+          <div class="input-with-icon">
+            <i data-lucide="mail"></i>
+            <input type="email" id="customGoogleEmailInput" class="form-input" placeholder="your.name@gmail.com" autocomplete="email">
+          </div>
+          <button class="btn btn-primary btn-block" id="submitCustomEmailZkLoginBtn" style="margin-top: 8px;">
+            <i data-lucide="shield-check"></i>
+            <span>Derive zkLogin Address & Sign In</span>
+          </button>
+        </div>
+
+        <div style="margin-top: 1rem; text-align: center;">
+          <button class="btn btn-ghost btn-sm" id="launchGoogleOAuthPopupBtn" style="color: var(--text-tertiary); font-size: 0.78rem;">
+            <i data-lucide="external-link"></i>
+            <span>Launch Official Google OAuth Popup</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multi-Wallet Selector Modal (Slush, Sui, Nightly, etc.) -->
+  <div class="modal-dialog hidden" id="walletSelectorModal">
+    <div class="modal-backdrop" id="walletSelectorModalBackdrop"></div>
+    <div class="modal-content auth-modal-content">
+      <div class="modal-header auth-modal-header">
+        <div class="auth-brand-badge">
+          <div class="logo-icon-sm"><i data-lucide="wallet"></i></div>
+          <span class="auth-badge-label">Sui Wallet Standard</span>
+        </div>
+        <button class="btn-close" id="walletSelectorModalClose"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="modal-body auth-modal-body">
+        <h2 class="auth-title">Connect Sui Wallet</h2>
+        <p class="auth-subtitle">
+          Connect your preferred Sui wallet standard extension or mobile provider.
+        </p>
+
+        <!-- Wallet Options List -->
+        <div class="wallet-options-list" id="walletOptionsList">
+          <!-- Slush Wallet Item -->
+          <div class="wallet-option-card" id="walletCardSlush">
+            <div class="wallet-card-left">
+              <div class="wallet-logo-badge slush-logo">
+                <i data-lucide="droplet"></i>
+              </div>
+              <div class="wallet-card-info">
+                <span class="wallet-card-name">Slush Wallet</span>
+                <span class="wallet-card-status" id="slushWalletStatus">Scanning...</span>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-outline wallet-action-btn" id="connectSlushBtn">Connect</button>
+          </div>
+
+          <!-- Sui Wallet Item -->
+          <div class="wallet-option-card" id="walletCardSui">
+            <div class="wallet-card-left">
+              <div class="wallet-logo-badge sui-logo">
+                <i data-lucide="shield"></i>
+              </div>
+              <div class="wallet-card-info">
+                <span class="wallet-card-name">Sui Wallet (Official)</span>
+                <span class="wallet-card-status" id="suiWalletStatus">Scanning...</span>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-outline wallet-action-btn" id="connectOfficialSuiBtn">Connect</button>
+          </div>
+
+          <!-- Dynamic Standard Wallets Container -->
+          <div id="dynamicWalletsContainer"></div>
+        </div>
+
+        <!-- Fallback if no extension is installed -->
+        <div class="wallet-install-banner" id="noWalletNotice">
+          <i data-lucide="info"></i>
+          <div>
+            <span>No Sui wallet detected in browser?</span>
+            <div class="wallet-download-links">
+              <a href="https://slushwallet.com" target="_blank" class="download-link">Get Slush Wallet ↗</a>
+              <a href="https://chrome.google.com/webstore/detail/sui-wallet/opcgpfmipidbgpenhmajoajpbobppdil" target="_blank" class="download-link">Get Sui Wallet ↗</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="auth-divider">
+          <span>or create a wallet without extension</span>
+        </div>
+
+        <button class="btn btn-secondary btn-block" id="walletFallbackSeedBtn">
+          <i data-lucide="key"></i>
+          <span>Create 12-Word Sovereign Seed Phrase (Free)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sovereign Seed Phrase (BIP-39 Mnemonic) Modal -->
+  <div class="modal-dialog hidden" id="seedPhraseModal">
+    <div class="modal-backdrop" id="seedPhraseModalBackdrop"></div>
+    <div class="modal-content auth-modal-content seed-modal-content">
+      <div class="modal-header auth-modal-header">
+        <div class="auth-brand-badge">
+          <div class="logo-icon-sm"><i data-lucide="key"></i></div>
+          <span class="auth-badge-label">BIP-39 Sovereign Key</span>
+        </div>
+        <button class="btn-close" id="seedPhraseModalClose"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="modal-body auth-modal-body">
+        <h2 class="auth-title">Sovereign Master Phrase</h2>
+        <p class="auth-subtitle">
+          Your 12-word cryptographic seed is generated 100% on your device. You own your keys and your Walrus vault without intermediaries.
+        </p>
+
+        <!-- Mode Tabs -->
+        <div class="seed-tabs">
+          <button class="seed-tab active" id="tabGenerateSeed">Generate New (12 Words)</button>
+          <button class="seed-tab" id="tabImportSeed">Import Existing</button>
+        </div>
+
+        <!-- Tab 1: Generate Pane -->
+        <div class="seed-tab-pane" id="paneGenerateSeed">
+          <div class="seed-alert-box">
+            <i data-lucide="shield-alert"></i>
+            <span>Write these 12 words down in order. Never share them. Anyone with this phrase controls your vault.</span>
+          </div>
+
+          <!-- 12-Word Grid -->
+          <div class="seed-words-grid" id="seedWordsGrid">
+            <!-- 12 chips dynamically populated -->
+          </div>
+
+          <div class="seed-controls">
+            <button class="btn btn-sm btn-secondary" id="copySeedBtn">
+              <i data-lucide="copy"></i> <span>Copy Words</span>
+            </button>
+            <button class="btn btn-sm btn-secondary" id="downloadSeedBtn">
+              <i data-lucide="download"></i> <span>Download Backup (.txt)</span>
+            </button>
+            <button class="btn btn-sm btn-ghost" id="regenerateSeedBtn" title="Generate New Phrase">
+              <i data-lucide="refresh-cw"></i> <span>Regenerate</span>
+            </button>
+          </div>
+
+          <div class="seed-derived-preview">
+            <span class="derived-label">Derived Sui Address:</span>
+            <code class="derived-address" id="derivedSeedAddress">0x...</code>
+          </div>
+
+          <button class="btn btn-primary btn-block" id="confirmSeedAuthBtn" style="margin-top: 1rem;">
+            <i data-lucide="check-circle-2"></i>
+            <span>I Saved My Phrase • Enter Nodus Vault</span>
+          </button>
+        </div>
+
+        <!-- Tab 2: Import Pane -->
+        <div class="seed-tab-pane hidden" id="paneImportSeed">
+          <p class="seed-input-instruction">
+            Paste your 12-word or 24-word recovery phrase separated by spaces:
+          </p>
+          <textarea id="importSeedInput" class="seed-textarea" placeholder="apple banana cherry dragon eagle flare grain harbor ivory jungle knight lemon"></textarea>
+          
+          <div class="seed-validation-status" id="importValidationStatus">
+            <span class="status-text">Enter 12 words...</span>
+          </div>
+
+          <div class="seed-derived-preview hidden" id="importAddressPreviewRow">
+            <span class="derived-label">Recovered Sui Address:</span>
+            <code class="derived-address" id="importedDerivedAddress">0x...</code>
+          </div>
+
+          <button class="btn btn-primary btn-block" id="submitImportSeedBtn" disabled style="margin-top: 1rem;">
+            <i data-lucide="key"></i>
+            <span>Restore & Access Vault</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Solana Multi-Wallet Selector Modal (Phantom, Solflare, Backpack, etc.) -->
+  <div class="modal-dialog hidden" id="solanaWalletModal">
+    <div class="modal-backdrop" id="solanaWalletModalBackdrop"></div>
+    <div class="modal-content auth-modal-content">
+      <div class="modal-header auth-modal-header">
+        <div class="auth-brand-badge solana-brand-badge">
+          <div class="logo-icon-sm solana-logo-bg"><i data-lucide="sun"></i></div>
+          <span class="auth-badge-label solana-badge-text">Solana SIWS & Wallet Standard</span>
+        </div>
+        <button class="btn-close" id="solanaWalletModalClose"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="modal-body auth-modal-body">
+        <h2 class="auth-title">Connect Solana Wallet</h2>
+        <p class="auth-subtitle">
+          Sign-In with Solana (SIWS). Authenticate cryptographically via Ed25519 and anchor into Walrus decentralized storage.
+        </p>
+
+        <!-- Solana Wallet Options List -->
+        <div class="wallet-options-list" id="solanaWalletOptionsList">
+          <!-- Phantom Card -->
+          <div class="wallet-option-card" id="walletCardPhantom">
+            <div class="wallet-card-left">
+              <div class="wallet-logo-badge phantom-logo">
+                <i data-lucide="ghost"></i>
+              </div>
+              <div class="wallet-card-info">
+                <span class="wallet-card-name">Phantom</span>
+                <span class="wallet-card-status" id="phantomWalletStatus">Scanning...</span>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-outline wallet-action-btn" id="connectPhantomBtn">Connect</button>
+          </div>
+
+          <!-- Solflare Card -->
+          <div class="wallet-option-card" id="walletCardSolflare">
+            <div class="wallet-card-left">
+              <div class="wallet-logo-badge solflare-logo">
+                <i data-lucide="flame"></i>
+              </div>
+              <div class="wallet-card-info">
+                <span class="wallet-card-name">Solflare</span>
+                <span class="wallet-card-status" id="solflareWalletStatus">Scanning...</span>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-outline wallet-action-btn" id="connectSolflareBtn">Connect</button>
+          </div>
+
+          <!-- Backpack Card -->
+          <div class="wallet-option-card" id="walletCardBackpack">
+            <div class="wallet-card-left">
+              <div class="wallet-logo-badge backpack-logo">
+                <i data-lucide="briefcase"></i>
+              </div>
+              <div class="wallet-card-info">
+                <span class="wallet-card-name">Backpack</span>
+                <span class="wallet-card-status" id="backpackWalletStatus">Scanning...</span>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-outline wallet-action-btn" id="connectBackpackBtn">Connect</button>
+          </div>
+
+          <!-- Dynamic Solana Wallets Container -->
+          <div id="dynamicSolanaWalletsContainer"></div>
+        </div>
+
+        <!-- Optional Organization Configuration Drawer -->
+        <details class="solana-org-drawer">
+          <summary class="solana-org-summary">
+            <span><i data-lucide="building-2"></i> Organization: <strong id="activeSolanaOrgLabel">nodus-devs</strong></span>
+            <i data-lucide="chevron-down" class="drawer-arrow"></i>
+          </summary>
+          <div class="solana-org-content">
+            <label class="solana-org-field-label">Target Tenant ID (default: nodus-devs)</label>
+            <input type="text" id="solanaOrgInput" class="form-input" placeholder="nodus-devs" value="nodus-devs">
+          </div>
+        </details>
+
+        <!-- Fallback if no extension is installed -->
+        <div class="wallet-install-banner solana-install-banner" id="noSolanaWalletNotice">
+          <i data-lucide="info"></i>
+          <div>
+            <span>No Solana wallet detected in browser?</span>
+            <div class="wallet-download-links">
+              <a href="https://phantom.app" target="_blank" class="download-link solana-link">Get Phantom ↗</a>
+              <a href="https://solflare.com" target="_blank" class="download-link solana-link">Get Solflare ↗</a>
+              <a href="https://backpack.app" target="_blank" class="download-link solana-link">Get Backpack ↗</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="auth-divider">
+          <span>or connect without extension</span>
+        </div>
+
+        <!-- 1-Click Instant Demo / Ephemeral Keypair -->
+        <button class="btn btn-secondary btn-block" id="solana1ClickDemoBtn">
+          <i data-lucide="sparkles"></i>
+          <span>1-Click Solana Keypair Demo (Instant SIWS)</span>
+        </button>
       </div>
     </div>
   </div>
@@ -670,6 +1012,8 @@
   </aside>
 
   <script src="/blake2b.js"></script>
+  <script src="/nacl.min.js"></script>
+  <script src="/bip39.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

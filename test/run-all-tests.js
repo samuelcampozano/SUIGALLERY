@@ -17,7 +17,11 @@ const suites = [
   { name: "End-to-End Crypto-Shredding", file: "test-crypto-shredding.js" },
   { name: "Solana Identity & Anchor PDAs", file: "test/test-solana.js" },
   { name: "Direct Walrus Testnet Fallback", file: "test/test-walrus-testnet-fallback.js" },
-  { name: "Security Audit & Pen-Test", file: "test/test-audit-security.js" }
+  { name: "Auth Standards, Sui Wallets & BIP-39", file: "test/test-auth-standards.js" },
+  { name: "Security Audit & Pen-Test", file: "test/test-audit-security.js" },
+  { name: "Deployment Environment & M3 Sandbox", file: "test/test-deployment-environment.js" },
+  { name: "Client-Side Private Search & Blind Index", file: "test/test-private-search.js" },
+  { name: "Tenant Catalog Search Querying", file: "test/test-tenant-catalog-search.js" }
 ];
 
 async function runSuite(suite) {
