@@ -10,6 +10,26 @@
 
 ---
 
+## 🚨 Obrigatório agora — caminho crítico da banca
+
+Esta tabela é o painel público de execução do time. Ela resume o caminho crítico;
+o detalhamento e os critérios de aceite continuam em [`pending_milestones.md`](pending_milestones.md).
+
+| # | Entrega obrigatória | Estado atual | Evidência que falta para concluir |
+| --- | --- | --- | --- |
+| 1 | Prova Solana Devnet (M7): programa, PDAs e transações reais | Código e provisionador prontos | Deploy Devnet, assinaturas e links do Explorer |
+| 2 | SIWS conectado ao RBAC on-chain (M7) | Backend fail-closed pronto | Login Phantom/Solflare real com prova exibida |
+| 3 | Happy path privado Walrus (M0/M1) | Fluxos implementados | Upload/download real em Testnet com Blob no Explorer |
+| 4 | Colaboração soberana mínima (M5) | **Em desenvolvimento nesta branch** | Duas wallets, envelope, expiração e revogação demonstráveis |
+| 5 | Produto apresentável (M9) | Referência visual disponível | Landing e telas críticas conectadas ao runtime real |
+| 6 | Roteiro e evidências | Em preparação | Passada gravável de 5–7 minutos sem segredos no repositório |
+
+> **Limite de revogação:** revogar bloqueia leituras futuras de envelopes pelo
+> Nodus. Não apaga cópias ou chaves que o destinatário já tenha decifrado e
+> exportado localmente.
+
+---
+
 ## 📸 Overview
 
 **Nodus** gives users full cryptographic sovereignty over their personal media and documents. Traditional cloud storage providers inspect private files to train commercial machine-learning models, build advertising profiles, or lock accounts arbitrarily. Nodus reclaims user ownership:

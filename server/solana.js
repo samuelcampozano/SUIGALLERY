@@ -119,6 +119,11 @@ export const ROLE_HIERARCHY = {
   owner: 4
 };
 
+/** Returns true when an on-chain role is sufficient for a Nodus action. */
+export function hasSufficientRole(actualRole, requiredRole = "viewer") {
+  return Boolean(ROLE_HIERARCHY[actualRole] && ROLE_HIERARCHY[requiredRole] && ROLE_HIERARCHY[actualRole] >= ROLE_HIERARCHY[requiredRole]);
+}
+
 // ==========================================
 // 1. SIGN-IN WITH SOLANA (SIWS) ENGINE
 // ==========================================

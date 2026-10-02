@@ -25,6 +25,7 @@
     "test:solana": "node test/test-solana.js",
     "test:solana-anchor-contract": "node test/test-solana-anchor-contract.js",
     "test:solana-devnet-provisioning": "node test/test-solana-devnet-provisioning.js",
+    "test:solana-collaboration-rbac": "node test/test-solana-collaboration-rbac.js",
     "solana:anchor:build": "anchor build",
     "solana:anchor:deploy:devnet": "anchor deploy --provider.cluster devnet",
     "solana:devnet:provision": "node scripts/provision-devnet-rbac.mjs",

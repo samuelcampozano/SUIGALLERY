@@ -43,6 +43,7 @@ import {
   NODUS_SOLANA_PROGRAM_ID_STR,
   SOLANA_RBAC_MODE,
   ROLE_HIERARCHY,
+  hasSufficientRole,
   verifyDevnetTenantAccess
 } from "./solana.js";
 
@@ -122,6 +123,23 @@ async function requireTenant(req, res, next) {
     if (apiKey) { const scope = req.method === 'GET' ? (req.path.includes('/audit') ? 'audit:read' : req.path.includes('/search') ? 'search:read' : 'assets:read') : req.method === 'DELETE' ? 'assets:delete' : req.path.includes('key-envelopes') ? 'assets:share' : 'assets:write'; if (!req.auth.scopes.includes(scope)) return res.status(403).json({ success:false,error:`API key lacks ${scope} scope` }); const now=Date.now(); const state=apiKeyRequestWindows.get(context.api_key_id)||{at:now,count:0}; if(now-state.at>60000){state.at=now;state.count=0;} if(++state.count>300)return res.status(429).json({success:false,error:'API key rate limit exceeded'}); apiKeyRequestWindows.set(context.api_key_id,state); }
     return next();
   } catch (error) { return next(error); }
+}
+
+// Devnet collaboration is wallet-backed: an otherwise valid tenant session
+// must also have an active membership and capability in the deployed program.
+async function requireDevnetRole(req, requiredRole = "viewer") {
+  if (SOLANA_RBAC_MODE !== "devnet") return null;
+  if (!req.auth?.address) throw new Error("A wallet-backed session is required for Devnet collaboration");
+  const proof = await verifyDevnetTenantAccess({ orgId: req.tenant.organizationId, address: req.auth.address });
+  if (!hasSufficientRole(proof.role, requiredRole)) throw new Error(`Devnet role '${proof.role}' cannot perform this action`);
+  return proof;
+}
+
+async function requireDevnetRecipientRole(req, recipientAddress, requestedRole) {
+  if (SOLANA_RBAC_MODE !== "devnet") return null;
+  const proof = await verifyDevnetTenantAccess({ orgId: req.tenant.organizationId, address: recipientAddress });
+  if (!hasSufficientRole(proof.role, requestedRole)) throw new Error(`Recipient Devnet role '${proof.role}' cannot receive '${requestedRole}' access`);
+  return proof;
 }
 
 function idempotencyOperation(req) {
@@ -1228,6 +1246,7 @@ app.post("/api/assets/:assetId/key-envelopes", requireTenant, requireTenantEnvel
   try {
     if (!isValidFileId(req.params.assetId)) throw new Error("Invalid asset ID");
     if (!['owner', 'admin', 'contributor'].includes(req.auth.role)) return res.status(403).json({ success: false, error: "Only organization contributors may share an asset" });
+    await requireDevnetRole(req, "contributor");
     const asset = await authTenantStore.putKeyEnvelopes({ organizationId: req.tenant.organizationId, assetId: req.params.assetId, ownerUserId: req.auth.userId, envelopes: req.body?.envelopes });
     return res.status(201).json({ success: true, asset });
   } catch (error) {
@@ -1238,9 +1257,10 @@ app.post("/api/assets/:assetId/key-envelopes", requireTenant, requireTenantEnvel
 app.get("/api/assets/:assetId/key-envelopes", requireTenant, requireTenantEnvelopeStore, async (req, res, next) => {
   try {
     if (!isValidFileId(req.params.assetId)) throw new Error("Invalid asset ID");
+    const devnetProof = await requireDevnetRole(req, "viewer");
     const result = await authTenantStore.envelopesForRecipient({ organizationId: req.tenant.organizationId, assetId: req.params.assetId, recipientUserId: req.auth.userId });
     if (!result) return res.status(404).json({ success: false, error: "Key envelopes not found" });
-    return res.json({ success: true, ...result });
+    return res.json({ success: true, ...result, solanaProof: devnetProof });
   } catch (error) {
     return res.status(400).json({ success: false, error: error.message });
   }
@@ -1257,14 +1277,17 @@ app.post("/api/assets/:assetId/shares", requireTenant, requireTenantEnvelopeStor
   try {
     if (!await authTenantStore.assertShareAuthority({ organizationId: req.tenant.organizationId, assetId: req.params.assetId, actorUserId: req.auth.userId, role: req.auth.role })) return res.status(403).json({ success: false, error: "You cannot manage sharing for this asset" });
     if (req.auth.role === "contributor" && req.body?.role === "admin") return res.status(403).json({ success: false, error: "Contributors cannot grant admin access" });
+    const issuerProof = await requireDevnetRole(req, "contributor");
+    const recipientProof = await requireDevnetRecipientRole(req, req.body?.recipientAddress, req.body?.role || "viewer");
     const share = await authTenantStore.shareAsset({ organizationId: req.tenant.organizationId, assetId: req.params.assetId, actorUserId: req.auth.userId, recipientAddress: req.body?.recipientAddress, role: req.body?.role, expiresAt: req.body?.expiresAt, envelopes: req.body?.envelopes });
-    return res.status(201).json({ success: true, share });
+    return res.status(201).json({ success: true, share, solanaProof: { issuer: issuerProof, recipient: recipientProof } });
   } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
 });
 
 app.delete("/api/assets/:assetId/shares/:grantId", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
   try {
     if (!await authTenantStore.assertShareAuthority({ organizationId: req.tenant.organizationId, assetId: req.params.assetId, actorUserId: req.auth.userId, role: req.auth.role })) return res.status(403).json({ success: false, error: "You cannot manage sharing for this asset" });
+    await requireDevnetRole(req, "contributor");
     await authTenantStore.revokeAssetShare({ organizationId: req.tenant.organizationId, assetId: req.params.assetId, grantId: req.params.grantId, actorUserId: req.auth.userId });
     return res.json({ success: true, revoked: true });
   } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
@@ -1354,12 +1377,14 @@ app.post("/api/assets/folders/:folderId/shares", requireTenant, requireTenantEnv
     if (!assetIds.length) throw new Error("A folder share requires current asset IDs");
     if (req.auth.role === "viewer") return res.status(403).json({ success: false, error: "Viewers cannot share folders" });
     if (req.auth.role === "contributor" && req.body?.role === "admin") return res.status(403).json({ success: false, error: "Contributors cannot grant admin access" });
+    const issuerProof = await requireDevnetRole(req, "contributor");
+    const recipientProof = await requireDevnetRecipientRole(req, req.body?.recipientAddress, req.body?.role || "viewer");
     await authTenantStore.assertAssetsInFolder({ organizationId: req.tenant.organizationId, folderId: req.params.folderId, assetIds });
     for (const assetId of assetIds) {
       if (!await authTenantStore.assertShareAuthority({ organizationId: req.tenant.organizationId, assetId, actorUserId: req.auth.userId, role: req.auth.role })) return res.status(403).json({ success: false, error: "You cannot share every asset in this folder" });
     }
     const share = await authTenantStore.shareFolder({ organizationId: req.tenant.organizationId, folderId: req.params.folderId, actorUserId: req.auth.userId, recipientAddress: req.body?.recipientAddress, role: req.body?.role, expiresAt: req.body?.expiresAt, assetIds });
-    return res.status(201).json({ success: true, share, note: "The folder grant covers the files selected at the time of sharing; future files are not inherited." });
+    return res.status(201).json({ success: true, share, solanaProof: { issuer: issuerProof, recipient: recipientProof }, note: "The folder grant covers the files selected at the time of sharing; future files are not inherited." });
   } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
 });
 app.get("/api/assets/:fileId/versions", requireTenant, requireTenantEnvelopeStore, async (req, res) => {

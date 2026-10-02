@@ -3113,7 +3113,19 @@ document.addEventListener("DOMContentLoaded", () => {
     const response = await apiFetch(`/api/assets/${encodeURIComponent(assetId)}/shares`);
     const body = await response.json();
     if (!response.ok || !body.success) throw new Error(body.error || "Could not load shared access");
-    shareAccessList.innerHTML = body.shares.length ? `<strong>Current access</strong>${body.shares.map((share) => `<div class="tech-mini-val" style="margin-top:6px"><span>${escapeHtml(shortenAddress(share.recipientAddress))} · ${escapeHtml(share.role)} · ${escapeHtml(share.status)}${share.expiresAt ? ` · expires ${escapeHtml(new Date(share.expiresAt).toLocaleString())}` : ""}</span>${share.status === "active" ? `<button class="copy-btn" data-revoke-share="${escapeHtml(share.id)}" title="Revoke access"><i data-lucide="ban"></i></button>` : ""}</div>`).join("")}` : "<span style=\"color:var(--text-muted);font-size:.85rem\">No member access has been granted yet.</span>";
+    const proofs = new Map();
+    await Promise.all((body.shares || []).filter((share) => share.status === "active").map(async (share) => {
+      try {
+        const proofResponse = await apiFetch(`/api/solana/devnet/proof?organizationId=${encodeURIComponent(activeTenantId())}&address=${encodeURIComponent(share.recipientAddress)}`);
+        const proof = await proofResponse.json();
+        if (proofResponse.ok && proof.success) proofs.set(share.recipientAddress, proof);
+      } catch { /* Local/sandbox mode does not expose a Devnet proof. */ }
+    }));
+    shareAccessList.innerHTML = body.shares.length ? `<strong>Current access</strong>${body.shares.map((share) => {
+      const proof = proofs.get(share.recipientAddress);
+      const explorer = proof?.memberPda ? ` <a class="copy-btn" href="https://explorer.solana.com/address/${encodeURIComponent(proof.memberPda)}?cluster=devnet" target="_blank" rel="noopener noreferrer" title="View active Devnet member PDA">☀</a>` : "";
+      return `<div class="tech-mini-val" style="margin-top:6px"><span>${escapeHtml(shortenAddress(share.recipientAddress))} · ${escapeHtml(share.role)} · ${escapeHtml(share.status)}${share.expiresAt ? ` · expires ${escapeHtml(new Date(share.expiresAt).toLocaleString())}` : ""}</span>${explorer}${share.status === "active" ? `<button class="copy-btn" data-revoke-share="${escapeHtml(share.id)}" title="Revoke access"><i data-lucide="ban"></i></button>` : ""}</div>`;
+    }).join("")}` : "<span style=\"color:var(--text-muted);font-size:.85rem\">No member access has been granted yet.</span>";
     shareAccessList.querySelectorAll("[data-revoke-share]").forEach((button) => button.addEventListener("click", async () => {
       const revoke = await apiFetch(`/api/assets/${encodeURIComponent(assetId)}/shares/${encodeURIComponent(button.dataset.revokeShare)}`, { method: "DELETE" });
       const result = await revoke.json();
