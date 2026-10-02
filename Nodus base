@@ -1,0 +1,1213 @@
+%PDF-1.3
+%ºß¬à
+3 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 4 0 R
+>>
+endobj
+4 0 obj
+<<
+/Length 7818
+>>
+stream
+0.200025 w
+0 G
+BT
+/F2 20 Tf
+23. TL
+0. 0.412 0.722 rg
+50. 771.8899999999999864 Td
+(Handoff: Nodus - Website \(landing\) + Console \(web) Tj
+ET
+BT
+/F2 20 Tf
+23. TL
+0. 0.412 0.722 rg
+50. 744.8899999999999864 Td
+(app\)) Tj
+ET
+0.8 0.84 0.81 RG
+50. 713.8899999999999864 m
+545. 713.8899999999999864 l
+S
+BT
+/F2 14 Tf
+16.0999999999999979 TL
+0.078 0.094 0.086 rg
+50. 691.8899999999999864 Td
+(About these files) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 670.9900000000000091 Td
+(These are high-fidelity design references built in HTML/React \(in-browser Babel\) - not production code to ship) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 657.4900000000000091 Td
+(as-is. Recreate them inside the existing codebase \(Next.js / React / Vue\) using its own routing, data fetching,) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 643.9900000000000091 Td
+(state and i18n. Final colors, type, spacing, copy and interactions - reproduce pixel-perfectly.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 622.4900000000000091 Td
+(Preview: run npx serve . in this folder and open / \(links to both\). Keep the folder structure - pages load) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 608.9900000000000091 Td
+(../../styles.css, ../../_ds_bundle.js, ../../assets/.) Tj
+ET
+0.8 0.84 0.81 RG
+50. 587.4900000000000091 m
+545. 587.4900000000000091 l
+S
+BT
+/F2 14 Tf
+16.0999999999999979 TL
+0.078 0.094 0.086 rg
+50. 565.4900000000000091 Td
+(Implementation order) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 544.5900000000000318 Td
+(1.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 544.5900000000000318 Td
+(Tokens - tokens/*.css \(CSS variables on :root + [data-theme="light"]\). Port as-is or into Tailwind/theme.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 530.0900000000000318 Td
+(2.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 530.0900000000000318 Td
+(Fonts - Geist + Geist Mono \(tokens/fonts.css uses Google Fonts; or geist package / next/font\).) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 515.5900000000000318 Td
+(3.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 515.5900000000000318 Td
+(Icons - Lucide \(lucide-react\), stroke 1.5 \(2 under 16px\).) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 501.0900000000000318 Td
+(4.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 501.0900000000000318 Td
+(Primitives - components/**: self-contained React \(.jsx\), props in .d.ts, usage in .prompt.md. Only CSS) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 487.5900000000000318 Td
+(variables, no deps.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 473.0900000000000318 Td
+(5.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 473.0900000000000318 Td
+(Guardian - ui_kits/website/guardian.js: framework-agnostic web component <nodus-guardian> \(three.js r184) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 459.5900000000000318 Td
+(from CDN; swap for npm i three\).) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 445.0900000000000318 Td
+(6.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 445.0900000000000318 Td
+(Screens - ui_kits/website/*.jsx, ui_kits/console/*.jsx.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 430.5900000000000318 Td
+(_ds_bundle.js is the compiled primitives used by the prototypes - don't port it, port components/.) Tj
+ET
+0.8 0.84 0.81 RG
+50. 409.0900000000000318 m
+545. 409.0900000000000318 l
+S
+BT
+/F2 14 Tf
+16.0999999999999979 TL
+0.078 0.094 0.086 rg
+50. 387.0900000000000318 Td
+(Tokens \(full list in tokens/\)) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 366.1900000000000546 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 366.1900000000000546 Td
+(Deep #080B0A bg - ramp #050706 #0C100E #111613 #171D19 #202720 #2A322C) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 351.6900000000000546 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 351.6900000000000546 Td
+(Stone #E8EEE8 text - Slate #66706A / #8A948D secondary - borders slate 24% / 40%) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 337.1900000000000546 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 337.1900000000000546 Td
+(Nodus Blue #1FA8FF signal only \(CTA, active, progress, highlights; 3-7% of screen\) - hover #4DBBFF - press) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 323.6900000000000546 Td
+(#0A8FE6 - dim #0B6FB3) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 309.1900000000000546 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 309.1900000000000546 Td
+(Error #FF5A4E - Warning #FFB547 \(functional only\)) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 294.6900000000000546 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 294.6900000000000546 Td
+(Light theme: bg #E8EEE8, surfaces #F3F6F3/#FFF, ink #0E1210, text-safe blue #0069B8) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 280.1900000000000546 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 280.1900000000000546 Td
+(Type: Display 72-80/600/-0.045em - H2 36-48/600/-0.04em - H3 24/500 - body 15-18/400/1.55 - label 12/500) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 266.6900000000000546 Td
+(uppercase +0.08em - mono 13/1.6) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 252.1900000000000546 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 252.1900000000000546 Td
+(Spacing 4 8 12 16 24 32 48 64 96 128 - container 1200 - sections 96-128px vertical) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 237.6900000000000546 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 237.6900000000000546 Td
+(Radius 8 - 10-12 controls - 16 cards - 20-24 dialogs - 32 mobile bottom nav) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 223.1900000000000546 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 223.1900000000000546 Td
+(Motion cubic-bezier\(.2,0,0,1\); 180 / 320 / 900ms; no bounce; reduced-motion -> 0) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 208.6900000000000546 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 208.6900000000000546 Td
+(Breakpoints used: 520 - 640 - 900 - 1000 - 1240) Tj
+ET
+0.8 0.84 0.81 RG
+50. 190.1900000000000546 m
+545. 190.1900000000000546 l
+S
+BT
+/F2 14 Tf
+16.0999999999999979 TL
+0.078 0.094 0.086 rg
+50. 168.1900000000000546 Td
+(Website \(ui_kits/website/\)) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 147.2900000000000773 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 147.2900000000000773 Td
+(Splash.jsx - ~6.3s: Guardian face fades in dark -> eyes open \(scaleY .06->1\) -> light on \(glow + halo\) -> "N",) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 133.7900000000000773 Td
+(then "odus" letter-by-letter \(140ms stagger, blur 4->0, y 10->0\) -> fade out.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 119.2900000000000773 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 119.2900000000000773 Td
+(Nav.jsx - fixed; transparent -> glass after 20px scroll. Guardian face icon, wordmark, links, EN/PT, theme) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 105.7900000000000773 Td
+(toggle, Sign in, CTA.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 91.2900000000000773 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 91.2900000000000773 Td
+(Hero.jsx - badge "Decentralized private cloud", H1, copy, 2 CTAs, mono tech line. Right column =) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 77.7900000000000773 Td
+(.guardian-stop anchor.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 63.2900000000000773 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 63.2900000000000773 Td
+(BuiltOn.jsx - Walrus / Sui / Seal \(text; replace with licensed logos\).) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.471 0.502 0.478 rg
+50. 23.8899999999999864 Td
+(Nodus - Dev Handoff   1 / 3) Tj
+ET
+endstream
+endobj
+5 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 6 0 R
+>>
+endobj
+6 0 obj
+<<
+/Length 8772
+>>
+stream
+0.200025 w
+0.8 0.84 0.81 RG
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 781.8899999999999864 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 781.8899999999999864 Td
+(Verbs.jsx - PUT/GET/SHARE/SEARCH cards + anchor.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 767.3899999999999864 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 767.3899999999999864 Td
+(HowItWorks.jsx - 3 steps \(auto 2.4s, clickable\) + 40-voxel grid animation.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 752.8899999999999864 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 752.8899999999999864 Td
+(Roi.jsx - 4 metrics \(4 calls - 15 test suites - 500 GiB - 0 master keys\) + DIY vs Nodus table \(stacked < 640px\).) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 738.3899999999999864 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 738.3899999999999864 Td
+(Developers.jsx - quickstart \(3 steps + terminal\), SDK tabs, test-suite chips.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 723.8899999999999864 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 723.8899999999999864 Td
+(Verify.jsx - explorer links + demo card; "Run verification" ticks 4 checks / 650ms. Blob ID & policy are) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 710.3899999999999864 Td
+(placeholders.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 695.8899999999999864 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 695.8899999999999864 Td
+(Security.jsx, CtaFooter.jsx.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 681.3899999999999864 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 681.3899999999999864 Td
+(WebsiteApp.jsx - lang nd-lang, theme nd-theme \(localStorage\) -> lang / data-theme on <html>; early-access) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 667.8899999999999864 Td
+(Dialog -> Toast.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 653.3899999999999864 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 653.3899999999999864 Td
+(i18n.jsx - all copy EN/PT \(window.NODUS_I18N\) -> move into your i18n lib.) Tj
+ET
+BT
+/F2 11.5 Tf
+13.2249999999999996 TL
+0.078 0.094 0.086 rg
+50. 629.3899999999999864 Td
+(Scroll-driven Guardian) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 611.3650000000000091 Td
+(One <nodus-guardian stops=".guardian-stop" intro> mounted once at app root as a fixed full-viewport layer) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 597.8650000000000091 Td
+(behind content \(position:fixed; inset:0; z-index:1; pointer-events:none\); content above via section > * {) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 584.3650000000000091 Td
+(position:relative; z-index:2 }. Every .guardian-stop is a rebuild point.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 566.8650000000000091 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 566.8650000000000091 Td
+(Scroll between stop n and n+1 -> sp 0->1; position/scale interpolate between the two rects \(ease-in-out) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 553.3650000000000091 Td
+(cubic\).) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 538.8650000000000091 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 538.8650000000000091 Td
+(Dispersal smoothstep\(0,.45,sp\)-\(1-smoothstep\(.55,1,sp\)\), low-pass 1-exp\(-dt-2.2\); voxels spread over the) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 525.3650000000000091 Td
+(whole viewport; layer fades to ~28% while dispersed.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 510.8650000000000091 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 510.8650000000000091 Td
+(First stop 3/4 pose, then front-facing. Head/eye mouse tracking only when assembled.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 496.3650000000000091 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 496.3650000000000091 Td
+(Element API: disintegrate\(\), reassemble\(\), setProgress\(0..1\); attrs no-pulse, intro, no-track, stops.) Tj
+ET
+0.8 0.84 0.81 RG
+50. 477.8650000000000091 m
+545. 477.8650000000000091 l
+S
+BT
+/F2 14 Tf
+16.0999999999999979 TL
+0.078 0.094 0.086 rg
+50. 455.8650000000000091 Td
+(Console \(ui_kits/console/\)) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 434.9650000000000318 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 434.9650000000000318 Td
+(Shell ConsoleApp.jsx: desktop 232px Sidebar + Topbar \(64px\) + content; <=900px Topbar \(56px\) + floating) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 421.4650000000000318 Td
+(BottomNav \(64px, radius 32, rgba\(17,22,19,.72\) + blur 20, sliding pill\). Screen saved in nd-console-screen.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 406.9650000000000318 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 406.9650000000000318 Td
+(Topbar: title never shrinks; search shrinks first \(min 120\); status badge >=1240; EN/PT; MobilePreview \(dev) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 393.4650000000000318 Td
+(tool, optional\); notifications; Upload.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 378.9650000000000318 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 378.9650000000000318 Td
+(Overview - 3D Guardian banner \(no-pulse: movement only\), 4 stats, SVG chart \(blue current, dashed slate) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 365.4650000000000318 Td
+(previous\), activity log.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 350.9650000000000318 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 350.9650000000000318 Td
+(Objects - tabs, table >=900 / list rows on mobile, detail panel \(fragment voxel map, sha256, Share/Get\),) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 337.4650000000000318 Td
+(empty state.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 322.9650000000000318 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 322.9650000000000318 Td
+(Nodes - region tabs, 16-col voxel map + hover inspector, legend.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 308.4650000000000318 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 308.4650000000000318 Td
+(Access keys - table / cards on mobile, revoke, policy switches, Create key dialog.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 293.9650000000000318 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 293.9650000000000318 Td
+(Developers - install terminal, SDK tabs, info cards.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 279.4650000000000318 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 279.4650000000000318 Td
+(Flows: Upload -> segmented progress toast -> success toast + new row; Share -> toast; Create key -> toast.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+52. 264.9650000000000318 Td
+(•) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+62. 264.9650000000000318 Td
+(data.jsx = mock data -> replace with API. i18n.jsx = CT\(en\) -> PT map, shared nd-lang.) Tj
+ET
+0.8 0.84 0.81 RG
+50. 246.4650000000000318 m
+545. 246.4650000000000318 l
+S
+BT
+/F2 14 Tf
+16.0999999999999979 TL
+0.078 0.094 0.086 rg
+50. 224.4650000000000318 Td
+(Global behavior) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 203.5650000000000546 Td
+(Buttons: primary blue -> hover lighter + glow, press darker + 1px down; secondary border -> blue; ghost text ->) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 190.0650000000000546 Td
+(blue + 8% tint. Focus ring 0 0 0 2px bg, 0 0 0 4px blue. Inputs: sunken bg, blue border + 3px ring on focus; error) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 176.5650000000000546 Td
+(red + icon. Badges always color + shape. Dialog: blurred scrim, Esc/scrim closes. Toast: glass, bottom-right,) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 163.0650000000000546 Td
+(~4s.) Tj
+ET
+0.8 0.84 0.81 RG
+50. 141.5650000000000546 m
+545. 141.5650000000000546 l
+S
+BT
+/F2 14 Tf
+16.0999999999999979 TL
+0.078 0.094 0.086 rg
+50. 119.5650000000000546 Td
+(Assets \(assets/\)) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 98.6650000000000773 Td
+(guardian-blue.png \(official Guardian, never redraw\) - guardian-blue-head.png - guardian-face-blue.png \(eyes) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 85.1650000000000773 Td
+(removed, live eyes in splash\) - guardian-face-blue-eyes.png \(nav icon\) - nodus-guardian-icon\(.png|-square.png\)) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 71.6650000000000773 Td
+(1024px - nodus-wordmark-dark/light.png. In code the wordmark is live text: Geist 600 -0.045em, "No") Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 58.1650000000000773 Td
+(Stone/Deep + "dus" Blue.) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.471 0.502 0.478 rg
+50. 23.8899999999999864 Td
+(Nodus - Dev Handoff   2 / 3) Tj
+ET
+endstream
+endobj
+7 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 8 0 R
+>>
+endobj
+8 0 obj
+<<
+/Length 658
+>>
+stream
+0.200025 w
+0.8 0.84 0.81 RG
+0.8 0.84 0.81 RG
+50. 791.8899999999999864 m
+545. 791.8899999999999864 l
+S
+BT
+/F2 14 Tf
+16.0999999999999979 TL
+0.078 0.094 0.086 rg
+50. 769.8899999999999864 Td
+(Deps in prototypes) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 748.9900000000000091 Td
+(React 18.3.1 - Babel standalone \(prototype only\) - three.js 0.184 - Lucide 0.453 - Geist.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.078 0.094 0.086 rg
+50. 727.4900000000000091 Td
+(DESIGN_SYSTEM.md = full brand guide \(tone, visual foundations, iconography\).) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.471 0.502 0.478 rg
+50. 23.8899999999999864 Td
+(Nodus - Dev Handoff   3 / 3) Tj
+ET
+endstream
+endobj
+1 0 obj
+<</Type /Pages
+/Kids [3 0 R 5 0 R 7 0 R ]
+/Count 3
+>>
+endobj
+9 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+10 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+11 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+12 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+13 0 obj
+<<
+/Type /Font
+/BaseFont /Courier
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+14 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+15 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+16 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+17 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Roman
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+18 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+19 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Italic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+20 0 obj
+<<
+/Type /Font
+/BaseFont /Times-BoldItalic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+21 0 obj
+<<
+/Type /Font
+/BaseFont /ZapfDingbats
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+22 0 obj
+<<
+/Type /Font
+/BaseFont /Symbol
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+2 0 obj
+<<
+/ProcSet [/PDF /Text /ImageB /ImageC /ImageI]
+/Font <<
+/F1 9 0 R
+/F2 10 0 R
+/F3 11 0 R
+/F4 12 0 R
+/F5 13 0 R
+/F6 14 0 R
+/F7 15 0 R
+/F8 16 0 R
+/F9 17 0 R
+/F10 18 0 R
+/F11 19 0 R
+/F12 20 0 R
+/F13 21 0 R
+/F14 22 0 R
+>>
+/XObject <<
+>>
+>>
+endobj
+23 0 obj
+<<
+/Producer (jsPDF 2.5.1)
+/CreationDate (D:20261002120304-03'00')
+>>
+endobj
+24 0 obj
+<<
+/Type /Catalog
+/Pages 1 0 R
+/OpenAction [3 0 R /FitH null]
+/PageLayout /OneColumn
+>>
+endobj
+xref
+0 25
+0000000000 65535 f 
+0000017829 00000 n 
+0000019662 00000 n 
+0000000015 00000 n 
+0000000152 00000 n 
+0000008022 00000 n 
+0000008159 00000 n 
+0000016983 00000 n 
+0000017120 00000 n 
+0000017898 00000 n 
+0000018023 00000 n 
+0000018154 00000 n 
+0000018288 00000 n 
+0000018426 00000 n 
+0000018550 00000 n 
+0000018679 00000 n 
+0000018811 00000 n 
+0000018947 00000 n 
+0000019075 00000 n 
+0000019202 00000 n 
+0000019331 00000 n 
+0000019464 00000 n 
+0000019566 00000 n 
+0000019914 00000 n 
+0000020000 00000 n 
+trailer
+<<
+/Size 25
+/Root 24 0 R
+/Info 23 0 R
+/ID [ <1723A4DD84DD52184EF6B55ED17D6510> <1723A4DD84DD52184EF6B55ED17D6510> ]
+>>
+startxref
+20104
+%%EOF
