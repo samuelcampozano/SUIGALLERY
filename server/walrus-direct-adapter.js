@@ -20,7 +20,7 @@ export class DirectWalrusTestnetAdapter {
     publisherUrl = process.env.WALRUS_PUBLISHER_URL || "https://publisher.walrus-testnet.walrus.space",
     aggregatorUrl = process.env.WALRUS_AGGREGATOR_URL || "https://aggregator.walrus-testnet.walrus.space",
     defaultEpochs = Number(process.env.WALRUS_STORAGE_EPOCHS || 1),
-    requestTimeoutMs = Number(process.env.WALRUS_REQUEST_TIMEOUT_MS || 15000),
+    requestTimeoutMs = Number(process.env.WALRUS_REQUEST_TIMEOUT_MS || 60000),
     enabled = process.env.WALRUS_DIRECT_TESTNET_ENABLED === "true",
     environment = deploymentEnvironment()
   } = {}) {
