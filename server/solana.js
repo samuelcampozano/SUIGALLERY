@@ -5,7 +5,7 @@
  */
 
 import crypto from "node:crypto";
-import { PublicKey, Keypair } from "@solana/web3.js";
+import { Connection, PublicKey, Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 
@@ -14,6 +14,9 @@ export const NODUS_SOLANA_PROGRAM_ID_STR =
   process.env.SOLANA_PROGRAM_ID || "NodUS11111111111111111111111111111111111111";
 
 export const NODUS_PROGRAM_ID = new PublicKey(NODUS_SOLANA_PROGRAM_ID_STR);
+export const SOLANA_RBAC_MODE = process.env.NODUS_SOLANA_RBAC_MODE || "local";
+const SOLANA_DEVNET_RPC_URL = process.env.SOLANA_DEVNET_RPC_URL || "https://api.devnet.solana.com";
+const DEVNET_CAPABILITY_LABEL = "nodus:tenant-access:v1";
 
 // In-memory challenge store for SIWS with 5-minute TTL and max bounded capacity
 const activeChallenges = new Map();
@@ -302,6 +305,66 @@ export function deriveMemberPDA(orgPDA, memberPubkey, programId = NODUS_PROGRAM_
     bump,
     pdaString: pda.toBase58()
   };
+}
+
+/** Derives the fixed, non-sensitive tenant-access capability for a member. */
+export function deriveCapabilityPDA(memberPDA, capabilityHash = capabilityHashForTenantAccess(), programId = NODUS_PROGRAM_ID) {
+  const member = typeof memberPDA === "string" ? new PublicKey(memberPDA) : memberPDA;
+  const [pda, bump] = PublicKey.findProgramAddressSync(
+    [Buffer.from("nodus_capability"), member.toBuffer(), Buffer.from(capabilityHash)], programId
+  );
+  return { pda, bump, pdaString: pda.toBase58() };
+}
+
+export function organizationHash(orgId) {
+  if (!isValidOrgId(orgId)) throw new Error("Invalid orgId format");
+  return crypto.createHash("sha256").update(orgId.toLowerCase().trim()).digest();
+}
+
+export function capabilityHashForTenantAccess() {
+  return crypto.createHash("sha256").update(DEVNET_CAPABILITY_LABEL).digest();
+}
+
+function decodeMemberAccount(data, expectedOrganization, expectedWallet) {
+  // Anchor discriminator (8) + organization (32) + wallet (32) + role (1) + active (1) + bump (1) + timestamp (8)
+  if (!data || data.length < 83) throw new Error("Invalid Member account layout");
+  const organization = new PublicKey(data.subarray(8, 40)).toBase58();
+  const wallet = new PublicKey(data.subarray(40, 72)).toBase58();
+  const roleIndex = data[72]; const active = data[73] === 1;
+  const roles = ["viewer", "contributor", "admin", "owner"];
+  if (organization !== expectedOrganization || wallet !== expectedWallet || !roles[roleIndex]) throw new Error("Member account does not match requested organization or wallet");
+  return { role: roles[roleIndex], active };
+}
+
+function decodeCapabilityAccount(data, expectedMember, expectedHash) {
+  // Anchor discriminator (8) + member (32) + capability hash (32) + role (1) + active (1) + bump (1) + timestamp (8)
+  if (!data || data.length < 83) throw new Error("Invalid Capability account layout");
+  const member = new PublicKey(data.subarray(8, 40)).toBase58();
+  const hash = Buffer.from(data.subarray(40, 72));
+  const roles = ["viewer", "contributor", "admin", "owner"];
+  if (member !== expectedMember || !hash.equals(Buffer.from(expectedHash)) || !roles[data[72]]) throw new Error("Capability account does not match requested member");
+  return { role: roles[data[72]], active: data[73] === 1 };
+}
+
+/**
+ * Reads actual Anchor accounts from Devnet. It is intentionally fail-closed:
+ * any missing/foreign/inactive account denies the requested capability.
+ */
+export async function verifyDevnetTenantAccess({ orgId, address, rpcUrl = SOLANA_DEVNET_RPC_URL, programId = NODUS_PROGRAM_ID }) {
+  if (SOLANA_RBAC_MODE !== "devnet") throw new Error("Solana Devnet RBAC mode is not enabled");
+  if (!isValidSolanaAddress(address)) throw new Error("Invalid Solana address");
+  const org = deriveOrgPDA(orgId, programId);
+  const member = deriveMemberPDA(org.pda, address, programId);
+  const capability = deriveCapabilityPDA(member.pda, capabilityHashForTenantAccess(), programId);
+  const connection = new Connection(rpcUrl, "confirmed");
+  const [memberInfo, capabilityInfo] = await connection.getMultipleAccountsInfo([member.pda, capability.pda], "confirmed");
+  if (!memberInfo || !capabilityInfo) throw new Error("Required Devnet membership or capability account was not found");
+  if (!memberInfo.owner.equals(programId) || !capabilityInfo.owner.equals(programId)) throw new Error("Devnet account owner does not match the configured Nodus program");
+  const membership = decodeMemberAccount(memberInfo.data, org.pdaString, address);
+  const granted = decodeCapabilityAccount(capabilityInfo.data, member.pdaString, capabilityHashForTenantAccess());
+  if (!membership.active || !granted.active) throw new Error("Devnet membership or capability is revoked");
+  if (ROLE_HIERARCHY[membership.role] < ROLE_HIERARCHY[granted.role]) throw new Error("Capability exceeds the member role");
+  return { orgPda: org.pdaString, memberPda: member.pdaString, capabilityPda: capability.pdaString, role: membership.role, capabilityRole: granted.role, rpcUrl };
 }
 
 // ==========================================

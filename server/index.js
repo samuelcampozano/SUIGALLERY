@@ -40,7 +40,10 @@ import {
   verifyOrgPermission,
   deriveOrgPDA,
   deriveMemberPDA,
-  NODUS_SOLANA_PROGRAM_ID_STR
+  NODUS_SOLANA_PROGRAM_ID_STR,
+  SOLANA_RBAC_MODE,
+  ROLE_HIERARCHY,
+  verifyDevnetTenantAccess
 } from "./solana.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -491,7 +494,7 @@ app.post("/api/auth/solana/challenge", (req, res) => {
 });
 
 // Verify Solana Ed25519 signature
-app.post("/api/auth/solana/verify", (req, res) => {
+app.post("/api/auth/solana/verify", async (req, res) => {
   const { address, signature, message } = req.body;
   if (!address || !signature) {
     return res.status(400).json({ success: false, error: "Address and signature are required" });
@@ -506,10 +509,22 @@ app.post("/api/auth/solana/verify", (req, res) => {
   const userOrgs = listUserOrganizations(address);
 
   const organizationId = req.body.organizationId || "nodus-devs";
+  let devnetProof = null;
+  if (SOLANA_RBAC_MODE === "devnet") {
+    try {
+      devnetProof = await verifyDevnetTenantAccess({ orgId: organizationId, address });
+    } catch (error) {
+      return res.status(403).json({ success: false, error: `Devnet RBAC verification failed: ${error.message}` });
+    }
+  }
   if (authTenantStore) {
-    return authTenantStore.createSession({ address, organizationId })
-      .then((session) => res.json({ success: true, address, provider: "solana", scheme: "ed25519", verifiedAt: result.verifiedAt, organizations: userOrgs, accessToken: session.token, expiresAt: session.expiresAt, tenant: { organizationId, ...session.tenant }, role: session.role }))
-      .catch((error) => res.status(403).json({ success: false, error: error.message }));
+    try {
+      const session = await authTenantStore.createSession({ address, organizationId });
+      if (devnetProof && ROLE_HIERARCHY[session.role] > ROLE_HIERARCHY[devnetProof.role]) {
+        return res.status(403).json({ success: false, error: "Tenant role exceeds the active Devnet role" });
+      }
+      return res.json({ success: true, address, provider: "solana", scheme: "ed25519", verifiedAt: result.verifiedAt, organizations: userOrgs, accessToken: session.token, expiresAt: session.expiresAt, tenant: { organizationId, ...session.tenant }, role: devnetProof?.role || session.role, solanaProof: devnetProof });
+    } catch (error) { return res.status(403).json({ success: false, error: error.message }); }
   }
   res.json({
     success: true,
@@ -517,8 +532,19 @@ app.post("/api/auth/solana/verify", (req, res) => {
     provider: "solana",
     scheme: "ed25519",
     verifiedAt: result.verifiedAt,
-    organizations: userOrgs
+    organizations: userOrgs,
+    role: devnetProof?.role,
+    solanaProof: devnetProof
   });
+});
+
+app.get("/api/solana/devnet/proof", async (req, res) => {
+  if (SOLANA_RBAC_MODE !== "devnet") return res.status(409).json({ success: false, error: "Devnet RBAC mode is not enabled" });
+  const { organizationId, address } = req.query;
+  try {
+    const proof = await verifyDevnetTenantAccess({ orgId: organizationId, address });
+    return res.json({ success: true, network: "devnet", programId: NODUS_SOLANA_PROGRAM_ID_STR, ...proof });
+  } catch (error) { return res.status(403).json({ success: false, error: error.message }); }
 });
 
 // Instant Ephemeral Solana Session for zero-env demoing / testing without browser extension
