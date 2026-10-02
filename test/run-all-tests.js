@@ -16,6 +16,7 @@ const suites = [
   { name: "Live Sui On-Chain Verification", file: "test/test-onchain.js" },
   { name: "End-to-End Crypto-Shredding", file: "test-crypto-shredding.js" },
   { name: "Solana Identity & Anchor PDAs", file: "test/test-solana.js" },
+  { name: "Solana Devnet RBAC Provisioning", file: "test/test-solana-devnet-provisioning.js" },
   { name: "Direct Walrus Testnet Fallback", file: "test/test-walrus-testnet-fallback.js" },
   { name: "Auth Standards, Sui Wallets & BIP-39", file: "test/test-auth-standards.js" },
   { name: "Security Audit & Pen-Test", file: "test/test-audit-security.js" },

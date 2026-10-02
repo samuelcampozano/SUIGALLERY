@@ -258,7 +258,9 @@ export function verifySolanaSignature(address, signatureBase58, suppliedMessage)
 
 /**
  * Derives the deterministic Program Derived Address (PDA) for an Organization.
- * Seed: ["nodus_org", orgId]
+ * Seed: ["nodus_org", SHA-256(normalized orgId)]. The hash is the same fixed
+ * 32-byte value supplied to the Anchor instruction; using the raw organization
+ * ID here would derive a different address from the program.
  *
  * @param {string} orgId
  * @param {PublicKey} [programId=NODUS_PROGRAM_ID]
@@ -269,9 +271,9 @@ export function deriveOrgPDA(orgId, programId = NODUS_PROGRAM_ID) {
     throw new Error("orgId is required to derive Org PDA");
   }
 
-  const cleanOrgId = orgId.toLowerCase().trim();
+  const organizationIdHash = organizationHash(orgId);
   const [pda, bump] = PublicKey.findProgramAddressSync(
-    [Buffer.from("nodus_org"), Buffer.from(cleanOrgId)],
+    [Buffer.from("nodus_org"), organizationIdHash],
     programId
   );
 
@@ -412,7 +414,7 @@ export function createOrganization({ orgId, name, ownerAddress, storageCapBytes 
     pda: orgPDA,
     bump: orgBump,
     programId: NODUS_SOLANA_PROGRAM_ID_STR,
-    seeds: ["nodus_org", cleanOrgId],
+    seeds: ["nodus_org", "sha256(normalized organization ID)"],
     createdAt: new Date().toISOString()
   };
 

@@ -133,9 +133,23 @@ Antes da banca, o owner deve enviar transações para:
 2. `upsert_member` para a carteira do participante;
 3. `set_capability` para a capability fixa `nodus:tenant-access:v1`.
 
-O contrato e o backend já validam essas contas. Ainda é necessário usar/entregar o
-cliente Anchor de provisionamento para assinar essas três transações. Sem essas
-contas, o endpoint do backend falha fechado com `403`, que é o comportamento
+O repositório fornece o provisionador Devnet para assinar essas operações com a
+carteira do owner. Informe somente o Program ID público, a carteira do owner e a
+carteira pública do membro; o script não aceita RPC de produção nem lê arquivos,
+chaves ou metadados de assets.
+
+```bash
+npm run solana:devnet:provision -- \
+  --organization demo-org \
+  --member CARTEIRA_PUBLICA_DO_MEMBRO \
+  --role viewer \
+  --program-id SEU_PROGRAM_ID \
+  --wallet ~/.config/solana/nodus-devnet-deployer.json
+```
+
+O resultado JSON inclui a assinatura e o link Devnet do Explorer. Execute o mesmo
+com `--role contributor` ou `--role admin` quando necessário. Sem as contas
+on-chain, o endpoint do backend falha fechado com `403`, que é o comportamento
 correto.
 
 Guarde para a apresentação: Program ID, assinaturas das três transações, endereço
