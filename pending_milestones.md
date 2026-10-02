@@ -13,6 +13,30 @@
 - Nao marcar como concluido sem teste automatizado ou evidencia manual reproduzivel.
 - Itens de producao devem ser validados fora de mocks, quando aplicavel.
 
+## Priorizacao para a banca - prazo curto (2 de outubro de 2026)
+
+Esta secao nao remove escopo: ela define a ordem de execucao para maximizar a entrega demonstravel. O criterio vem do briefing: provar privacidade verificavel, busca privada e uma experiencia simples; e, para a apresentacao atual, tornar o papel da Solana real e auditavel. Itens marcados como **Obrigatorio agora** so contam como prontos com evidencia reproduzivel na demo. Itens **Depois da demo** permanecem no roadmap e nao devem consumir o tempo do caminho critico.
+
+### Obrigatorio agora - caminho critico da demo
+
+1. **Prova Solana Devnet real (M7):** implantar programa Anchor com contas `Organization`, `Member` e `Capability`; criar uma organizacao e dois membros por transacao assinada; consultar e exibir os PDAs, assinatura e explorer. O programa deve guardar apenas papéis, hashes/referencias ou raiz Merkle - nunca nome de arquivo, tags ou dados pessoais.
+2. **SIWS conectado ao RBAC on-chain (M7):** Phantom/Solflare assina o desafio; o backend confere wallet, membership/capability da Devnet e aplica o papel efetivo ao fluxo demonstrado. O modo demo/local nao vale como evidência da banca.
+3. **Happy path privado real (M0/M1):** no navegador, cifrar um arquivo, enviar ciphertext ao Walrus Testnet, recuperar/baixar e mostrar o Blob no explorer. Registrar que o gateway nao recebeu plaintext e usar somente dados consentidos.
+4. **Colaboracao soberana minima (M5):** compartilhar um asset com outro membro Solana, com papel e prazo; o segundo membro abre pelo envelope; revogar o acesso e mostrar a nova leitura de envelope bloqueada. Explicar o limite de cópias já decifradas.
+5. **Produto apresentavel (M9):** portar a landing e o shell do app da branch `Nodus---Design-System-(-app-and-website-)` para a aplicacao real. A branch e uma referencia visual, nao codigo de producao: seus HTMLs usam prototipos/bundle e dados mockados. Priorizar landing, onboarding/conexao de wallet, galeria e compartilhamento; nao mesclar os artefatos brutos como runtime.
+6. **Roteiro e evidencia:** um runbook de demo de 5-7 minutos, ambiente Devnet/testnet separado, seed/configuracao sem segredos no repositorio e uma passada completa gravavel. A tela precisa dizer claramente `Devnet/Testnet` e nunca prometer producao ou armazenamento eterno.
+
+### Depois da demo - manter, nao bloquear
+
+- Cargas reais de 20/100/500 GiB, billing/Pix, renovacao de storage, segundo provider, compliance completo e operacao/SLO.
+- Links publicos com senha, social recovery completo, login por e-mail/passkey, lixeira e previews avancados.
+- Webhooks e expansao comercial da API: demonstrar o que ja existe apenas se sobrar tempo; nao abrir nova frente antes da prova Solana e do fluxo privado.
+- Busca semantica, indexacao ampla de PDF/DOCX, painel administrativo completo e polimento adicional de console/website.
+
+### Regra de evidencia para jurados
+
+Nao alegar como concluido: (a) Anchor/RBAC on-chain apenas por derivar PDA em JavaScript, (b) zero-custody apenas por mock, nem (c) design como funcional quando usa dados simulados. Cada uma das quatro provas centrais deve ter transacao, URL de explorer ou teste automatizado, e um passo reproduzivel no roteiro.
+
 ## Meta do MVP
 
 O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor chaves ao servidor:
@@ -31,7 +55,7 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 
 **Objetivo:** garantir que o caminho de upload e download usado pelo usuario final seja realmente zero-custody.
 
-**Status:** implementacao tecnica e validacao automatizada concluidas na branch `codex/m0-zero-custody-hardening`; a auditoria independente formal continua pendente.
+**Classificacao:** **Obrigatorio agora para demonstracao** - nao requer nova arquitetura; requer uma prova ponta a ponta no ambiente testnet e um roteiro honesto. A auditoria externa formal fica depois da demo.
 
 - [x] Desativar em producao qualquer rota legada que aceite `key`, `keyHex`, chave privada ou recovery key no request.
 - [x] Garantir que a aplicacao web use somente key envelopes nos uploads simples, retomaveis e diretos.
@@ -45,6 +69,8 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 ## M1 - Finalizar upload grande em ambiente real
 
 **Objetivo:** provar uploads de 20 GB a 500 GB sem o gateway receber ciphertext ou precisar de disco proporcional ao arquivo.
+
+**Classificacao:** o upload real de um arquivo pequeno/medio e o download sao **Obrigatorios agora** como prova de Walrus; as metas de 20/100/500 GiB e carga progressiva sao **Depois da demo**.
 
 - [ ] Configurar um publisher Walrus autenticado real, com HTTPS, JWT e segredo de recibo separados.
 - [ ] Executar teste real de upload, pausa, retomada e cancelamento para pelo menos 20 GB.
@@ -61,7 +87,7 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 
 **Objetivo:** permitir que a equipe crie e opere organizacoes sem manipulacao manual do banco.
 
-**Status:** implementacao concluida na branch `codex/tenant-provisioning-admin` (`46d99df`); a execucao da suite de integracao PostgreSQL com `DATABASE_URL` real continua pendente antes de encerrar formalmente o milestone.
+**Classificacao:** fundacao ja implementada. Para a demo, e **Obrigatorio agora** executar PostgreSQL real somente no tenant demonstrado e provisionar os dois membros; painel completo, retries operacionais e expansao ficam **Depois da demo**.
 
 - [x] Criar API ou painel administrativo autenticado para provisionar organizacao, owner e membership inicial.
 - [x] Automatizar a criacao/vinculo de `space`, `bucket` e politica Seal por organizacao.
@@ -76,7 +102,7 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 
 **Objetivo:** transformar o SDK atual em uma API segura e utilizavel por apps de terceiros.
 
-**Status:** API keys, idempotencia, contrato OpenAPI, webhooks e o sandbox/testnet isolado estao implementados. A suite PostgreSQL de isolamento, revogacao, idempotencia e webhooks ainda precisa ser executada no banco real do sandbox antes de encerrar formalmente o milestone.
+**Classificacao:** **Depois da demo**, exceto uma chamada SDK curta (`put`, `get`, `share` ou `search`) se houver tempo para reforcar a tese de cloud programavel. Nao abrir trabalho novo de webhooks, billing ou integracao externa antes do caminho Solana.
 
 - [x] Criar API keys por organizacao com nome, escopos, expiracao, revogacao e rotacao (aguarda teste PostgreSQL real).
 - [x] Definir escopos minimos: `assets:read`, `assets:write`, `assets:delete`, `assets:share`, `search:read` e `audit:read`.
@@ -93,7 +119,7 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 **Objetivo:** entregar uma cloud pesquisavel sem expor conteudo privado.
 
 
-**Status:** implementacao concluida na branch `codex/m3-commercial-api-sandbox`; a validacao de integracao PostgreSQL real permanece necessaria antes do encerramento formal.
+**Classificacao:** a busca por nome/tag e filtros, ja implementados, sao **Obrigatorios agora apenas como cena curta de demo**. Busca semantica, extracao de documentos e reindexacao ampla sao **Depois da demo**.
 
 - [x] Consolidar busca persistente por nome, tags, pastas e metadata no catalogo por tenant.
 - [x] Implementar indexacao de texto de PDF/DOCX no cliente por `searchText`/`indexContent`, sem enviar texto ao servidor.
@@ -109,7 +135,7 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 
 **Objetivo:** permitir colaboracao segura sem tornar a plataforma custodiante das chaves.
 
-**Status:** primeira entrega de compartilhamento interno concluida na branch `codex/m5-asset-folder-sharing`; a suite PostgreSQL real ainda precisa ser executada antes de encerrar os itens formalmente.
+**Classificacao:** compartilhamento de **asset** entre dois membros, papel, expiracao e revogacao sao **Obrigatorios agora**. Pasta-snapshot pode entrar somente se estiver estavel; links publicos, recovery completo e guardian/social recovery sao **Depois da demo**.
 
 - [x] Criar UX de compartilhamento de arquivo e pasta para membros da organizacao (pasta como snapshot dos arquivos atuais).
 - [x] Adicionar permissao `viewer`, `contributor`, `admin` e expiracao de acesso por compartilhamento (aguarda execucao PostgreSQL real).
@@ -124,6 +150,8 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 ## M6 - Planos, billing e renovacao de storage
 
 **Objetivo:** transformar quota tecnica em planos comerciais sustentaveis.
+
+**Classificacao:** **Depois da demo.** Na banca, mostrar somente quotas simuladas e deixar explicito que nao ha dinheiro real.
 
 - [ ] Definir planos iniciais: Free/BYOS, Pessoal, Pro, Equipe e Enterprise.
 - [ ] Implementar medicao de uso para storage, upload, download e operacoes premium.
@@ -140,19 +168,26 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 
 **Objetivo:** evitar lock-in e definir o papel definitivo de Solana no produto.
 
+**Classificacao:** **Obrigatorio agora, mas com escopo reduzido para Solana Devnet.** O codigo atual possui SIWS, derivacao deterministica de PDAs e uma simulacao de organizacao/papeis; isso nao substitui um programa Anchor implantado ou permissao consultada on-chain. A prova Devnet de `Organization`, `Member` e `Capability` e o bloqueio/aplicacao do papel efetivo devem vir antes de multi-backend e pagamentos.
+
+- [ ] **[Obrigatorio agora]** Criar, testar e implantar em Solana Devnet o programa Anchor minimo com contas `Organization`, `Member` e `Capability`, sem metadados pessoais ou de assets on-chain.
+- [ ] **[Obrigatorio agora]** Fazer SIWS consultar/vincular a wallet ao estado Devnet e aplicar o papel on-chain no fluxo de demonstracao; exibir assinatura, PDA e link de explorer.
+- [ ] **[Obrigatorio agora]** Criar roteiro/teste de duas wallets: owner cria organizacao, convida/atribui papel, membro acessa o asset compartilhado e a revogacao impede nova recuperacao pelo Nodus.
 - [ ] Criar interface `StorageProvider` separando API/SDK da implementacao Walrus.
 - [ ] Extrair `WalrusStorageProvider` da logica atual.
 - [ ] Criar prototipo de segundo provider: Jackal ou S3 compatível.
 - [ ] Implementar exportacao completa de assets, manifestos e metadata para migracao de provider.
-- [ ] Decidir se Solana tera somente identidade/pagamentos ou tambem RBAC verificavel on-chain.
-- [ ] Se RBAC on-chain for aprovado: criar, testar e implantar programa Anchor com `Organization`, `Member` e `Capability`.
+- [x] Decidir para a demo: Solana sera identidade e RBAC verificavel on-chain em Devnet; pagamentos ficam futuros e nao entram no caminho critico.
+- [ ] **[Depois da demo]** Evoluir o programa Anchor para governanca, migracoes, limites e operacao alem do conjunto minimo demonstrado.
 - [ ] Se RBAC on-chain nao for aprovado: atualizar documentacao e manter Solana como identidade/assinatura/pagamento opcional.
 
-**Criterio de saida:** backend de storage pode ser escolhido por organizacao sem alterar a API publica; estrategia Solana esta documentada e implementada conforme a decisao.
+**Criterio de saida para a demo:** duas wallets em Devnet produzem e consultam PDAs reais de organizacao/membro/capability; o papel on-chain e aplicado ao fluxo de acesso demonstrado, sem metadados privados na chain. O criterio original de multi-backend permanece para depois da demo.
 
 ## M8 - Confiabilidade, compliance e operacao
 
 **Objetivo:** operar o MVP com seguranca e capacidade de resposta a incidentes.
+
+**Classificacao:** **Depois da demo**, com duas excecoes obrigatorias agora: nao usar dados de terceiros sem consentimento e manter segredos apenas no ambiente/secret manager.
 
 - [ ] Configurar backups criptografados e teste de restauracao do PostgreSQL.
 - [ ] Criar dashboards e alertas para API, banco, publisher, jobs de limpeza, quota e renovacao.
@@ -168,6 +203,8 @@ O MVP esta pronto quando uma organizacao pre-provisionada consegue, sem expor ch
 ## M9 - Experiencia final do usuario
 
 **Objetivo:** transformar o vault tecnico em uma cloud que qualquer pessoa consegue usar.
+
+**Classificacao:** **Obrigatorio agora em recorte de demonstracao.** A branch `Nodus---Design-System-(-app-and-website-)` fornece referencia forte de marca para landing e console, mas e prototipo isolado com mock data. Portar tokens e as telas criticas para a app existente e conectar a acoes reais; os demais itens continuam **Depois da demo**.
 
 - [ ] Evoluir galeria para navegador completo de arquivos e pastas.
 - [ ] Criar onboarding em portugues para usuario sem wallet.
