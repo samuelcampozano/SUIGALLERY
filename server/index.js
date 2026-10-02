@@ -1220,6 +1220,30 @@ app.get("/api/assets/:assetId/key-envelopes", requireTenant, requireTenantEnvelo
   }
 });
 
+app.get("/api/assets/:assetId/shares", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  try {
+    if (!await authTenantStore.assertShareAuthority({ organizationId: req.tenant.organizationId, assetId: req.params.assetId, actorUserId: req.auth.userId, role: req.auth.role })) return res.status(403).json({ success: false, error: "You cannot manage sharing for this asset" });
+    return res.json({ success: true, shares: await authTenantStore.listAssetShares({ organizationId: req.tenant.organizationId, assetId: req.params.assetId }) });
+  } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+
+app.post("/api/assets/:assetId/shares", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  try {
+    if (!await authTenantStore.assertShareAuthority({ organizationId: req.tenant.organizationId, assetId: req.params.assetId, actorUserId: req.auth.userId, role: req.auth.role })) return res.status(403).json({ success: false, error: "You cannot manage sharing for this asset" });
+    if (req.auth.role === "contributor" && req.body?.role === "admin") return res.status(403).json({ success: false, error: "Contributors cannot grant admin access" });
+    const share = await authTenantStore.shareAsset({ organizationId: req.tenant.organizationId, assetId: req.params.assetId, actorUserId: req.auth.userId, recipientAddress: req.body?.recipientAddress, role: req.body?.role, expiresAt: req.body?.expiresAt, envelopes: req.body?.envelopes });
+    return res.status(201).json({ success: true, share });
+  } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+
+app.delete("/api/assets/:assetId/shares/:grantId", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  try {
+    if (!await authTenantStore.assertShareAuthority({ organizationId: req.tenant.organizationId, assetId: req.params.assetId, actorUserId: req.auth.userId, role: req.auth.role })) return res.status(403).json({ success: false, error: "You cannot manage sharing for this asset" });
+    await authTenantStore.revokeAssetShare({ organizationId: req.tenant.organizationId, assetId: req.params.assetId, grantId: req.params.grantId, actorUserId: req.auth.userId });
+    return res.json({ success: true, revoked: true });
+  } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+
 // Read one encrypted segment through the gateway. The gateway never decrypts
 // it; this proxy lets the SDK stream directly from the authenticated publisher
 // without exposing publisher topology or credentials to an application.
@@ -1297,6 +1321,20 @@ app.delete("/api/assets/folders/:folderId", requireTenant, requireTenantEnvelope
   if (!['owner', 'admin', 'contributor'].includes(req.auth.role)) return res.status(403).json({ success: false, error: "Insufficient organization role" });
   try { await authTenantStore.deleteFolder({ organizationId: req.tenant.organizationId, actorUserId: req.auth.userId, folderId: req.params.folderId }); return res.json({ success: true, deleted: true }); }
   catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+});
+app.post("/api/assets/folders/:folderId/shares", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
+  try {
+    const assetIds = Array.isArray(req.body?.assetIds) ? [...new Set(req.body.assetIds)] : [];
+    if (!assetIds.length) throw new Error("A folder share requires current asset IDs");
+    if (req.auth.role === "viewer") return res.status(403).json({ success: false, error: "Viewers cannot share folders" });
+    if (req.auth.role === "contributor" && req.body?.role === "admin") return res.status(403).json({ success: false, error: "Contributors cannot grant admin access" });
+    await authTenantStore.assertAssetsInFolder({ organizationId: req.tenant.organizationId, folderId: req.params.folderId, assetIds });
+    for (const assetId of assetIds) {
+      if (!await authTenantStore.assertShareAuthority({ organizationId: req.tenant.organizationId, assetId, actorUserId: req.auth.userId, role: req.auth.role })) return res.status(403).json({ success: false, error: "You cannot share every asset in this folder" });
+    }
+    const share = await authTenantStore.shareFolder({ organizationId: req.tenant.organizationId, folderId: req.params.folderId, actorUserId: req.auth.userId, recipientAddress: req.body?.recipientAddress, role: req.body?.role, expiresAt: req.body?.expiresAt, assetIds });
+    return res.status(201).json({ success: true, share, note: "The folder grant covers the files selected at the time of sharing; future files are not inherited." });
+  } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
 });
 app.get("/api/assets/:fileId/versions", requireTenant, requireTenantEnvelopeStore, async (req, res) => {
   try { const asset = await authTenantStore.getCatalogAsset({ organizationId: req.tenant.organizationId, assetId: req.params.fileId }); if (!asset) return res.status(404).json({ success: false, error: "Catalog asset not found" }); return res.json({ success: true, assetId: asset.id, versions: await authTenantStore.listAssetVersions({ organizationId: req.tenant.organizationId, assetId: asset.id }) }); }

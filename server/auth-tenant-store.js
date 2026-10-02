@@ -3,6 +3,7 @@ import { Pool } from "pg";
 
 const tokenHash = (token) => crypto.createHash("sha256").update(token).digest("hex");
 const validRoles = new Set(["owner", "admin", "contributor", "viewer"]);
+const validShareRoles = new Set(["viewer", "contributor", "admin"]);
 const MAX_ENVELOPES_PER_ASSET = 500;
 
 function isP256PublicJwk(value) {
@@ -227,6 +228,25 @@ export class AuthTenantStore {
           details JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
         CREATE INDEX IF NOT EXISTS asset_audit_events_asset_idx ON asset_audit_events (organization_id, asset_id, created_at DESC);
+        CREATE TABLE IF NOT EXISTS asset_access_grants (
+          id UUID PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          asset_id TEXT NOT NULL, recipient_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          granted_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+          role TEXT NOT NULL CHECK (role IN ('viewer','contributor','admin')), expires_at TIMESTAMPTZ, revoked_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          UNIQUE (organization_id, asset_id, recipient_user_id)
+        );
+        CREATE INDEX IF NOT EXISTS asset_access_grants_recipient_idx ON asset_access_grants (organization_id, recipient_user_id, expires_at) WHERE revoked_at IS NULL;
+        CREATE TABLE IF NOT EXISTS folder_access_grants (
+          id UUID PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          folder_id UUID NOT NULL, recipient_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          granted_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+          role TEXT NOT NULL CHECK (role IN ('viewer','contributor','admin')), expires_at TIMESTAMPTZ, revoked_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          UNIQUE (organization_id, folder_id, recipient_user_id),
+          FOREIGN KEY (organization_id, folder_id) REFERENCES asset_folders(organization_id, id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS folder_access_grants_recipient_idx ON folder_access_grants (organization_id, recipient_user_id, expires_at) WHERE revoked_at IS NULL;
 
         CREATE TABLE IF NOT EXISTS tenant_provisioning_operations (
           id UUID PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, organization_id TEXT NOT NULL UNIQUE,
@@ -1100,7 +1120,11 @@ export class AuthTenantStore {
        JOIN users owner ON owner.id = a.owner_user_id
        JOIN asset_key_envelopes e ON e.organization_id = a.organization_id AND e.asset_id = a.asset_id
        JOIN users recipient ON recipient.id = e.recipient_user_id
-       WHERE a.organization_id = $1 AND a.asset_id = $2 AND e.recipient_user_id = $3`,
+       WHERE a.organization_id = $1 AND a.asset_id = $2 AND e.recipient_user_id = $3
+         AND (e.recipient_user_id = a.owner_user_id OR NOT EXISTS (
+           SELECT 1 FROM asset_access_grants g WHERE g.organization_id=a.organization_id AND g.asset_id=a.asset_id
+             AND g.recipient_user_id=e.recipient_user_id AND (g.revoked_at IS NOT NULL OR (g.expires_at IS NOT NULL AND g.expires_at <= now()))
+         ))`,
       [organizationId, assetId, recipientUserId]
     );
     if (!result.rowCount) return null;
@@ -1110,6 +1134,119 @@ export class AuthTenantStore {
       updatedAt: result.rows[0].updatedAt,
       envelopes: result.rows.map(({ ownerAddress, ...envelope }) => ({ ...envelope, organizationId }))
     };
+  }
+
+  normalizeShare({ recipientAddress, role = "viewer", expiresAt = null }) {
+    if (typeof recipientAddress !== "string" || !recipientAddress.trim()) throw new Error("A recipient organization member is required");
+    if (!validShareRoles.has(role)) throw new Error("Share role must be viewer, contributor, or admin");
+    let expiration = null;
+    if (expiresAt) {
+      expiration = new Date(expiresAt);
+      if (Number.isNaN(expiration.getTime()) || expiration <= new Date()) throw new Error("Share expiration must be a future date");
+    }
+    return { recipientAddress: recipientAddress.trim(), role, expiresAt: expiration };
+  }
+
+  async shareAsset({ organizationId, assetId, actorUserId, recipientAddress, role, expiresAt, envelopes }) {
+    const share = this.normalizeShare({ recipientAddress, role, expiresAt });
+    if (!Array.isArray(envelopes) || !envelopes.length || envelopes.length > 2) throw new Error("A recipient key envelope is required");
+    const normalized = envelopes.map((entry) => this.normalizeKeyEnvelope(entry, organizationId));
+    if (normalized.some((entry) => entry.recipientAddress !== share.recipientAddress || entry.recipientType !== "user")) {
+      throw new Error("Every envelope must belong to the selected recipient");
+    }
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const recipient = await client.query(
+        `SELECT u.id FROM memberships m JOIN users u ON u.id=m.user_id
+         JOIN user_key_identities i ON i.user_id=u.id
+         WHERE m.organization_id=$1 AND u.solana_address=$2`,
+        [organizationId, share.recipientAddress]
+      );
+      if (!recipient.rowCount) throw new Error("Recipient must be an organization member with a registered encryption identity");
+      const asset = await client.query("SELECT owner_user_id FROM key_envelope_assets WHERE organization_id=$1 AND asset_id=$2 FOR UPDATE", [organizationId, assetId]);
+      if (!asset.rowCount) throw new Error("Asset key envelopes have not been initialized");
+      const grant = await client.query(
+        `INSERT INTO asset_access_grants (id,organization_id,asset_id,recipient_user_id,granted_by,role,expires_at,revoked_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,NULL)
+         ON CONFLICT (organization_id,asset_id,recipient_user_id) DO UPDATE SET
+           granted_by=EXCLUDED.granted_by, role=EXCLUDED.role, expires_at=EXCLUDED.expires_at, revoked_at=NULL, updated_at=now()
+         RETURNING id,role,expires_at AS "expiresAt",created_at AS "createdAt",updated_at AS "updatedAt"`,
+        [crypto.randomUUID(), organizationId, assetId, recipient.rows[0].id, actorUserId, share.role, share.expiresAt]
+      );
+      for (const entry of normalized) {
+        await client.query(
+          `INSERT INTO asset_key_envelopes (id,organization_id,asset_id,recipient_user_id,recipient_type,algorithm,ephemeral_public_key,iv,ciphertext)
+           VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)
+           ON CONFLICT (organization_id,asset_id,recipient_user_id,recipient_type) DO UPDATE SET
+             algorithm=EXCLUDED.algorithm,ephemeral_public_key=EXCLUDED.ephemeral_public_key,iv=EXCLUDED.iv,ciphertext=EXCLUDED.ciphertext,updated_at=now()`,
+          [crypto.randomUUID(), organizationId, assetId, recipient.rows[0].id, entry.recipientType, entry.algorithm, JSON.stringify(entry.ephemeralPublicKey), entry.iv, entry.ciphertext]
+        );
+      }
+      await this.insertUploadAudit(client, { organizationId, userId: actorUserId, assetId, eventType: "asset.access_granted", metadata: { recipientAddress: share.recipientAddress, role: share.role, expiresAt: share.expiresAt?.toISOString() || null } });
+      await client.query("COMMIT");
+      return { assetId, recipientAddress: share.recipientAddress, ...grant.rows[0] };
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  }
+
+  async listAssetShares({ organizationId, assetId }) {
+    const result = await this.pool.query(
+      `SELECT g.id,u.solana_address AS "recipientAddress",g.role,g.expires_at AS "expiresAt",g.revoked_at AS "revokedAt",g.created_at AS "createdAt",g.updated_at AS "updatedAt",
+              CASE WHEN g.revoked_at IS NOT NULL THEN 'revoked' WHEN g.expires_at IS NOT NULL AND g.expires_at <= now() THEN 'expired' ELSE 'active' END AS status
+       FROM asset_access_grants g JOIN users u ON u.id=g.recipient_user_id
+       WHERE g.organization_id=$1 AND g.asset_id=$2 ORDER BY g.created_at DESC`, [organizationId, assetId]
+    );
+    return result.rows;
+  }
+
+  async revokeAssetShare({ organizationId, assetId, grantId, actorUserId }) {
+    const result = await this.pool.query(
+      `UPDATE asset_access_grants SET revoked_at=now(),updated_at=now() WHERE id=$1 AND organization_id=$2 AND asset_id=$3 AND revoked_at IS NULL RETURNING recipient_user_id`,
+      [grantId, organizationId, assetId]
+    );
+    if (!result.rowCount) throw new Error("Active asset share not found");
+    await this.audit({ organizationId, actorUserId, assetId, eventType: "asset.access_revoked", details: { grantId } });
+    return true;
+  }
+
+  async shareFolder({ organizationId, folderId, actorUserId, recipientAddress, role, expiresAt, assetIds }) {
+    const share = this.normalizeShare({ recipientAddress, role, expiresAt });
+    if (!Array.isArray(assetIds) || !assetIds.length || assetIds.length > 500) throw new Error("A folder share requires one to 500 current assets");
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const recipient = await client.query("SELECT u.id FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.organization_id=$1 AND u.solana_address=$2", [organizationId, share.recipientAddress]);
+      const folder = await client.query("SELECT id FROM asset_folders WHERE organization_id=$1 AND id=$2", [organizationId, folderId]);
+      if (!recipient.rowCount || !folder.rowCount) throw new Error("Folder or recipient was not found in this organization");
+      const result = await client.query(
+        `INSERT INTO folder_access_grants (id,organization_id,folder_id,recipient_user_id,granted_by,role,expires_at,revoked_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,NULL)
+         ON CONFLICT (organization_id,folder_id,recipient_user_id) DO UPDATE SET granted_by=EXCLUDED.granted_by,role=EXCLUDED.role,expires_at=EXCLUDED.expires_at,revoked_at=NULL,updated_at=now()
+         RETURNING id,role,expires_at AS "expiresAt"`,
+        [crypto.randomUUID(), organizationId, folderId, recipient.rows[0].id, actorUserId, share.role, share.expiresAt]
+      );
+      await this.audit({ organizationId, actorUserId, eventType: "folder.access_granted", details: { folderId, recipientAddress: share.recipientAddress, assetCount: assetIds.length, role: share.role, expiresAt: share.expiresAt?.toISOString() || null } });
+      await client.query("COMMIT");
+      return { folderId, recipientAddress: share.recipientAddress, assetIds, ...result.rows[0] };
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  }
+
+  async assertShareAuthority({ organizationId, assetId, actorUserId, role }) {
+    if (["owner", "admin"].includes(role)) return true;
+    if (role !== "contributor") return false;
+    const result = await this.pool.query(
+      `SELECT owner_user_id FROM catalog_assets WHERE organization_id=$1 AND asset_id=$2
+       UNION ALL SELECT owner_user_id FROM key_envelope_assets WHERE organization_id=$1 AND asset_id=$2 LIMIT 1`, [organizationId, assetId]
+    );
+    return result.rowCount > 0 && result.rows[0].owner_user_id === actorUserId;
+  }
+
+  async assertAssetsInFolder({ organizationId, folderId, assetIds }) {
+    const result = await this.pool.query(
+      `SELECT asset_id FROM catalog_assets WHERE organization_id=$1 AND folder_id=$2 AND status='active' AND asset_id=ANY($3::text[])`,
+      [organizationId, folderId, assetIds]
+    );
+    if (result.rowCount !== assetIds.length) throw new Error("Every shared asset must be an active member of the selected folder");
   }
 
   async deleteKeyEnvelopeAsset({ organizationId, assetId }) {
