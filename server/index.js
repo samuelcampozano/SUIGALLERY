@@ -83,7 +83,7 @@ if (authTenantStore && !webhookDispatcher) console.warn("⚠️ [Webhooks] Disab
 function configuredOrigins() {
   const configured = (process.env.NODUS_ALLOWED_ORIGINS || "").split(",").map((origin) => origin.trim()).filter(Boolean);
   if (configured.length) return new Set(configured);
-  if (process.env.NODE_ENV === "production") return new Set();
+  if (process.env.NODE_ENV === "production" && process.env.NODUS_DEPLOYMENT_ENV !== "sandbox") return new Set();
   return new Set(["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "http://127.0.0.1:5173"]);
 }
 

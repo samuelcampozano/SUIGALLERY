@@ -44,6 +44,7 @@ services:
       - CONSOLE_MCP_ALLOWED_DIRS=/app
       - DATABASE_URL=postgresql://nodus:${POSTGRES_PASSWORD:-nodus}@postgres:5432/nodus
       - WALRUS_DIRECT_TESTNET_ENABLED=true
+      - NODUS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
     depends_on:
       postgres:
         condition: service_healthy

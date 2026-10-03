@@ -23,6 +23,7 @@ const suites = [
   { name: "Security Audit & Pen-Test", file: "test/test-audit-security.js" },
   { name: "Deployment Environment & M3 Sandbox", file: "test/test-deployment-environment.js" },
   { name: "Client-Side Private Search & Blind Index", file: "test/test-private-search.js" },
+  { name: "Front-End Component Contracts", file: "test/test-front-components.js" },
   { name: "Tenant Catalog Search Querying", file: "test/test-tenant-catalog-search.js" }
 ];
 

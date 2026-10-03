@@ -26,6 +26,34 @@ Este documento registra as melhorias integradas na branch `dev` e as entregas pr
 | Pronto para merge em `dev` | Sandbox/testnet isolado para API comercial (M3) | branch `codex/m3-commercial-api-sandbox` |
 | Pronto para merge em `dev` | Busca privada, filtros e reindexacao por tenant (M4) | branch `codex/m3-commercial-api-sandbox` |
 | Pronto para merge em `dev` | Compartilhamento interno de assets e pastas com envelopes (M5) | branch `codex/m5-asset-folder-sharing` |
+| Integrado em `dev` | Landing page oficial Nodus e shell da aplicação (M9) | `public/index.html`, `public/app.js` |
+| Integrado em `dev` | Gerador de demo wallets Solana Devnet e PDAs (M7) | `scripts/create-demo-wallets.mjs` |
+
+## 22. Gerador de carteiras Solana Devnet e PDAs para a banca (M7)
+
+Integrado na branch `dev`.
+
+- Criado script CLI interativo `scripts/create-demo-wallets.mjs` acessível via `npm run solana:demo-wallets`.
+- Gera e persiste com segurança os pares de chaves locais `owner.json` e `member.json` sob o diretório `.demo-wallets/` (protegido por `.gitignore`).
+- Consulta saldos em tempo real contra a API pública da Solana Devnet (`https://api.devnet.solana.com`) e solicita airdrop automático de SOL para gás de transação.
+- Calcula matematicamente os endereços derivados do programa Anchor (PDAs) para `Organization`, `Member` e `Capability`, gerando o comando exato de provisionamento para a apresentação da banca.
+- Documentado em detalhe no runbook `docs/SOLANA_DEVNET_RBAC.md`.
+
+## 21. Landing page oficial Nodus e integração do Design System (M9)
+
+Integrado na branch `dev`.
+
+- Portada a landing page completa baseada nos tokens e assets do design system oficial (`#080B0A`, Nodus Blue `#1FA8FF`, Stone `#E8EEE8`, Slate `#66706A`, technical grid 64px).
+- Incorporado o render oficial do Guardian em 3D voxel (`public/assets/guardian-blue.png` e `public/assets/guardian-face-blue.png`).
+- Implementado shell unificado no `public/index.html` com suporte a SPA view-switching instantâneo entre `#landingView` e `#appView` (`#app`), eliminando reloads de página.
+- Adicionado botão "← Website" no navbar da aplicação console para permitir alternância fluida entre o console soberano e o portal do protocolo.
+- Totalmente responsivo para mobile (viewports 390px+) e desktop (1280px+), com internacionalização em tempo real (PT-BR, EN, ES, ZH, FR).
+- Preservados 100% dos IDs e contratos de teste existentes (`#googleZkModal`, `#walletSelectorModal`, `#seedPhraseModal`, `#solanaWalletModal`).
+
+### Validação
+
+- 22 suítes de teste automatizadas executadas (`npm test`): 100% aprovadas (0 falhas).
+- Capturas de tela headless via Chrome DevTools Protocol validadas visualmente em desktop e mobile.
 
 ## 20. Compartilhamento interno por organização (M5)
 

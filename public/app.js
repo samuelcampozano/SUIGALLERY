@@ -133,7 +133,72 @@ document.addEventListener("DOMContentLoaded", () => {
       sort_size: "Size (Largest)",
       tag_all: "All",
       tag_photos: "Photos",
-      tag_nodus: "Nodus"
+      tag_nodus: "Nodus",
+      launch_app: "Launch App",
+      launch_app_sovereign: "Launch Sovereign App",
+      back_to_website: "Website",
+      hero_badge: "PROTOCOL SPECIFICATION — PRODUCTION READY",
+      hero_title: "The Sovereign Cloud for What Cannot Be Seen.",
+      hero_desc: "End-to-end encrypted storage on Walrus protocol. Identity verified on Sui via zero-knowledge proofs. Role-based access control anchored on Solana.",
+      view_arch: "Architecture",
+      nav_architecture: "Architecture",
+      nav_storage: "Storage",
+      nav_how_it_works: "How It Works",
+      nav_verification: "Verification",
+      nav_developers: "Developers",
+      arch_label: "INFRASTRUCTURE PRIMITIVES",
+      arch_title: "Built On Uncompromising Decentralization",
+      arch_desc: "Four independent cryptographic and distributed networks work in harmony to replace legacy centralized cloud monopolies.",
+      arch_walrus_title: "Walrus Protocol",
+      arch_walrus_desc: "Fountain erasure-coded decentralized blob storage. 2D Reed-Solomon encoding provides resilient 4.5x–5x replication efficiency without centralized choke points.",
+      arch_sui_title: "Sui Network",
+      arch_sui_desc: "Sub-second transaction finality, native object capabilities, and zero-knowledge zkLogin authentication. Gas-free onboarding directly from Web2 identities.",
+      arch_solana_title: "Solana Devnet",
+      arch_solana_desc: "High-throughput Anchor RBAC programs, PDA-derived organizational tenancy, and programmatic member capabilities enforcing corporate boundaries.",
+      arch_seal_title: "Seal Client Encryption",
+      arch_seal_desc: "Zero-knowledge threshold envelope encryption executed 100% in-browser before any byte touches network transit. Your keys never leave your custody.",
+      verbs_label: "CORE CAPABILITIES",
+      verbs_title: "What Nodus Enables",
+      verbs_desc: "Sovereign primitives built into every layer without trusting a single central server.",
+      verb_store_title: "Client-Side Sealed",
+      verb_store_desc: "All media is encrypted with AES-256-GCM and Seal threshold keys in the user's browser before transmission. Walrus storage nodes only see unreadable ciphertext slivers.",
+      verb_prove_title: "Zero-Knowledge Identity",
+      verb_prove_desc: "Log in with Google zkLogin, Sui standard wallets (Slush, official Sui), or 12-word BIP-39 mnemonic seed. Your Web2 email is cryptographically translated to a Sui address without leaking credentials.",
+      verb_govern_title: "Multi-Chain RBAC",
+      verb_govern_desc: "Anchor Program-Derived Addresses (PDAs) on Solana and Sui Objects enforce organizational member roles, viewer limits, and revocable team access policies.",
+      verb_verify_title: "Verifiable Attestation",
+      verb_verify_desc: "Audit blob roots on Walruscan, verify Sui policy state on SuiVision, and confirm Anchor RBAC on Solana Devnet Explorer with 1-click inspection.",
+      steps_label: "EXECUTION LIFECYCLE",
+      steps_title: "How It Works End-to-End",
+      steps_desc: "From unencrypted file on your local disk to immutable multi-chain permanence.",
+      step_1_title: "Envelope Encryption",
+      step_1_desc: "Local browser derives a unique AES-256-GCM symmetric key and wraps it with Seal threshold encryption before transmission.",
+      step_2_title: "2D Red Stuff Dispersal",
+      step_2_desc: "Ciphertext is split into primary and secondary slivers via 2D Reed-Solomon erasure coding and distributed across Walrus storage nodes.",
+      step_3_title: "Multi-Chain Attestation",
+      step_3_desc: "Sui records blob certificates and ownership policies; Solana Anchor PDAs enforce organizational role-based access control.",
+      step_4_title: "Zero-Knowledge Retrieval",
+      step_4_desc: "Authorized callers reconstruct slivers from Walrus, verify cryptographic signatures, and decrypt 100% locally in browser memory.",
+      roi_label: "SOVEREIGN ECONOMICS",
+      roi_title: "Enterprise Cloud vs. Sovereign Cloud",
+      roi_desc: "Stop paying extortionate egress fees and granting tech monopolies surveillance rights over your organization's intellectual property.",
+      roi_egress_label: "Egress Fees",
+      roi_egress_desc: "Decentralized blob retrieval with zero bandwidth tax or egress extortion.",
+      roi_client_label: "Client-Side Sealed",
+      roi_client_desc: "Zero cleartext data stored on servers or visible to storage node operators.",
+      roi_eff_label: "Fountain Efficiency",
+      roi_eff_desc: "Walrus 2D Red Stuff erasure coding delivers mathematical resilience with minimal overhead.",
+      roi_finality_label: "Sui Network Finality",
+      roi_finality_desc: "Sub-second transaction settlement and instant cryptographic authorization.",
+      verify_label: "AUDITABLE CERTAINTY",
+      verify_title: "Verify Cryptographic Integrity On-Chain",
+      verify_desc: "Every stored memory and document produces mathematical proof anchored across decentralized ledgers. Inspect any blob root or policy state in real time.",
+      open_verification: "Open Verification Console",
+      dev_label: "DEVELOPER QUICKSTART",
+      dev_title: "Integrate Sovereign Cloud in Minutes",
+      dev_desc: "Build on the Nodus SDK or run your own local sovereign console with complete cryptographic isolation.",
+      cta_title: "Ready to Own Your Sovereign Data?",
+      cta_desc: "Zero subscriptions. Zero corporate tracking. Complete mathematical custody over what cannot be seen."
     },
     es: {
       brand_tag: "PROTOCOLO WALRUS",
@@ -259,7 +324,72 @@ document.addEventListener("DOMContentLoaded", () => {
       sort_size: "Tamaño (Mayor)",
       tag_all: "Todos",
       tag_photos: "Fotos",
-      tag_nodus: "Nodus"
+      tag_nodus: "Nodus",
+      launch_app: "Abrir App",
+      launch_app_sovereign: "Acceder a la Nube Soberana",
+      back_to_website: "Sitio Web",
+      hero_badge: "ESPECIFICACIÓN DE PROTOCOLO — LISTO PARA PRODUCCIÓN",
+      hero_title: "La Nube Soberana Para lo Que No Puede Ser Visto.",
+      hero_desc: "Almacenamiento encriptado de extremo a extremo en el protocolo Walrus. Identidad verificada en Sui mediante pruebas de conocimiento cero. Control de acceso por roles anclado en Solana.",
+      view_arch: "Arquitectura",
+      nav_architecture: "Arquitectura",
+      nav_storage: "Almacenamiento",
+      nav_how_it_works: "Cómo Funciona",
+      nav_verification: "Verificación",
+      nav_developers: "Desarrolladores",
+      arch_label: "PRIMITIVAS DE INFRAESTRUCTURA",
+      arch_title: "Construido Sobre Descentralización Total",
+      arch_desc: "Cuatro redes criptográficas y distribuidas independientes trabajan en armonía para reemplazar los monopolios de nube tradicionales.",
+      arch_walrus_title: "Protocolo Walrus",
+      arch_walrus_desc: "Almacenamiento descentralizado con codificación 2D Reed-Solomon que ofrece 4.5x–5x de eficiencia de replicación sin puntos de falla únicos.",
+      arch_sui_title: "Red Sui",
+      arch_sui_desc: "Finalidad de transacción en subsegundos, capacidades de objetos nativos y autenticación zkLogin sin necesidad de saldo inicial.",
+      arch_solana_title: "Solana Devnet",
+      arch_solana_desc: "Programas RBAC Anchor de alto rendimiento, tenencia organizacional derivada por PDAs y capacidades de miembros auditables.",
+      arch_seal_title: "Encriptación de Cliente Seal",
+      arch_seal_desc: "Encriptación de sobre de umbral ejecutada 100% en el navegador antes de que cualquier byte sea transmitido por la red.",
+      verbs_label: "CAPACIDADES CLAVE",
+      verbs_title: "Lo Que Nodus Hace Posible",
+      verbs_desc: "Primitivas soberanas integradas en cada capa sin confiar en servidores centrales.",
+      verb_store_title: "Sellado en Cliente",
+      verb_store_desc: "Todos los archivos son cifrados con AES-256-GCM y llaves Seal en el navegador del usuario antes de la transmisión.",
+      verb_prove_title: "Identidad Zero-Knowledge",
+      verb_prove_desc: "Inicia sesión con Google zkLogin, billeteras Sui estándar o frase mnemónica BIP-39 sin exponer contraseñas ni semillas.",
+      verb_govern_title: "RBAC Multicadena",
+      verb_govern_desc: "Las PDAs de Anchor en Solana y objetos Sui administran roles, límites de visibilidad y acceso revocable.",
+      verb_verify_title: "Atestación Verificable",
+      verb_verify_desc: "Audita raíces de blobs en Walruscan, comprueba políticas en SuiVision y verifica permisos en el Explorador de Solana.",
+      steps_label: "CICLO DE EJECUCIÓN",
+      steps_title: "Cómo Funciona de Extremo a Extremo",
+      steps_desc: "De un archivo local sin encriptar a la permanencia inmutable en múltiples cadenas.",
+      step_1_title: "Encriptación de Sobre",
+      step_1_desc: "El navegador deriva una clave simétrica AES-256-GCM y la protege con cifrado de umbral Seal.",
+      step_2_title: "Dispersión 2D Red Stuff",
+      step_2_desc: "El texto cifrado se divide en fragmentos con codificación 2D Reed-Solomon y se dispersa en los nodos de Walrus.",
+      step_3_title: "Atestación Multicadena",
+      step_3_desc: "Sui registra los certificados de blob; las PDAs de Anchor en Solana imponen el control de acceso organizacional.",
+      step_4_title: "Recuperación Zero-Knowledge",
+      step_4_desc: "Los usuarios autorizados reconstruyen los fragmentos desde Walrus y desencriptan localmente en memoria.",
+      roi_label: "ECONOMÍA SOBERANA",
+      roi_title: "Nube Empresarial vs. Nube Soberana",
+      roi_desc: "Olvídate de comisiones de transferencia y de ceder la privacidad de tus datos a corporaciones centralizadas.",
+      roi_egress_label: "Comisiones de Salida (Egress)",
+      roi_egress_desc: "Recuperación descentralizada de blobs con 0% de costo por ancho de banda.",
+      roi_client_label: "Sellado en Cliente",
+      roi_client_desc: "Cero datos en texto claro almacenados en servidores centrales.",
+      roi_eff_label: "Eficiencia Fountain",
+      roi_eff_desc: "La codificación 2D Red Stuff de Walrus brinda máxima resiliencia con mínima redundancia.",
+      roi_finality_label: "Finalidad en Red Sui",
+      roi_finality_desc: "Confirmación en menos de un segundo y validación criptográfica instantánea.",
+      verify_label: "CERTEZA AUDITABLE",
+      verify_title: "Verifica Integridad Criptográfica On-Chain",
+      verify_desc: "Cada archivo genera una prueba matemática anclada en libros descentralizados. Inspecciona en tiempo real.",
+      open_verification: "Abrir Consola de Verificación",
+      dev_label: "INICIO RÁPIDO PARA DESARROLLADORES",
+      dev_title: "Integra la Nube Soberana en Minutos",
+      dev_desc: "Construye sobre el SDK de Nodus o ejecuta tu propia consola local con aislamiento criptográfico total.",
+      cta_title: "¿Listo Para Poseer Tus Datos Soberanos?",
+      cta_desc: "Sin suscripciones. Sin rastreo corporativo. Custodia matemática absoluta sobre lo que no debe verse."
     },
     pt: {
       brand_tag: "PROTOCOLO WALRUS",
@@ -274,7 +404,7 @@ document.addEventListener("DOMContentLoaded", () => {
       banner_sui: "<strong>Objetos Nativos em Sui</strong> (Pronto para zkLogin)",
       drop_title: "Arraste as suas fotos e vídeos aqui",
       drop_subtitle: "Encriptados no seu dispositivo antes de tocar a rede Walrus. Preservação em resolução total sem compressão.",
-      browse_btn: "Procurar Ficheiros",
+      browse_btn: "Procurar Pastas",
       progress_title: "Encriptando e Enviando ao Walrus...",
       step1_text: "1. Encriptação de Envelope com Seal",
       step2_text: "2. Registro do Blob no Walrus",
@@ -287,9 +417,9 @@ document.addEventListener("DOMContentLoaded", () => {
       empty_title: "O seu Cofre Soberano está Vazio",
       empty_desc: "Ainda não há fotos ou vídeos armazenados no seu bucket do Walrus. Arraste e solte qualquer imagem acima para começar a usar a sua alternativa ao Google Photos.",
       meta_blob_id: "ID do Blob no Walrus",
-      meta_file_id: "ID do Ficheiro na Consola",
+      meta_file_id: "ID do Pasta no Console",
       meta_seal_policy: "Política de Encriptação Seal",
-      meta_file_size: "Tamanho do Ficheiro",
+      meta_file_size: "Tamanho do Pasta",
       meta_upload_date: "Capturado / Enviado",
       download_btn: "Baixar Original",
       delete_btn: "Excluir do Walrus",
@@ -307,7 +437,7 @@ document.addEventListener("DOMContentLoaded", () => {
       batch_confirm: "Tem certeza de que deseja excluir permanentemente {count} fotos selecionadas do Walrus?",
       batch_deleting: "Excluindo {count} fotos...",
       edit_photo_title: "Editar Detalhes da Memória",
-      edit_filename: "Nome do Ficheiro",
+      edit_filename: "Nome do Pasta",
       edit_description: "Descrição",
       edit_tags: "Tags (separadas por vírgulas)",
       cancel: "Cancelar",
@@ -354,7 +484,7 @@ document.addEventListener("DOMContentLoaded", () => {
       share_modal_title: "Partilhar Memória Soberana",
       share_modal_subtitle: "Partilhe acesso com amigos ou envolva num envelope de chave encriptada.",
       share_link_label: "Link Direto Desencriptado",
-      share_link_help: "Qualquer pessoa com este link pode ver o ficheiro em alta resolução.",
+      share_link_help: "Qualquer pessoa com este link pode ver o Pasta em alta resolução.",
       share_wrap_label: "Proteger para Destinatário (Endereço Solana)",
       share_recipient_placeholder: "Insira o endereço Solana do destinatário...",
       share_wrap_btn: "Proteger com Envelope de Chave do Destinatário",
@@ -385,7 +515,72 @@ document.addEventListener("DOMContentLoaded", () => {
       sort_size: "Tamanho (Maior)",
       tag_all: "Todos",
       tag_photos: "Fotos",
-      tag_nodus: "Nodus"
+      tag_nodus: "Nodus",
+      launch_app: "Abrir App",
+      launch_app_sovereign: "Aceder à Nuvem Soberana",
+      back_to_website: "Website",
+      hero_badge: "ESPECIFICAÇÃO DE PROTOCOLO — PRONTO PARA PRODUÇÃO",
+      hero_title: "A Nuvem Soberana Para o Que Não Pode Ser Visto.",
+      hero_desc: "Armazenamento encriptado de ponta a ponta no protocolo Walrus. Identidade verificada em Sui via provas de conhecimento zero. Controlo de acessos baseado em papéis ancorado em Solana.",
+      view_arch: "Arquitetura",
+      nav_architecture: "Arquitetura",
+      nav_storage: "Armazenamento",
+      nav_how_it_works: "Como Funciona",
+      nav_verification: "Verificação",
+      nav_developers: "Desenvolvedores",
+      arch_label: "PRIMITIVAS DE INFRAESTRUTURA",
+      arch_title: "Construído Sobre Descentralização Intransigente",
+      arch_desc: "Quatro redes criptográficas e distribuídas independentes atuam em perfeita harmonia para substituir os monopólios de nuvem centralizados legados.",
+      arch_walrus_title: "Protocolo Walrus",
+      arch_walrus_desc: "Armazenamento descentralizado de blobs com codificação fountain 2D Reed-Solomon que fornece eficiência de replicação de 4.5x–5x sem pontos únicos de falha.",
+      arch_sui_title: "Rede Sui",
+      arch_sui_desc: "Finalização de transação em sub-segundos, capacidades de objetos nativos e autenticação zkLogin de conhecimento zero sem necessidade de gás inicial.",
+      arch_solana_title: "Solana Devnet",
+      arch_solana_desc: "Programas RBAC Anchor de alto débito, isolamento multilocatário por PDAs e capacidades programáticas que impõem governança de equipa.",
+      arch_seal_title: "Encriptação de Cliente Seal",
+      arch_seal_desc: "Encriptação de envelope de limiar com conhecimento zero executada 100% no navegador antes que qualquer byte saia da memória do dispositivo.",
+      verbs_label: "CAPACIDADES PRINCIPAIS",
+      verbs_title: "O Que o Nodus Torna Possível",
+      verbs_desc: "Primitivas soberanas integradas em cada camada sem depender de servidores de terceiros.",
+      verb_store_title: "Selado no Cliente",
+      verb_store_desc: "Todo o conteúdo é encriptado com AES-256-GCM e chaves de limiar Seal no navegador do utilizador antes do envio. Os nós Walrus recebem apenas fragmentos de texto cifrado ilegíveis.",
+      verb_prove_title: "Identidade Zero-Knowledge",
+      verb_prove_desc: "Inicie sessão com Google zkLogin, carteiras Sui padrão (Slush, Sui oficial) ou frase mnemónica BIP-39. O seu email Web2 traduz-se criptograficamente num endereço Sui sem expor credenciais.",
+      verb_govern_title: "RBAC Multicadeia",
+      verb_govern_desc: "Endereços Derivados de Programas (PDAs) Anchor em Solana e Objetos Sui impõem papéis organizacionais, limites de visualização e permissões revogáveis.",
+      verb_verify_title: "Atestação Verificável",
+      verb_verify_desc: "Audite raízes de blobs no Walruscan, comprove o estado de políticas no SuiVision e confirme o RBAC Anchor no Solana Devnet Explorer com 1 clique.",
+      steps_label: "CICLO DE EXECUÇÃO",
+      steps_title: "Como Funciona de Ponta a Ponta",
+      steps_desc: "De um Pasta não encriptado no seu disco local até à permanência multicadeia imutável.",
+      step_1_title: "Encriptação de Envelope",
+      step_1_desc: "O navegador deriva uma chave simétrica AES-256-GCM única e protege-a com encriptação de limiar Seal antes do envio.",
+      step_2_title: "Dispersão 2D Red Stuff",
+      step_2_desc: "O texto cifrado é dividido em fragmentos primários e secundários via codificação de eliminação 2D Reed-Solomon e disperso pelos nós de armazenamento Walrus.",
+      step_3_title: "Atestação Multicadeia",
+      step_3_desc: "A Sui regista os certificados de blob e políticas de custódia; as PDAs Anchor de Solana impõem controlo de acesso por função da organização.",
+      step_4_title: "Recuperação Zero-Knowledge",
+      step_4_desc: "Utilizadores autorizados reconstroem os fragmentos a partir do Walrus, verificam assinaturas criptográficas e desencriptam 100% localmente na memória do navegador.",
+      roi_label: "ECONOMIA SOBERANA",
+      roi_title: "Nuvem Empresarial vs. Nuvem Soberana",
+      roi_desc: "Deixe de pagar taxas extorsivas de egress e de conceder a monopólios tecnológicos direitos de vigilância sobre a propriedade intelectual da sua organização.",
+      roi_egress_label: "Taxas de Egress",
+      roi_egress_desc: "Recuperação descentralizada de blobs com zero imposto de largura de banda ou extorsão de download.",
+      roi_client_label: "Selado no Cliente",
+      roi_client_desc: "Zero dados em texto simples armazenados em servidores ou visíveis para os operadores dos nós.",
+      roi_eff_label: "Eficiência Fountain",
+      roi_eff_desc: "A codificação de eliminação Walrus 2D Red Stuff entrega resiliência matemática com redundância mínima.",
+      roi_finality_label: "Finalização na Rede Sui",
+      roi_finality_desc: "Liquidação de transações em sub-segundos e autorização criptográfica instantânea.",
+      verify_label: "CERTEZA AUDITÁVEL",
+      verify_title: "Verifique a Integridade Criptográfica On-Chain",
+      verify_desc: "Cada memória e documento armazenado gera uma prova matemática ancorada em registos descentralizados. Inspecione qualquer raiz de blob ou estado de política em tempo real.",
+      open_verification: "Abrir Console de Verificação",
+      dev_label: "INÍCIO RÁPIDO PARA DESENVOLVEDORES",
+      dev_title: "Integre a Nuvem Soberana em Minutos",
+      dev_desc: "Construa sobre o SDK Nodus ou execute a sua própria console soberana local com isolamento criptográfico completo.",
+      cta_title: "Pronto Para Ter Custódia dos Seus Dados?",
+      cta_desc: "Zero subscrições. Zero rastreamento corporativo. Custódia matemática absoluta sobre o que não pode ser visto."
     },
     zh: {
       brand_tag: "WALRUS 协议",
@@ -643,6 +838,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let currentLang = localStorage.getItem("nodus_lang") || localStorage.getItem("suigallery_lang") || "en";
   if (!translations[currentLang]) currentLang = "en";
+  const supportedThemes = new Set(["dark", "light", "midnight"]);
+  let currentTheme = localStorage.getItem("nodus_theme") || "dark";
+  if (!supportedThemes.has(currentTheme)) currentTheme = "dark";
 
   // App State
   const state = {
@@ -669,6 +867,17 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // DOM Elements
+  const landingView = document.getElementById("landingView");
+  const appView = document.getElementById("appView");
+  const launchAppNavBtn = document.getElementById("launchAppNavBtn");
+  const launchAppHeroBtn = document.getElementById("launchAppHeroBtn");
+  const launchAppCtaBtn = document.getElementById("launchAppCtaBtn");
+  const launchAppVerifyBtn = document.getElementById("launchAppVerifyBtn");
+  const landingSignInBtn = document.getElementById("landingSignInBtn");
+  const landingDemoBtn = document.getElementById("landingDemoBtn");
+  const landingLogoBtn = document.getElementById("landingLogoBtn");
+  const backToLandingBtn = document.getElementById("backToLandingBtn");
+
   const toastContainer = document.getElementById("toastContainer");
   const connectionBadge = document.getElementById("connectionBadge");
   const statusText = document.getElementById("statusText");
@@ -807,6 +1016,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const langBtn = document.getElementById("langBtn");
   const langMenu = document.getElementById("langMenu");
   const currentLangCode = document.getElementById("currentLangCode");
+
+  // Theme Elements
+  const themeDropdown = document.getElementById("themeDropdown");
+  const themeBtn = document.getElementById("themeBtn");
+  const themeMenu = document.getElementById("themeMenu");
+  const currentThemeCode = document.getElementById("currentThemeCode");
 
   // Lightbox Elements
   const lightboxModal = document.getElementById("lightboxModal");
@@ -962,26 +1177,88 @@ document.addEventListener("DOMContentLoaded", () => {
     if (window.lucide) window.lucide.createIcons();
   }
 
+  function closeThemeMenu() {
+    if (!themeDropdown || !themeMenu || !themeBtn) return;
+    themeDropdown.classList.remove("open");
+    themeMenu.classList.add("hidden");
+    themeBtn.setAttribute("aria-expanded", "false");
+  }
+
+  function closeLanguageMenu() {
+    if (!langDropdown || !langMenu || !langBtn) return;
+    langDropdown.classList.remove("open");
+    langMenu.classList.add("hidden");
+    langBtn.setAttribute("aria-expanded", "false");
+  }
+
+  function applyTheme(theme) {
+    const nextTheme = supportedThemes.has(theme) ? theme : "dark";
+    currentTheme = nextTheme;
+    document.body.classList.remove("dark-theme", "light-theme", "midnight-theme");
+    document.body.classList.add(`${nextTheme}-theme`);
+    localStorage.setItem("nodus_theme", nextTheme);
+
+    const themeKey = `theme_${nextTheme}`;
+    if (currentThemeCode) {
+      currentThemeCode.setAttribute("data-i18n", themeKey);
+      currentThemeCode.textContent = t(themeKey);
+    }
+    const activeThemeIcon = document.getElementById("themeIcon");
+    if (activeThemeIcon) {
+      const iconByTheme = { dark: "moon", light: "sun", midnight: "moon-star" };
+      activeThemeIcon.setAttribute("data-lucide", iconByTheme[nextTheme]);
+    }
+    document.querySelectorAll(".theme-option").forEach((option) => {
+      option.classList.toggle("active", option.getAttribute("data-theme") === nextTheme);
+    });
+
+    closeThemeMenu();
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  if (themeBtn && themeDropdown && themeMenu) {
+    themeBtn.setAttribute("aria-expanded", "false");
+    themeBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const willOpen = themeMenu.classList.contains("hidden");
+      closeThemeMenu();
+      if (willOpen) {
+        themeDropdown.classList.add("open");
+        themeMenu.classList.remove("hidden");
+        themeBtn.setAttribute("aria-expanded", "true");
+      }
+      closeLanguageMenu();
+    });
+  }
+
+  document.querySelectorAll(".theme-option").forEach((option) => {
+    option.addEventListener("click", () => applyTheme(option.getAttribute("data-theme")));
+  });
+
   // Language Dropdown handlers
+  langBtn.setAttribute("aria-expanded", "false");
   langBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    langDropdown.classList.toggle("open");
-    langMenu.classList.toggle("hidden");
+    closeThemeMenu();
+    const willOpen = langMenu.classList.contains("hidden");
+    closeLanguageMenu();
+    if (willOpen) {
+      langDropdown.classList.add("open");
+      langMenu.classList.remove("hidden");
+      langBtn.setAttribute("aria-expanded", "true");
+    }
   });
 
   document.addEventListener("click", (e) => {
-    if (!langDropdown.contains(e.target)) {
-      langDropdown.classList.remove("open");
-      langMenu.classList.add("hidden");
-    }
+    if (!langDropdown.contains(e.target)) closeLanguageMenu();
+    if (themeDropdown && !themeDropdown.contains(e.target)) closeThemeMenu();
   });
 
   document.querySelectorAll(".lang-option").forEach((btn) => {
     btn.addEventListener("click", () => {
       const selected = btn.getAttribute("data-lang");
       applyLanguage(selected);
-      langDropdown.classList.remove("open");
-      langMenu.classList.add("hidden");
+      closeLanguageMenu();
     });
   });
 
@@ -3634,8 +3911,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Display on-chain proof directly in dock upon successful completion
     const dockOnchainProof = document.getElementById("dockOnchainProof");
-    const dockWalrusLink = document.getElementById("dockWalrusLink");
-    const dockSuiLink = document.getElementById("dockSuiLink");
+    const dockWalrusLink = document.getElementById("dockWalruscanLink");
+    const dockSuiLink = document.getElementById("dockSuivisionLink");
 
     if (dockOnchainProof && completedInBatch > 0) {
       const policyId = state.status?.bucket?.seal_policy_id || "0x9c1baccb244e45342ac150a0123a4802e8e834f25c00210e50c81081354eee44";
@@ -3785,22 +4062,82 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast(t("toast_conn_lost"), "warning");
   });
 
+  // ==========================================
+  // VIEW SWITCHING (LANDING PAGE <-> CONSOLE APP)
+  // ==========================================
+  function showLandingView(updateHash = true) {
+    if (landingView) landingView.classList.remove("hidden");
+    if (appView) appView.classList.add("hidden");
+    if (updateHash && window.location.hash === "#app") {
+      history.pushState(null, "", window.location.pathname + window.location.search);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  function showAppView(updateHash = true) {
+    if (landingView) landingView.classList.add("hidden");
+    if (appView) appView.classList.remove("hidden");
+    if (updateHash && window.location.hash !== "#app") {
+      window.location.hash = "#app";
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  if (launchAppNavBtn) launchAppNavBtn.addEventListener("click", () => showAppView(true));
+  if (launchAppHeroBtn) launchAppHeroBtn.addEventListener("click", () => showAppView(true));
+  if (launchAppCtaBtn) launchAppCtaBtn.addEventListener("click", () => showAppView(true));
+  if (launchAppVerifyBtn) launchAppVerifyBtn.addEventListener("click", () => showAppView(true));
+  if (landingSignInBtn) {
+    landingSignInBtn.addEventListener("click", () => {
+      showAppView(true);
+      openZkLoginModal();
+    });
+  }
+  if (landingDemoBtn) {
+    landingDemoBtn.addEventListener("click", () => {
+      showAppView(true);
+      const instantDemo = document.getElementById("instantDemoBtn");
+      if (instantDemo) instantDemo.click();
+    });
+  }
+  if (backToLandingBtn) backToLandingBtn.addEventListener("click", () => showLandingView(true));
+  if (landingLogoBtn) landingLogoBtn.addEventListener("click", () => showLandingView(true));
+
+  window.addEventListener("hashchange", () => {
+    if (window.location.hash === "#app") {
+      showAppView(false);
+    } else if (!window.location.hash || window.location.hash === "#") {
+      showLandingView(false);
+    }
+  });
+
   // Initial Boot
+  applyTheme(currentTheme);
   updateAuthUI();
   applyLanguage(currentLang);
   fetchStatus();
   fetchPhotos();
 
-  // Deep-link / Test Modal Auto-Open Handler
+  // Initial View Determination & Deep-link Modal Handler
   try {
     const urlParams = new URLSearchParams(window.location.search);
     const openModal = urlParams.get("open_modal");
+    const appQuery = urlParams.get("app");
+    if (window.location.hash === "#app" || appQuery === "true" || openModal) {
+      showAppView(false);
+    } else {
+      showLandingView(false);
+    }
+
     if (openModal === "zklogin") openZkLoginModal();
     else if (openModal === "google") openGoogleZkModal();
     else if (openModal === "wallets") openWalletSelectorModal();
     else if (openModal === "seed") openSeedPhraseModal();
     else if (openModal === "solana") openSolanaWalletModal();
   } catch (e) {
-    console.warn("Modal auto-open error:", e);
+    console.warn("View router / modal auto-open error:", e);
+    showLandingView(false);
   }
 });

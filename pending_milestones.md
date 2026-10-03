@@ -23,7 +23,7 @@ Esta secao nao remove escopo: ela define a ordem de execucao para maximizar a en
 2. **SIWS conectado ao RBAC on-chain (M7):** Phantom/Solflare assina o desafio; o backend confere wallet, membership/capability da Devnet e aplica o papel efetivo ao fluxo demonstrado. O modo demo/local nao vale como evidência da banca.
 3. **Happy path privado real (M0/M1):** no navegador, cifrar um arquivo, enviar ciphertext ao Walrus Testnet, recuperar/baixar e mostrar o Blob no explorer. Registrar que o gateway nao recebeu plaintext e usar somente dados consentidos.
 4. **Colaboracao soberana minima (M5):** compartilhar um asset com outro membro Solana, com papel e prazo; o segundo membro abre pelo envelope; revogar o acesso e mostrar a nova leitura de envelope bloqueada. Explicar o limite de cópias já decifradas.
-5. **Produto apresentavel (M9):** portar a landing e o shell do app da branch `Nodus---Design-System-(-app-and-website-)` para a aplicacao real. A branch e uma referencia visual, nao codigo de producao: seus HTMLs usam prototipos/bundle e dados mockados. Priorizar landing, onboarding/conexao de wallet, galeria e compartilhamento; nao mesclar os artefatos brutos como runtime.
+5. [x] **Produto apresentavel (M9):** portar a landing e o shell do app da branch `Nodus---Design-System-(-app-and-website-)` para a aplicacao real. Design system oficial (#080B0A, Nodus Blue, Guardian render 3D voxel oficial, navegação fluida com `#app` e botão "Website", 100% responsivo e i18n PT-BR/ES/EN).
 6. **Roteiro e evidencia:** um runbook de demo de 5-7 minutos, ambiente Devnet/testnet separado, seed/configuracao sem segredos no repositorio e uma passada completa gravavel. A tela precisa dizer claramente `Devnet/Testnet` e nunca prometer producao ou armazenamento eterno.
 
 ### Depois da demo - manter, nao bloquear
@@ -235,3 +235,5 @@ As entregas abaixo nao devem voltar para a lista pendente sem uma regressao comp
 - [x] Crypto-shredding e tarefas de rotacao apos revogacao de membro.
 - [x] CORS restrito e autorizacao uniforme nas rotas protegidas.
 - [x] Fundacao Anchor Devnet de RBAC, runbook de deploy e provisionador de transacoes para `Organization`, `Member` e `Capability` (aguarda execucao real em Devnet).
+- [x] Gerador de carteiras Solana Devnet e PDAs para a banca (`scripts/create-demo-wallets.mjs`, `npm run solana:demo-wallets`).
+- [x] Landing page oficial e shell do app integrados a partir do design system Nodus (`#080B0A`, tokens oficiais, Guardian 3D render e deep linking `#app`).
