@@ -404,7 +404,7 @@ document.addEventListener("DOMContentLoaded", () => {
       banner_sui: "<strong>Objetos Nativos em Sui</strong> (Pronto para zkLogin)",
       drop_title: "Arraste as suas fotos e vídeos aqui",
       drop_subtitle: "Encriptados no seu dispositivo antes de tocar a rede Walrus. Preservação em resolução total sem compressão.",
-      browse_btn: "Procurar Ficheiros",
+      browse_btn: "Procurar Pastas",
       progress_title: "Encriptando e Enviando ao Walrus...",
       step1_text: "1. Encriptação de Envelope com Seal",
       step2_text: "2. Registro do Blob no Walrus",
@@ -417,9 +417,9 @@ document.addEventListener("DOMContentLoaded", () => {
       empty_title: "O seu Cofre Soberano está Vazio",
       empty_desc: "Ainda não há fotos ou vídeos armazenados no seu bucket do Walrus. Arraste e solte qualquer imagem acima para começar a usar a sua alternativa ao Google Photos.",
       meta_blob_id: "ID do Blob no Walrus",
-      meta_file_id: "ID do Ficheiro na Consola",
+      meta_file_id: "ID do Pasta no Console",
       meta_seal_policy: "Política de Encriptação Seal",
-      meta_file_size: "Tamanho do Ficheiro",
+      meta_file_size: "Tamanho do Pasta",
       meta_upload_date: "Capturado / Enviado",
       download_btn: "Baixar Original",
       delete_btn: "Excluir do Walrus",
@@ -437,7 +437,7 @@ document.addEventListener("DOMContentLoaded", () => {
       batch_confirm: "Tem certeza de que deseja excluir permanentemente {count} fotos selecionadas do Walrus?",
       batch_deleting: "Excluindo {count} fotos...",
       edit_photo_title: "Editar Detalhes da Memória",
-      edit_filename: "Nome do Ficheiro",
+      edit_filename: "Nome do Pasta",
       edit_description: "Descrição",
       edit_tags: "Tags (separadas por vírgulas)",
       cancel: "Cancelar",
@@ -484,7 +484,7 @@ document.addEventListener("DOMContentLoaded", () => {
       share_modal_title: "Partilhar Memória Soberana",
       share_modal_subtitle: "Partilhe acesso com amigos ou envolva num envelope de chave encriptada.",
       share_link_label: "Link Direto Desencriptado",
-      share_link_help: "Qualquer pessoa com este link pode ver o ficheiro em alta resolução.",
+      share_link_help: "Qualquer pessoa com este link pode ver o Pasta em alta resolução.",
       share_wrap_label: "Proteger para Destinatário (Endereço Solana)",
       share_recipient_placeholder: "Insira o endereço Solana do destinatário...",
       share_wrap_btn: "Proteger com Envelope de Chave do Destinatário",
@@ -552,7 +552,7 @@ document.addEventListener("DOMContentLoaded", () => {
       verb_verify_desc: "Audite raízes de blobs no Walruscan, comprove o estado de políticas no SuiVision e confirme o RBAC Anchor no Solana Devnet Explorer com 1 clique.",
       steps_label: "CICLO DE EXECUÇÃO",
       steps_title: "Como Funciona de Ponta a Ponta",
-      steps_desc: "De um ficheiro não encriptado no seu disco local até à permanência multicadeia imutável.",
+      steps_desc: "De um Pasta não encriptado no seu disco local até à permanência multicadeia imutável.",
       step_1_title: "Encriptação de Envelope",
       step_1_desc: "O navegador deriva uma chave simétrica AES-256-GCM única e protege-a com encriptação de limiar Seal antes do envio.",
       step_2_title: "Dispersão 2D Red Stuff",
@@ -575,10 +575,10 @@ document.addEventListener("DOMContentLoaded", () => {
       verify_label: "CERTEZA AUDITÁVEL",
       verify_title: "Verifique a Integridade Criptográfica On-Chain",
       verify_desc: "Cada memória e documento armazenado gera uma prova matemática ancorada em registos descentralizados. Inspecione qualquer raiz de blob ou estado de política em tempo real.",
-      open_verification: "Abrir Consola de Verificação",
+      open_verification: "Abrir Console de Verificação",
       dev_label: "INÍCIO RÁPIDO PARA DESENVOLVEDORES",
       dev_title: "Integre a Nuvem Soberana em Minutos",
-      dev_desc: "Construa sobre o SDK Nodus ou execute a sua própria consola soberana local com isolamento criptográfico completo.",
+      dev_desc: "Construa sobre o SDK Nodus ou execute a sua própria console soberana local com isolamento criptográfico completo.",
       cta_title: "Pronto Para Ter Custódia dos Seus Dados?",
       cta_desc: "Zero subscrições. Zero rastreamento corporativo. Custódia matemática absoluta sobre o que não pode ser visto."
     },
@@ -838,6 +838,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let currentLang = localStorage.getItem("nodus_lang") || localStorage.getItem("suigallery_lang") || "en";
   if (!translations[currentLang]) currentLang = "en";
+  const supportedThemes = new Set(["dark", "light", "midnight"]);
+  let currentTheme = localStorage.getItem("nodus_theme") || "dark";
+  if (!supportedThemes.has(currentTheme)) currentTheme = "dark";
 
   // App State
   const state = {
@@ -1014,6 +1017,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const langMenu = document.getElementById("langMenu");
   const currentLangCode = document.getElementById("currentLangCode");
 
+  // Theme Elements
+  const themeDropdown = document.getElementById("themeDropdown");
+  const themeBtn = document.getElementById("themeBtn");
+  const themeMenu = document.getElementById("themeMenu");
+  const currentThemeCode = document.getElementById("currentThemeCode");
+
   // Lightbox Elements
   const lightboxModal = document.getElementById("lightboxModal");
   const lightboxBackdrop = document.getElementById("lightboxBackdrop");
@@ -1168,26 +1177,88 @@ document.addEventListener("DOMContentLoaded", () => {
     if (window.lucide) window.lucide.createIcons();
   }
 
+  function closeThemeMenu() {
+    if (!themeDropdown || !themeMenu || !themeBtn) return;
+    themeDropdown.classList.remove("open");
+    themeMenu.classList.add("hidden");
+    themeBtn.setAttribute("aria-expanded", "false");
+  }
+
+  function closeLanguageMenu() {
+    if (!langDropdown || !langMenu || !langBtn) return;
+    langDropdown.classList.remove("open");
+    langMenu.classList.add("hidden");
+    langBtn.setAttribute("aria-expanded", "false");
+  }
+
+  function applyTheme(theme) {
+    const nextTheme = supportedThemes.has(theme) ? theme : "dark";
+    currentTheme = nextTheme;
+    document.body.classList.remove("dark-theme", "light-theme", "midnight-theme");
+    document.body.classList.add(`${nextTheme}-theme`);
+    localStorage.setItem("nodus_theme", nextTheme);
+
+    const themeKey = `theme_${nextTheme}`;
+    if (currentThemeCode) {
+      currentThemeCode.setAttribute("data-i18n", themeKey);
+      currentThemeCode.textContent = t(themeKey);
+    }
+    const activeThemeIcon = document.getElementById("themeIcon");
+    if (activeThemeIcon) {
+      const iconByTheme = { dark: "moon", light: "sun", midnight: "moon-star" };
+      activeThemeIcon.setAttribute("data-lucide", iconByTheme[nextTheme]);
+    }
+    document.querySelectorAll(".theme-option").forEach((option) => {
+      option.classList.toggle("active", option.getAttribute("data-theme") === nextTheme);
+    });
+
+    closeThemeMenu();
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  if (themeBtn && themeDropdown && themeMenu) {
+    themeBtn.setAttribute("aria-expanded", "false");
+    themeBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const willOpen = themeMenu.classList.contains("hidden");
+      closeThemeMenu();
+      if (willOpen) {
+        themeDropdown.classList.add("open");
+        themeMenu.classList.remove("hidden");
+        themeBtn.setAttribute("aria-expanded", "true");
+      }
+      closeLanguageMenu();
+    });
+  }
+
+  document.querySelectorAll(".theme-option").forEach((option) => {
+    option.addEventListener("click", () => applyTheme(option.getAttribute("data-theme")));
+  });
+
   // Language Dropdown handlers
+  langBtn.setAttribute("aria-expanded", "false");
   langBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    langDropdown.classList.toggle("open");
-    langMenu.classList.toggle("hidden");
+    closeThemeMenu();
+    const willOpen = langMenu.classList.contains("hidden");
+    closeLanguageMenu();
+    if (willOpen) {
+      langDropdown.classList.add("open");
+      langMenu.classList.remove("hidden");
+      langBtn.setAttribute("aria-expanded", "true");
+    }
   });
 
   document.addEventListener("click", (e) => {
-    if (!langDropdown.contains(e.target)) {
-      langDropdown.classList.remove("open");
-      langMenu.classList.add("hidden");
-    }
+    if (!langDropdown.contains(e.target)) closeLanguageMenu();
+    if (themeDropdown && !themeDropdown.contains(e.target)) closeThemeMenu();
   });
 
   document.querySelectorAll(".lang-option").forEach((btn) => {
     btn.addEventListener("click", () => {
       const selected = btn.getAttribute("data-lang");
       applyLanguage(selected);
-      langDropdown.classList.remove("open");
-      langMenu.classList.add("hidden");
+      closeLanguageMenu();
     });
   });
 
@@ -3840,8 +3911,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Display on-chain proof directly in dock upon successful completion
     const dockOnchainProof = document.getElementById("dockOnchainProof");
-    const dockWalrusLink = document.getElementById("dockWalrusLink");
-    const dockSuiLink = document.getElementById("dockSuiLink");
+    const dockWalrusLink = document.getElementById("dockWalruscanLink");
+    const dockSuiLink = document.getElementById("dockSuivisionLink");
 
     if (dockOnchainProof && completedInBatch > 0) {
       const policyId = state.status?.bucket?.seal_policy_id || "0x9c1baccb244e45342ac150a0123a4802e8e834f25c00210e50c81081354eee44";
@@ -4043,6 +4114,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Initial Boot
+  applyTheme(currentTheme);
   updateAuthUI();
   applyLanguage(currentLang);
   fetchStatus();

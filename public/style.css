@@ -2083,6 +2083,17 @@ body.select-mode .photo-select-checkbox {
     gap: 0.6rem;
   }
 
+  .nav-top-row {
+    flex-wrap: wrap;
+  }
+
+  .nav-right {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
   .brand-name { font-size: 1rem; }
   .brand-tag { display: none; }
 
@@ -2204,6 +2215,17 @@ body.select-mode .photo-select-checkbox {
 
 @media (max-width: 480px) {
   .logo-text { display: none; }
+  .nav-left { gap: 0.35rem; }
+  .nav-right { gap: 0.35rem; }
+  .zklogin-nav-btn span,
+  .back-to-landing-btn span { display: none; }
+  .zklogin-nav-btn { padding: 0.5rem; }
+  .back-to-landing-btn {
+    margin-left: 0 !important;
+    padding: 0.5rem !important;
+  }
+  .theme-btn,
+  .lang-btn { padding: 0.45rem 0.55rem; }
   .demo-nav-btn span { display: none; }
   .demo-nav-btn { padding: 0.5rem; }
   

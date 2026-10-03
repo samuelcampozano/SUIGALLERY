@@ -389,12 +389,12 @@ npm run dev
 
         <!-- Theme Selector Dropdown -->
         <div class="theme-dropdown" id="themeDropdown">
-          <button class="btn btn-ghost theme-btn" id="themeBtn" title="Select Theme">
+          <button class="btn btn-ghost theme-btn" id="themeBtn" title="Select Theme" aria-haspopup="menu" aria-expanded="false">
             <i data-lucide="moon" id="themeIcon"></i>
             <span class="current-theme-code" id="currentThemeCode" data-i18n="theme_dark">Dark</span>
             <i data-lucide="chevron-down" class="chevron-icon"></i>
           </button>
-          <div class="theme-menu hidden" id="themeMenu">
+          <div class="theme-menu hidden" id="themeMenu" role="menu">
             <button class="theme-option active" data-theme="dark">
               <span>🌙</span> <span data-i18n="theme_dark">Dark</span>
             </button>
@@ -409,12 +409,12 @@ npm run dev
 
         <!-- Language Selector Dropdown -->
         <div class="lang-dropdown" id="langDropdown">
-          <button class="btn btn-ghost lang-btn" id="langBtn" title="Select Language">
+          <button class="btn btn-ghost lang-btn" id="langBtn" title="Select Language" aria-haspopup="menu" aria-expanded="false">
             <i data-lucide="globe"></i>
             <span class="current-lang-code" id="currentLangCode">EN</span>
             <i data-lucide="chevron-down" class="chevron-icon"></i>
           </button>
-          <div class="lang-menu hidden" id="langMenu">
+          <div class="lang-menu hidden" id="langMenu" role="menu">
             <button class="lang-option active" data-lang="en">
               <span class="flag">🇺🇸</span> English
             </button>
