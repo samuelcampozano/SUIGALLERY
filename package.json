@@ -19,6 +19,7 @@
     "test:idempotency": "node test/test-idempotency.js",
     "test:webhooks": "node test/test-signed-webhooks.js",
     "test:web-zero-custody": "node test/test-web-zero-custody.js",
+    "test:front-components": "node test/test-front-components.js",
     "test:sdk": "node test/test-sdk.js",
     "test:onchain": "node test/test-onchain.js",
     "test:shred": "node test-crypto-shredding.js",
