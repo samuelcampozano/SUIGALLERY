@@ -35,6 +35,10 @@ temp_storage/
 
 # Private Documentation, Blueprints & Captures (Local only, not for public repo)
 docs/
+!docs/
+docs/*
+!docs/research/
+!docs/research/*.md
 SUIGALLERY_*.md
 WALRUS_PHOTOS_*.md
 WALRUS_CONSOLE_BUG_CAPTURE.html
@@ -48,4 +52,3 @@ WALRUS_BETA_BUG_REPORT.md
 .claude/
 agent/
 skills-lock.json
-
