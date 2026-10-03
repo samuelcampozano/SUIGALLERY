@@ -1,4 +1,4 @@
-name: Nodus CI
+name: Nodus CI/CD
 
 on:
   push:
@@ -26,3 +26,18 @@ jobs:
 
       - name: Run All Automated Test Suites
         run: npm test
+
+  deploy:
+    name: Continuous Deployment to Render Cloud
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deployment
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          SERVICE_ID="${{ github.ref == 'refs/heads/dev' && 'srv-daotpc6gekts73f1p560' || 'srv-daotpfjtqb8s73ejacfg' }}"
+          if [ -n "$RENDER_API_KEY" ]; then
+            curl -fsS -X POST -H "Authorization: Bearer $RENDER_API_KEY" -H "Content-Type: application/json" -d "{}" "https://api.render.com/v1/services/$SERVICE_ID/deploys"
+          fi
