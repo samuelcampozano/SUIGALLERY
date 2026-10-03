@@ -26,28 +26,343 @@
     </div>
   </div>
 
-  <!-- Top Navigation Bar -->
-  <header class="navbar">
-    <div class="nav-top-row">
-      <div class="nav-left">
-        <div class="logo">
-          <div class="logo-icon">
-            <i data-lucide="shield-check"></i>
-          </div>
-          <div class="logo-text">
-            <span class="brand-name">Nodus</span>
-            <span class="brand-tag" data-i18n="brand_tag">WALRUS PROTOCOL</span>
-          </div>
+  <!-- Landing View (Official Nodus Sovereign Cloud Design System) -->
+  <div id="landingView" class="landing-view">
+    <!-- Landing Navigation -->
+    <nav class="nd-nav">
+      <div class="nd-nav-inner">
+        <div class="nd-brand-logo" id="landingLogoBtn">
+          <img src="/assets/guardian-face-blue.png" class="nd-guardian-icon" alt="Nodus Guardian">
+          <span class="nd-brand-wordmark">NODUS<span class="nd-wordmark-blue">.</span></span>
+        </div>
+        <div class="nd-nav-links">
+          <a href="#architecture" class="nd-nav-link" data-i18n="nav_architecture">Architecture</a>
+          <a href="#storage" class="nd-nav-link" data-i18n="nav_storage">Storage</a>
+          <a href="#how-it-works" class="nd-nav-link" data-i18n="nav_how_it_works">How It Works</a>
+          <a href="#verification" class="nd-nav-link" data-i18n="nav_verification">Verification</a>
+          <a href="#developers" class="nd-nav-link" data-i18n="nav_developers">Developers</a>
+        </div>
+        <div class="nd-nav-actions">
+          <button class="btn btn-ghost" id="landingSignInBtn">
+            <i data-lucide="shield"></i>
+            <span data-i18n="signin_zklogin">Sign In</span>
+          </button>
+          <button class="btn-launch-app" id="launchAppNavBtn">
+            <span data-i18n="launch_app">Launch App</span>
+            <i data-lucide="arrow-right"></i>
+          </button>
         </div>
       </div>
+    </nav>
 
-      <div class="nav-right">
-        <!-- Auth Container: zkLogin Button (when unauthenticated) OR User Profile Pill (when authenticated) -->
-        <div class="auth-nav-container" id="authNavContainer">
-          <!-- Unauthenticated State: Sign In with zkLogin Button & 1-Click Demo -->
-          <button class="btn btn-primary zklogin-nav-btn" id="loginTriggerBtn">
-            <svg class="google-icon" viewBox="0 0 24 24" width="16" height="16">
-              <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"/>
+    <!-- Landing Hero Section -->
+    <header class="nd-hero">
+      <div class="nd-hero-content">
+        <div class="nd-hero-badge">
+          <span class="badge-dot"></span>
+          <span data-i18n="hero_badge">PROTOCOL SPECIFICATION — PRODUCTION READY</span>
+        </div>
+        <h1 class="nd-hero-title" data-i18n="hero_title">The Sovereign Cloud for What Cannot Be Seen.</h1>
+        <p class="nd-hero-subtitle" data-i18n="hero_desc">
+          End-to-end encrypted storage on Walrus protocol. Identity verified on Sui via zero-knowledge proofs. Role-based access control anchored on Solana.
+        </p>
+        <div class="nd-hero-ctas">
+          <button class="btn-launch-app btn-launch-app-lg" id="launchAppHeroBtn">
+            <span data-i18n="launch_app_sovereign">Launch Sovereign App</span>
+            <i data-lucide="arrow-right"></i>
+          </button>
+          <button class="btn btn-secondary btn-launch-app-lg" id="landingDemoBtn" title="Instant 1-Click Sovereign Demo">
+            <i data-lucide="sparkles"></i>
+            <span data-i18n="demo_btn">1-Click Demo</span>
+          </button>
+          <a href="#architecture" class="btn btn-ghost">
+            <span data-i18n="view_arch">Architecture</span>
+            <i data-lucide="chevron-down"></i>
+          </a>
+        </div>
+        <div class="nd-tech-tags">
+          <span>2D Red Stuff</span>
+          <span class="nd-tech-dot">•</span>
+          <span>Zero-Knowledge zkLogin</span>
+          <span class="nd-tech-dot">•</span>
+          <span>Solana Anchor RBAC</span>
+          <span class="nd-tech-dot">•</span>
+          <span>Zero Egress Fees</span>
+        </div>
+      </div>
+      <div class="nd-hero-graphic">
+        <div class="nd-guardian-halo"></div>
+        <img src="/assets/guardian-blue.png" class="nd-guardian-hero-img" alt="Nodus Guardian AI">
+      </div>
+    </header>
+
+    <!-- Section 1: Built On Sovereign Infrastructure -->
+    <section class="nd-section" id="architecture">
+      <div class="nd-section-header">
+        <span class="nd-section-label" data-i18n="arch_label">INFRASTRUCTURE PRIMITIVES</span>
+        <h2 class="nd-section-title" data-i18n="arch_title">Built On Uncompromising Decentralization</h2>
+        <p class="nd-section-desc" data-i18n="arch_desc">
+          Four independent cryptographic and distributed networks work in harmony to replace legacy centralized cloud monopolies.
+        </p>
+      </div>
+      <div class="nd-built-grid">
+        <div class="nd-built-card">
+          <div class="nd-built-card-icon"><i data-lucide="cloud"></i></div>
+          <h4 data-i18n="arch_walrus_title">Walrus Protocol</h4>
+          <p data-i18n="arch_walrus_desc">Fountain erasure-coded decentralized blob storage. 2D Reed-Solomon encoding provides resilient 4.5x–5x replication efficiency without centralized choke points.</p>
+          <span class="nd-built-card-sub">2D Red Stuff • Blob Storage</span>
+        </div>
+        <div class="nd-built-card">
+          <div class="nd-built-card-icon"><i data-lucide="shield-check"></i></div>
+          <h4 data-i18n="arch_sui_title">Sui Network</h4>
+          <p data-i18n="arch_sui_desc">Sub-second transaction finality, native object capabilities, and zero-knowledge zkLogin authentication. Gas-free onboarding directly from Web2 identities.</p>
+          <span class="nd-built-card-sub">Object Capabilities • zkLogin</span>
+        </div>
+        <div class="nd-built-card">
+          <div class="nd-built-card-icon"><i data-lucide="sun"></i></div>
+          <h4 data-i18n="arch_solana_title">Solana Devnet</h4>
+          <p data-i18n="arch_solana_desc">High-throughput Anchor RBAC programs, PDA-derived organizational tenancy, and programmatic member capabilities enforcing corporate boundaries.</p>
+          <span class="nd-built-card-sub">Anchor PDAs • Multi-Tenant RBAC</span>
+        </div>
+        <div class="nd-built-card">
+          <div class="nd-built-card-icon"><i data-lucide="lock"></i></div>
+          <h4 data-i18n="arch_seal_title">Seal Client Encryption</h4>
+          <p data-i18n="arch_seal_desc">Zero-knowledge threshold envelope encryption executed 100% in-browser before any byte touches network transit. Your keys never leave your custody.</p>
+          <span class="nd-built-card-sub">AES-256-GCM • Zero-Knowledge Enclave</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Core Verbs -->
+    <section class="nd-section" id="storage">
+      <div class="nd-section-header">
+        <span class="nd-section-label" data-i18n="verbs_label">CORE CAPABILITIES</span>
+        <h2 class="nd-section-title" data-i18n="verbs_title">What Nodus Enables</h2>
+        <p class="nd-section-desc" data-i18n="verbs_desc">
+          Sovereign primitives built into every layer without trusting a single central server.
+        </p>
+      </div>
+      <div class="nd-verbs-grid">
+        <div class="nd-verb-card">
+          <span class="nd-verb-pill">STORE</span>
+          <h3 data-i18n="verb_store_title">Client-Side Sealed</h3>
+          <p data-i18n="verb_store_desc">All media is encrypted with AES-256-GCM and Seal threshold keys in the user's browser before transmission. Walrus storage nodes only see unreadable ciphertext slivers.</p>
+        </div>
+        <div class="nd-verb-card">
+          <span class="nd-verb-pill">PROVE</span>
+          <h3 data-i18n="verb_prove_title">Zero-Knowledge Identity</h3>
+          <p data-i18n="verb_prove_desc">Log in with Google zkLogin, Sui standard wallets (Slush, official Sui), or 12-word BIP-39 mnemonic seed. Your Web2 email is cryptographically translated to a Sui address without leaking credentials.</p>
+        </div>
+        <div class="nd-verb-card">
+          <span class="nd-verb-pill">GOVERN</span>
+          <h3 data-i18n="verb_govern_title">Multi-Chain RBAC</h3>
+          <p data-i18n="verb_govern_desc">Anchor Program-Derived Addresses (PDAs) on Solana and Sui Objects enforce organizational member roles, viewer limits, and revocable team access policies.</p>
+        </div>
+        <div class="nd-verb-card">
+          <span class="nd-verb-pill">VERIFY</span>
+          <h3 data-i18n="verb_verify_title">Verifiable Attestation</h3>
+          <p data-i18n="verb_verify_desc">Audit blob roots on Walruscan, verify Sui policy state on SuiVision, and confirm Anchor RBAC on Solana Devnet Explorer with 1-click inspection.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: How It Works -->
+    <section class="nd-section" id="how-it-works">
+      <div class="nd-section-header">
+        <span class="nd-section-label" data-i18n="steps_label">EXECUTION LIFECYCLE</span>
+        <h2 class="nd-section-title" data-i18n="steps_title">How It Works End-to-End</h2>
+        <p class="nd-section-desc" data-i18n="steps_desc">
+          From unencrypted file on your local disk to immutable multi-chain permanence.
+        </p>
+      </div>
+      <div class="nd-steps-grid">
+        <div class="nd-step-card">
+          <div class="nd-step-number">01</div>
+          <h3 data-i18n="step_1_title">Envelope Encryption</h3>
+          <p data-i18n="step_1_desc">Local browser derives a unique AES-256-GCM symmetric key and wraps it with Seal threshold encryption before transmission.</p>
+        </div>
+        <div class="nd-step-card">
+          <div class="nd-step-number">02</div>
+          <h3 data-i18n="step_2_title">2D Red Stuff Dispersal</h3>
+          <p data-i18n="step_2_desc">Ciphertext is split into primary and secondary slivers via 2D Reed-Solomon erasure coding and distributed across Walrus storage nodes.</p>
+        </div>
+        <div class="nd-step-card">
+          <div class="nd-step-number">03</div>
+          <h3 data-i18n="step_3_title">Multi-Chain Attestation</h3>
+          <p data-i18n="step_3_desc">Sui records blob certificates and ownership policies; Solana Anchor PDAs enforce organizational role-based access control.</p>
+        </div>
+        <div class="nd-step-card">
+          <div class="nd-step-number">04</div>
+          <h3 data-i18n="step_4_title">Zero-Knowledge Retrieval</h3>
+          <p data-i18n="step_4_desc">Authorized callers reconstruct slivers from Walrus, verify cryptographic signatures, and decrypt 100% locally in browser memory.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: ROI & Economics -->
+    <section class="nd-section">
+      <div class="nd-section-header">
+        <span class="nd-section-label" data-i18n="roi_label">SOVEREIGN ECONOMICS</span>
+        <h2 class="nd-section-title" data-i18n="roi_title">Enterprise Cloud vs. Sovereign Cloud</h2>
+        <p class="nd-section-desc" data-i18n="roi_desc">
+          Stop paying extortionate egress fees and granting tech monopolies surveillance rights over your organization's intellectual property.
+        </p>
+      </div>
+      <div class="nd-roi-grid">
+        <div class="nd-roi-card">
+          <div class="nd-roi-num">0%</div>
+          <div class="nd-roi-label" data-i18n="roi_egress_label">Egress Fees</div>
+          <p class="nd-roi-desc" data-i18n="roi_egress_desc">Decentralized blob retrieval with zero bandwidth tax or egress extortion.</p>
+        </div>
+        <div class="nd-roi-card">
+          <div class="nd-roi-num">100%</div>
+          <div class="nd-roi-label" data-i18n="roi_client_label">Client-Side Sealed</div>
+          <p class="nd-roi-desc" data-i18n="roi_client_desc">Zero cleartext data stored on servers or visible to storage node operators.</p>
+        </div>
+        <div class="nd-roi-card">
+          <div class="nd-roi-num">4.5x</div>
+          <div class="nd-roi-label" data-i18n="roi_eff_label">Fountain Efficiency</div>
+          <p class="nd-roi-desc" data-i18n="roi_eff_desc">Walrus 2D Red Stuff erasure coding delivers mathematical resilience with minimal overhead.</p>
+        </div>
+        <div class="nd-roi-card">
+          <div class="nd-roi-num">&lt;1s</div>
+          <div class="nd-roi-label" data-i18n="roi_finality_label">Sui Network Finality</div>
+          <p class="nd-roi-desc" data-i18n="roi_finality_desc">Sub-second transaction settlement and instant cryptographic authorization.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 5: Verification -->
+    <section class="nd-section" id="verification">
+      <div class="nd-verify-box">
+        <div class="nd-verify-info">
+          <span class="nd-section-label" data-i18n="verify_label">AUDITABLE CERTAINTY</span>
+          <h2 class="nd-section-title" style="margin-bottom: 12px;" data-i18n="verify_title">Verify Cryptographic Integrity On-Chain</h2>
+          <p class="nd-section-desc" data-i18n="verify_desc">
+            Every stored memory and document produces mathematical proof anchored across decentralized ledgers. Inspect any blob root or policy state in real time.
+          </p>
+          <div class="nd-checks-list">
+            <div class="nd-check-item">
+              <i data-lucide="check-circle-2"></i>
+              <span>Blake2b-256 / SHA-256 hash verified before blob registration</span>
+            </div>
+            <div class="nd-check-item">
+              <i data-lucide="check-circle-2"></i>
+              <span>Walrus 2D Red Stuff sliver availability confirmed across storage nodes</span>
+            </div>
+            <div class="nd-check-item">
+              <i data-lucide="check-circle-2"></i>
+              <span>Sui Object capability and Seal threshold envelope anchored</span>
+            </div>
+            <div class="nd-check-item">
+              <i data-lucide="check-circle-2"></i>
+              <span>Solana Anchor PDA access control validated on Devnet</span>
+            </div>
+          </div>
+        </div>
+        <div class="nd-verify-actions">
+          <button class="btn-launch-app" id="launchAppVerifyBtn">
+            <i data-lucide="shield-check"></i>
+            <span data-i18n="open_verification">Open Verification Console</span>
+          </button>
+          <a href="https://walruscan.com/testnet" target="_blank" class="btn btn-secondary">
+            <i data-lucide="external-link"></i>
+            <span>Walruscan Testnet</span>
+          </a>
+          <a href="https://suivision.xyz" target="_blank" class="btn btn-secondary">
+            <i data-lucide="external-link"></i>
+            <span>SuiVision Explorer</span>
+          </a>
+          <a href="https://explorer.solana.com/?cluster=devnet" target="_blank" class="btn btn-secondary">
+            <i data-lucide="external-link"></i>
+            <span>Solana Devnet Explorer</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 6: For Developers -->
+    <section class="nd-section" id="developers">
+      <div class="nd-section-header">
+        <span class="nd-section-label" data-i18n="dev_label">DEVELOPER QUICKSTART</span>
+        <h2 class="nd-section-title" data-i18n="dev_title">Integrate Sovereign Cloud in Minutes</h2>
+        <p class="nd-section-desc" data-i18n="dev_desc">
+          Build on the Nodus SDK or run your own local sovereign console with complete cryptographic isolation.
+        </p>
+      </div>
+      <div class="nd-terminal-box">
+        <div class="nd-terminal-header">
+          <div class="nd-terminal-dot"></div>
+          <div class="nd-terminal-dot"></div>
+          <div class="nd-terminal-dot"></div>
+          <span style="font-size: 0.8rem; color: var(--nd-slate-2); margin-left: 8px;">bash — nodus-quickstart</span>
+        </div>
+        <pre class="nd-terminal-code"><code># Clone repository and install dependencies
+git clone https://github.com/samuelcampozano/nodus.git
+cd nodus && npm install
+
+# Generate Solana Devnet RBAC demo keypairs and compute PDAs
+npm run solana:demo-wallets
+
+# Launch local sovereign console with Seal encryption
+npm run dev
+
+# Open browser at http://localhost:3000</code></pre>
+      </div>
+    </section>
+
+    <!-- Section 7: Bottom CTA -->
+    <section class="nd-section" style="text-align: center; padding-top: 40px; padding-bottom: 100px;">
+      <h2 class="nd-section-title" data-i18n="cta_title">Ready to Own Your Sovereign Data?</h2>
+      <p class="nd-section-desc" style="margin: 0 auto 32px auto;" data-i18n="cta_desc">
+        Zero subscriptions. Zero corporate tracking. Complete mathematical custody over what cannot be seen.
+      </p>
+      <button class="btn-launch-app btn-launch-app-lg" id="launchAppCtaBtn">
+        <span data-i18n="launch_app_sovereign">Launch Sovereign App Now</span>
+        <i data-lucide="arrow-right"></i>
+      </button>
+    </section>
+
+    <!-- Landing Footer -->
+    <footer class="nd-footer">
+      <div class="nd-footer-left">
+        <img src="/assets/guardian-face-blue.png" class="nd-guardian-icon" alt="Nodus">
+        <span class="nd-brand-wordmark">NODUS<span class="nd-wordmark-blue">.</span></span>
+      </div>
+      <div class="nd-footer-copy">
+        © 2026 Nodus Protocol • Sovereign Cloud Infrastructure • Sui • Walrus • Solana
+      </div>
+    </footer>
+  </div>
+
+  <!-- Sovereign Console Application View -->
+  <div id="appView" class="app-view hidden">
+    <!-- Top Navigation Bar -->
+    <header class="navbar">
+      <div class="nav-top-row">
+        <div class="nav-left">
+          <div class="logo">
+            <div class="logo-icon">
+              <i data-lucide="shield-check"></i>
+            </div>
+            <div class="logo-text">
+              <span class="brand-name">Nodus</span>
+              <span class="brand-tag" data-i18n="brand_tag">WALRUS PROTOCOL</span>
+            </div>
+          </div>
+          <button class="btn btn-ghost back-to-landing-btn" id="backToLandingBtn" title="Back to Nodus Website">
+            <i data-lucide="arrow-left"></i>
+            <span data-i18n="back_to_website">Website</span>
+          </button>
+        </div>
+
+        <div class="nav-right">
+          <!-- Auth Container: zkLogin Button (when unauthenticated) OR User Profile Pill (when authenticated) -->
+          <div class="auth-nav-container" id="authNavContainer">
+            <!-- Unauthenticated State: Sign In with zkLogin Button & 1-Click Demo -->
+            <button class="btn btn-primary zklogin-nav-btn" id="loginTriggerBtn">
+              <svg class="google-icon" viewBox="0 0 24 24" width="16" height="16">
+                <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"/>
               <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.7-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z"/>
               <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3 0-.8.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12.3 1.9 7.9l3.7-2.9z"/>
               <path fill="#34A853" d="M12 23.5c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.3L1.9 16.5C3.7 20.2 7.5 23.5 12 23.5z"/>
@@ -252,6 +567,7 @@
       </div>
     </div>
   </div>
+  </div> <!-- End #appView -->
 
   <!-- Photo Lightbox Modal -->
   <div class="lightbox-modal hidden" id="lightboxModal">

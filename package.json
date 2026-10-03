@@ -29,6 +29,7 @@
     "solana:anchor:build": "anchor build",
     "solana:anchor:deploy:devnet": "anchor deploy --provider.cluster devnet",
     "solana:devnet:provision": "node scripts/provision-devnet-rbac.mjs",
+    "solana:demo-wallets": "node scripts/create-demo-wallets.mjs",
     "test:walrus-fallback": "node test/test-walrus-testnet-fallback.js",
     "test:m3-sandbox": "node test/test-deployment-environment.js && node test/test-walrus-testnet-fallback.js",
     "test:private-search": "node test/test-private-search.js",

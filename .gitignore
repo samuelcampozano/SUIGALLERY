@@ -49,3 +49,9 @@ WALRUS_BETA_BUG_REPORT.md
 agent/
 skills-lock.json
 
+# Solana Devnet Demo Wallets & Target Deploy Keypairs (Strictly Private)
+.demo-wallets/
+*.keypair.json
+target/deploy/*.json
+Nodus Handoff
+

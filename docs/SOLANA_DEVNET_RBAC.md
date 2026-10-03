@@ -127,16 +127,20 @@ key de sandbox/Devnet em produção.
 
 ### 6. Provisionar a demonstração e coletar evidências
 
-Antes da banca, o owner deve enviar transações para:
+Para gerar ou inspecionar rapidamente as carteiras de demonstração (`Owner` e `Member`), execute o gerador automatizado:
 
-1. `initialize_organization` com o hash SHA-256 do ID normalizado da organização;
-2. `upsert_member` para a carteira do participante;
-3. `set_capability` para a capability fixa `nodus:tenant-access:v1`.
+```bash
+npm run solana:demo-wallets
+```
 
-O repositório fornece o provisionador Devnet para assinar essas operações com a
-carteira do owner. Informe somente o Program ID público, a carteira do owner e a
-carteira pública do membro; o script não aceita RPC de produção nem lê arquivos,
-chaves ou metadados de assets.
+O comando:
+- Cria ou carrega `.demo-wallets/owner.json` e `.demo-wallets/member.json` (protegidos no `.gitignore`);
+- Exibe os endereços Base58 e os links diretos para o Solana Explorer na Devnet;
+- Consulta os saldos e tenta solicitar airdrop automático se o saldo for baixo;
+- Calcula os PDAs de `Organization`, `Member` e `Capability`;
+- Imprime o comando pronto para execução do provisionador.
+
+Em seguida, execute o provisionamento das contas Anchor com a carteira gerada:
 
 ```bash
 npm run solana:devnet:provision -- \
@@ -144,7 +148,7 @@ npm run solana:devnet:provision -- \
   --member CARTEIRA_PUBLICA_DO_MEMBRO \
   --role viewer \
   --program-id SEU_PROGRAM_ID \
-  --wallet ~/.config/solana/nodus-devnet-deployer.json
+  --wallet .demo-wallets/owner.json
 ```
 
 O resultado JSON inclui a assinatura e o link Devnet do Explorer. Execute o mesmo
